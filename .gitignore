@@ -1,0 +1,20 @@
+# User-provided reference APK and screenshots
+/ref/
+
+# Android and Gradle outputs
+.gradle/
+**/build/
+local.properties
+captures/
+.idea/
+*.iml
+
+# Personal release signing material
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+/private-signing/
+
+# Private execution workspace
+.superpowers/
