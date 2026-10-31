@@ -30,7 +30,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -64,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -342,7 +345,11 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                         if (entryBeingEdited == null) model.addEntry(type, fen, categoryId, date, note, saved, failed)
                         else model.updateEntry(entryBeingEdited.copy(type = type, amountFen = fen, categoryId = categoryId,
                             occurredOn = date, note = note), saved, failed)
-                    }, onDelete = { entry -> model.deleteEntry(entry.id) { page = Page.LEDGER; editEntryId = null } })
+                    }, onDelete = { entry -> model.deleteEntry(entry.id) { page = Page.LEDGER; editEntryId = null } },
+                    onSaveCategory = { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
+                        onSaved = { done(true) }, onFailed = { done(false) }) },
+                    onSetCategoryActive = model::setCategoryActive,
+                    onReorderCategory = model::reorderCategory)
                 Page.SETTINGS -> SettingsPage({ page = Page.CATEGORIES }, { password ->
                     exportPassword = password
                     exportPicker.launch("财记-完整备份-${LocalDate.now()}.cjbackup")
@@ -350,7 +357,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.CATEGORIES -> CategoryManager(categories, { page = Page.SETTINGS },
                     { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },
-                    model::setCategoryActive, model::reorderCategory)
+                    model::setCategoryActive, model::reorderCategory, initialType = EntryType.EXPENSE)
             }
         }
     }
@@ -421,7 +428,10 @@ private fun EntryRow(entry: LedgerEntry, categoryName: String, iconKey: String, 
 private fun EntryEditor(
     categories: List<Category>, existing: LedgerEntry?, initialType: EntryType,
     onCancel: () -> Unit, onSave: (EntryType, Long, String, LocalDate, String?, (Boolean) -> Unit) -> Unit,
-    onDelete: (LedgerEntry) -> Unit
+    onDelete: (LedgerEntry) -> Unit,
+    onSaveCategory: (EntryType, String?, String, String, (Boolean) -> Unit) -> Unit,
+    onSetCategoryActive: (String, Boolean) -> Unit,
+    onReorderCategory: (String, Int) -> Unit
 ) {
     var type by rememberSaveable(existing?.id) { mutableStateOf(existing?.type ?: initialType) }
     var expression by rememberSaveable(existing?.id) { mutableStateOf(existing?.let { yuan(it.amountFen) } ?: "") }
@@ -432,37 +442,64 @@ private fun EntryEditor(
     var saving by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var discardPrompt by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var deletePrompt by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var managingCategories by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var mustReselectActiveCategory by rememberSaveable(existing?.id) { mutableStateOf(false) }
     val context = LocalContext.current
     val activeCategories = categories.filter { it.type == type && (it.active || it.id == selectedCategory) }
     val calculated = remember(expression) { runCatching { Money.evaluate(expression) }.getOrNull() }
     fun cancel() { if (changed) discardPrompt = true else onCancel() }
 
-    BackHandler(enabled = true) { cancel() }
-    if (discardPrompt) AlertDialog(onDismissRequest = { discardPrompt = false }, title = { Text("放弃本次记账？") },
+    LaunchedEffect(categories, selectedCategory, existing?.id) {
+        val selected = categories.firstOrNull { it.id == selectedCategory }
+        if (existing == null && selectedCategory != null && selected != null && !selected.active) {
+            selectedCategory = null
+            mustReselectActiveCategory = true
+            changed = true
+        }
+    }
+
+    BackHandler(enabled = true) {
+        if (managingCategories) managingCategories = false else cancel()
+    }
+    if (!managingCategories && discardPrompt) AlertDialog(onDismissRequest = { discardPrompt = false }, title = { Text("放弃本次记账？") },
         text = { Text("尚未保存的内容将丢失。") }, confirmButton = { TextButton(onClick = onCancel) { Text("放弃") } },
         dismissButton = { TextButton(onClick = { discardPrompt = false }) { Text("继续编辑") } })
-    if (deletePrompt && existing != null) AlertDialog(onDismissRequest = { deletePrompt = false }, title = { Text("删除这笔账单？") },
+    if (!managingCategories && deletePrompt && existing != null) AlertDialog(onDismissRequest = { deletePrompt = false }, title = { Text("删除这笔账单？") },
         text = { Text("删除后会立即从月度汇总中移除。") },
         confirmButton = { TextButton(onClick = { onDelete(existing); deletePrompt = false }, modifier = Modifier.testTag("confirm-delete-entry")) { Text("删除", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { deletePrompt = false }) { Text("取消") } })
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(CaijiYellow).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    if (managingCategories) {
+        CategoryManager(categories, onBack = { managingCategories = false }, onSave = onSaveCategory,
+            onActive = onSetCategoryActive, onMove = onReorderCategory, initialType = type)
+    } else Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().background(CaijiYellow).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = ::cancel) { Text("取消", color = CaijiInk) }
-            Spacer(Modifier.weight(1f))
-            listOf(EntryType.EXPENSE to "支出", EntryType.INCOME to "收入").forEach { (candidate, label) ->
-                TextButton(onClick = { if (type != candidate) { type = candidate; selectedCategory = null; changed = true } },
-                    modifier = Modifier.testTag("entry-type-${candidate.name.lowercase()}")) {
-                    Text(if (candidate == type) "$label　━━" else label, color = CaijiInk, style = MaterialTheme.typography.titleLarge)
+            EntryTypeToggle(type, Modifier.weight(1f).padding(horizontal = 4.dp)) { candidate ->
+                if (type != candidate) {
+                    type = candidate
+                    selectedCategory = null
+                    mustReselectActiveCategory = false
+                    changed = true
                 }
             }
             if (existing != null) TextButton(onClick = { deletePrompt = true }) { Text("删除", color = Color(0xFFAE2626)) }
         }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("选择分类", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { managingCategories = true }, enabled = !saving,
+                modifier = Modifier.testTag("entry-manage-categories")) { Text("管理分类　›", color = CaijiInk) }
+        }
         if (activeCategories.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text("没有可用分类，请先到设置添加或启用分类", textAlign = TextAlign.Center, color = Color.Gray)
+            Text("暂无可用分类，请点击上方“管理分类”新增或启用分类", textAlign = TextAlign.Center, color = Color.Gray)
         } else LazyVerticalGrid(columns = GridCells.Fixed(4), modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
             items(activeCategories, key = { it.id }) { category ->
-                Column(Modifier.fillMaxWidth().clickable { selectedCategory = category.id; changed = true }
+                Column(Modifier.fillMaxWidth().clickable {
+                    selectedCategory = category.id
+                    mustReselectActiveCategory = false
+                    changed = true
+                }
                     .padding(vertical = 9.dp).testTag("entry-category-${category.id}"),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Surface(shape = CircleShape, color = if (selectedCategory == category.id) CaijiYellow else CaijiGrey, modifier = Modifier.size(58.dp)) {
@@ -479,7 +516,9 @@ private fun EntryEditor(
             if (expression.isNotEmpty() && calculated == null) Text("金额格式无效或结果不能为零及负数",
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
-            if (selectedCategory == null) Text("请选择分类", Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            if (selectedCategory == null) Text(
+                if (mustReselectActiveCategory) "该分类已停用，请重新选择启用分类" else "请选择分类",
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 textAlign = TextAlign.End, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { DatePickerDialog(context, { _, year, month, day ->
@@ -536,6 +575,30 @@ private fun EntryEditor(
 }
 
 @Composable
+private fun EntryTypeToggle(type: EntryType, modifier: Modifier = Modifier, onTypeSelected: (EntryType) -> Unit) {
+    Row(modifier.fillMaxWidth().background(CaijiGrey, RoundedCornerShape(12.dp)).padding(3.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        listOf(EntryType.EXPENSE to "支出", EntryType.INCOME to "收入").forEach { (candidate, label) ->
+            val selected = candidate == type
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = if (selected) CaijiInk else Color.Transparent,
+                modifier = Modifier.weight(1f).selectable(selected = selected, role = Role.Tab,
+                    onClick = { onTypeSelected(candidate) })
+                    .testTag("entry-type-${candidate.name.lowercase()}")
+                    .height(38.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(label, color = if (selected) CaijiYellow else CaijiInk,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SettingsPage(onCategories: () -> Unit, onExport: (String) -> Unit, onImport: () -> Unit) {
     var exportPrompt by remember { mutableStateOf(false) }
     if (exportPrompt) PasswordDialog("加密完整备份", "选择保存位置", true,
@@ -570,9 +633,10 @@ private fun SettingsRow(title: String, subtitle: String, onClick: () -> Unit, mo
 @Composable
 private fun CategoryManager(
     categories: List<Category>, onBack: () -> Unit, onSave: (EntryType, String?, String, String, (Boolean) -> Unit) -> Unit,
-    onActive: (String, Boolean) -> Unit, onMove: (String, Int) -> Unit
+    onActive: (String, Boolean) -> Unit, onMove: (String, Int) -> Unit,
+    initialType: EntryType = EntryType.EXPENSE
 ) {
-    var selectedType by remember { mutableStateOf(EntryType.EXPENSE) }
+    var selectedType by remember(initialType) { mutableStateOf(initialType) }
     var edit by remember { mutableStateOf<Category?>(null) }
     var add by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
@@ -594,7 +658,8 @@ private fun CategoryManager(
                     Text(category.name, modifier = Modifier.weight(1f).clickable { edit = category }, color = if (category.active) CaijiInk else Color.Gray)
                     TextButton(onClick = { onMove(category.id, category.sortOrder - 1) }, enabled = category.sortOrder > 0) { Text("↑") }
                     TextButton(onClick = { onMove(category.id, category.sortOrder + 1) }) { Text("↓") }
-                    Switch(checked = category.active, onCheckedChange = { onActive(category.id, it) })
+                    Switch(checked = category.active, onCheckedChange = { onActive(category.id, it) },
+                        modifier = Modifier.testTag("category-active-name-${category.name}"))
                 }
                 HorizontalDivider(color = CaijiGrey)
             }
