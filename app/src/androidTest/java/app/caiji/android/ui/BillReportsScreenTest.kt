@@ -2,6 +2,9 @@ package app.caiji.android.ui
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -92,6 +95,7 @@ class BillReportsScreenTest {
                 }
             }
         }
+        compose.onNodeWithTag("bill-table-header-balance").assertIsDisplayed()
         compose.onNodeWithTag("bill-table-scroll").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("bill-table-header-income").assertIsDisplayed()
         compose.onNodeWithTag("month-row-10").assertIsDisplayed().performClick()
@@ -130,6 +134,28 @@ class BillReportsScreenTest {
         }
         compose.onAllNodesWithText("暂无账单数据").assertCountEquals(0)
         compose.onNodeWithText("2026年").assertIsDisplayed()
+    }
+
+    @Test fun billYearCanBrowseEmptyYearsBackTo1900AndStopsAtCurrentYear() {
+        val previous = AtomicReference(false)
+        val next = AtomicReference(false)
+        compose.setContent {
+            CaijiTheme {
+                var year by remember { mutableStateOf(1900) }
+                BillReportsScreen(
+                    mode = BillListMode.MONTH, year = year, monthReports = emptyList(), yearReports = emptyList(),
+                    loading = false, error = null, onBack = {}, onPreviousYear = { previous.set(true) },
+                    onNextYear = { next.set(true); year++ }, onRetryList = {}, onSelectMode = {},
+                    onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("bill-previous-year").assertIsNotEnabled()
+        compose.onNodeWithTag("bill-next-year").assertIsEnabled().performClick()
+        assertEquals(true, next.get())
+        compose.onNodeWithTag("bill-selected-year").assertTextContains("1901年")
+        compose.onNodeWithTag("bill-previous-year").assertIsEnabled()
+        assertEquals(false, previous.get())
     }
 
     @Test fun failedMonthListRetryRequestsTheCurrentYearAgain() {

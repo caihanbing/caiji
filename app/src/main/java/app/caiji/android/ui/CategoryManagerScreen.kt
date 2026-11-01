@@ -1,6 +1,7 @@
 package app.caiji.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -242,9 +247,22 @@ private fun ReorderButton(label: String, tag: String, enabled: Boolean, onClick:
             .semantics { contentDescription = label }.testTag(tag)
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(if (label.startsWith("上移")) "↑" else "↓",
-                color = if (enabled) CaijiPalette.Ink else CaijiPalette.SecondaryText,
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            val color = if (enabled) CaijiPalette.Ink else CaijiPalette.SecondaryText
+            val up = label.startsWith("上移")
+            Canvas(Modifier.size(18.dp)) {
+                val path = Path().apply {
+                    if (up) {
+                        moveTo(size.width * .2f, size.height * .68f)
+                        lineTo(size.width * .5f, size.height * .35f)
+                        lineTo(size.width * .8f, size.height * .68f)
+                    } else {
+                        moveTo(size.width * .2f, size.height * .32f)
+                        lineTo(size.width * .5f, size.height * .65f)
+                        lineTo(size.width * .8f, size.height * .32f)
+                    }
+                }
+                drawPath(path, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
         }
     }
 }

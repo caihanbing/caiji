@@ -85,6 +85,9 @@ class LedgerScreensTest {
         compose.onNodeWithText("¥58.00").assertIsDisplayed()
         compose.onNodeWithTag("daily-summary-2026-11-01").assertTextContains("支出 ¥58.00", substring = true)
         compose.onNodeWithTag("daily-summary-2026-11-01").assertTextContains("收入 ¥8,500.00", substring = true)
+        val dailyIncome = compose.onNodeWithText("收入 ¥8,500.00", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val dailyExpense = compose.onNodeWithText("支出 ¥58.00", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(dailyIncome.center.y, dailyExpense.center.y, 1f)
         compose.onNodeWithText("−¥36.00").assertIsDisplayed()
         compose.onNodeWithText("+¥8,500.00").assertIsDisplayed()
     }
@@ -147,8 +150,12 @@ class LedgerScreensTest {
         summary.assertIsDisplayed()
         summary.assertTextContains("支出 ¥92,233,720,368,547,758.07", substring = true)
         summary.assertTextContains("收入 ¥92,233,720,368,547,758.07", substring = true)
-        assertTrue("Both long daily amounts need enough visible lines",
-            summary.fetchSemanticsNode().boundsInRoot.height >= 4 * 16 * lineScale.get() * 0.9f)
+        val incomeBounds = compose.onNodeWithText("收入 ¥92,233,720,368,547,758.07", useUnmergedTree = true)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        summary.performTouchInput { swipeLeft() }
+        val expenseBounds = compose.onNodeWithText("支出 ¥92,233,720,368,547,758.07", useUnmergedTree = true)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertEquals(incomeBounds.center.y, expenseBounds.center.y, 1f)
     }
 
     @Test

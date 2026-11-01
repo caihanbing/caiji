@@ -3,6 +3,7 @@ package app.caiji.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -108,10 +111,7 @@ internal fun LedgerHome(
                     item(key = "day-$day") {
                         val expense = dailyTotal(dayEntries, EntryType.EXPENSE)
                         val income = dailyTotal(dayEntries, EntryType.INCOME)
-                        val dailySummary = buildList {
-                            if (expense.signum() > 0) add("支出 ¥${formatYuan(expense)}")
-                            if (income.signum() > 0) add("收入 ¥${formatYuan(income)}")
-                        }.joinToString("\n")
+                        val hasSummary = expense.signum() > 0 || income.signum() > 0
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -121,21 +121,23 @@ internal fun LedgerHome(
                         ) {
                             Text(
                                 day.format(DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA)),
-                                modifier = Modifier.weight(1f).testTag("daily-date-$day"),
+                                modifier = Modifier.weight(if (hasSummary) 0.9f else 1f).testTag("daily-date-$day"),
                                 color = CaijiPalette.Ink,
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                dailySummary,
-                                modifier = Modifier.weight(1.25f).testTag("daily-summary-$day"),
-                                color = CaijiPalette.SecondaryText,
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.End,
-                                maxLines = 4,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            if (hasSummary) Row(
+                                modifier = Modifier.weight(1.1f).horizontalScroll(rememberScrollState())
+                                    .testTag("daily-summary-$day").semantics(mergeDescendants = true) {},
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (income.signum() > 0) Text("收入 ¥${formatYuan(income)}", color = CaijiPalette.SecondaryText,
+                                    style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                                if (expense.signum() > 0) Text("支出 ¥${formatYuan(expense)}", color = CaijiPalette.SecondaryText,
+                                    style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                            }
                         }
                     }
                     items(dayEntries, key = { it.id }) { entry ->

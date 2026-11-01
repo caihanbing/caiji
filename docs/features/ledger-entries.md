@@ -6,11 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览及汇总收支。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD f24b3b149f14; worktree-digest sha256:94a0b5f1a41df92b388f6f7f011a2e1af217ba1263b4769673db1af739eeb427 -->
+<!-- code-basis: HEAD 198672c7d33e; worktree-digest sha256:6fc8d33603cdea2637d721da45ba7ec7310656d57947e736845b8bc0f5f8a358 -->
 
 ## 快速上下文
 
-财记 0.2.1 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页显示月度结余、日期右侧每日收支、日分组账单和空账本入口；“账单”页提供月/年总表、期间报告、分类排行和分类明细。记账页支持新增、编辑和删除；分类选择后才显示日期/备注/金额键盘，键盘内“保存”为唯一保存入口。账单仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room。
+财记 0.2.2 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页显示月度结余、日期右侧并排的每日收支、日分组账单和空账本入口；“账单”页提供月/年总表、期间报告、分类排行和分类明细。月账单年份可浏览 1900 至当年，金额列同宽，窄屏时表格整体横向滚动。记账页支持新增、编辑和删除；点金额或选分类可展开输入区，备注与数字键盘相邻。前台窗口获得焦点时读取一次剪贴板，匹配指定银行提醒则打开待保存表单。账单仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room。
 
 金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
@@ -27,9 +27,11 @@
 - 默认新增支出和今天；收支类型需要明确选择，分类不预选。
 - 金额键盘支持单次加减，日期不能晚于今天，备注为选填。
 - 首页可切换月份；空月份提供“开始记账”入口。
-- 月账单显示所选年 12 个月收支，年账单显示最早账单年至当前年的汇总；空月和空年显示零值。
+- 月账单显示所选年 12 个月收支，并可浏览 1900 年至当年的任意年份；年账单显示最早账单年至当前年的汇总；空月和空年显示零值。
 - 年/月报告展示结余、收入、支出和分类排行；点击分类显示对应期间账单，点击账单可编辑并保留筛选。
-- 明细每日收入/支出位于日期右侧；月账单标题栏可切换年份；窄屏月/年表格与表头使用同一横向滚动区域。
+- 明细每日收入/支出位于日期右侧并排，长金额可在摘要内横向滚动；月账单标题栏可切换年份；金额列同宽，窄屏月/年表格与表头使用同一横向滚动区域。
+- 前台剪贴板仅识别“账户变动提醒/代发工资”和“交易成功提醒/网上快捷支付”。交易类型、交易金额、交易时间字段须唯一且通过格式校验；分类留空，不自动保存。当前草稿或备份恢复期间暂存最新匹配通知。
+- 相同剪贴板文本按 SHA-256 指纹持久去重，仅存指纹、不存通知原文；保存或取消后均不再次自动打开。
 - 明细、月/年账单及年月报告使用同一结余汇总卡，期间切换箭头为透明 48dp 点击区。
 - 账单行可左滑展开删除，点击后仍需二次确认；同一时间只展开一行。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
@@ -47,11 +49,11 @@
 ## 业务行为
 
 - `LedgerHome` 显示本月结余、收入、支出和每日分类账单；每条明细显示类别、备注及带正负号的金额。
-- 新增、编辑共享 `EntryEditorScreen`；类型切换后清空原分类，要求选目标类型的启用分类。
+- 新增、编辑共享 `EntryEditorScreen`；类型切换后清空原分类，要求选目标类型的启用分类。未选分类时可点击金额展开，但保存仍要求分类。
 - 在记账页管理分类后返回会保留类型、金额、日期和备注；新分类显示但不会自动选中。
 - 新账单已选分类若在管理期间被停用，返回后清空选择、折叠输入区并要求重选；编辑历史账单可以保留其已停用分类。
 - 编辑可切换收支类型并更新对应月度汇总；删除需二次确认。
-- 新建和编辑初入均折叠分类以下输入区；新建选分类、编辑点金额/分类后展开。系统返回先收起输入区，再使用原放弃草稿确认。
+- 新建和编辑初入均折叠分类以下输入区；点击金额或选择分类后展开。备注和数字键盘相邻，上方分类可滚动。系统返回先收起输入区，再使用原放弃草稿确认。
 - 键盘日期键打开系统日期选择器；默认显示“今天”，其他日期显示月日，日期不能晚于今天。备注获得焦点时隐藏数字键盘，IME 完成后恢复。
 - 数字键盘右下“保存”为唯一保存动作；保存期间禁用，失败保留草稿。金额仍以整数分精确校验。
 - 320dp/大字体下，每日摘要保持在日期右侧；账单表头和数值列保持对齐并可整体横向滚动；分类、备注与键盘可滚动到达。
@@ -66,6 +68,7 @@
 - `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求序号门闩，丢弃过期异步结果。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、金额/分类/日期/备注控件、数字键盘和删除/放弃确认。
 - `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
+- `app/src/main/java/app/caiji/android/domain/ClipboardTransactionParser.kt` — 两种银行通知模板、交易金额字段和日期年份推断。
 - `app/src/main/java/app/caiji/android/ui/theme/CaijiTheme.kt`、`CaijiIcons.kt` — 共用暖白/琥珀主题、图标和系统栏视觉。
 - `app/src/main/java/app/caiji/android/ui/LedgerViewModel.kt` — UI 状态与 Repository 协调。
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `RoomLedgerRepository`、金额/日期/分类校验和汇总。
@@ -81,6 +84,11 @@
 ### `LedgerViewModel.changeMonth`
 
 - 输入 `YearMonth`，读取该月账单和精确汇总；月份请求序号避免旧查询覆盖新月份。
+
+### `ClipboardTransactionParser.parse`
+
+- 输入剪贴板文本和当天 `LocalDate`；只识别已配置模板并返回类型、整数分金额、最近的非未来日期，或无匹配结果。
+- `MainActivity` 在应用回到前台且窗口取得焦点时读取剪贴板；保存内容指纹用于去重，不保存原文。
 
 ### `RoomLedgerRepository.monthlyReports` / `yearlyReports` / `periodReport`
 
@@ -118,34 +126,35 @@
 
 - 账单保存在应用私有数据库；应用不申请网络或广泛存储权限。
 - Manifest 禁用 Android 自动备份，避免账单随系统云备份导出。
-- 页面不记录账单、备注或备份密码日志。
+- 页面不记录账单、备注、剪贴板原文或备份密码；持久去重信息仅为剪贴板内容指纹。
+- Android 10 及以上只在应用取得焦点后读取剪贴板；Android 12 及以上系统会显示读取提示。
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 `0.2.1`、`versionCode=4`；Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；版本 `0.2.2`、`versionCode=5`；Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
 ## 可观测性与运维
 
 - 无遥测、后台任务或服务器日志；读写失败通过统一反馈提示显示。
-- 生产安装包沿用 0.1.1/0.2.0 的签名并支持覆盖升级；更新前建议导出加密备份。0.2.1 与 0.2.0 图标键兼容；0.1.1 不能恢复含新增图标键的备份。
+- 生产安装包沿用同一正式签名并支持覆盖升级；更新前建议导出加密备份。0.2.2 不改 schema 或备份格式。
 
 ## 测试与验证
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 0.2.1 源码通过；API34 AVD 57 项 instrumentation 全通过，包含 320dp/1.3 字体布局。
-- API34 AVD 仪器覆盖期间报告钻取与编辑返回、日期按键选择和完整辅助说明、IME 键盘切换、键盘唯一保存、小屏输入区、每日两项长金额及明细/账单点击；`LedgerReportsTest` 继续覆盖闰日、空月、跨年、过期请求和超出 Long 的精确汇总。
-- API34 AVD 使用同签名 0.2.0 release 创建 ¥5 餐饮账单，再覆盖安装 0.2.1 release；启动后仍显示 ¥5.00 支出和原账单。
-- `./scripts/test-build-release-macos.sh` 和 `./scripts/build-release-macos.sh` — 通过；0.2.1/code 4 包名、minSdk26、targetSdk34、zipalign、v2 签名和 SHA-256 核验通过。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug` — 0.2.2 JVM 与 API34 AVD 60 项仪器测试全部通过；包含 320dp/1.3 字体、剪贴板重复读取、窄屏账单四列和记账输入布局。
+- API34 仪器覆盖两种通知格式、字段唯一性、余额不串入金额、跨年和闰日；每日收支同一行、年份上下界、类别提示移除、金额展开、键盘邻接、分类箭头均通过。
+- API34 AVD 以同签名 0.2.1 安装包新增 ¥1.23 支出，再覆盖安装 0.2.2；启动后仍显示原 ¥1.23 账单。
+- `bash scripts/test-build-release-macos.sh` 与 `./scripts/build-release-macos.sh` 通过；0.2.2/code 5、包名、minSdk26、targetSdk34、zipalign、v2 证书 SHA-256 `692d2387ba18f63ed43548d153af2a611384d8bffe1c603c3314df56ef006e1a` 和 APK SHA-256 `a4a957db7315ff453e9581eda0849b7456a893dd9fe1ba7553a576fc9da5b002` 已核验。
 - API34 release 成功导入 0.1.1 导出的格式 2 文件；预览和恢复均核对 1 笔账单、16 个分类、收入 ¥0、支出 ¥1。
 
 ### 未执行
 
 - 未在 Android API 26 设备上运行实际 UI；最低 API 由 APK 元数据确认为 26。
-- 原始 0.1.1 APK 不在工作树；从对应基线源码用相同 release key 重建 0.1.1，恢复旧备份后在 API34 AVD 覆盖升级到 0.2.0，确认账单保留。
-- 用户实体设备上的系统键盘、排序箭头、长金额及版本覆盖升级仍需用户最终回归。
+- 未在 Android API 26 实机及不同厂商系统验证剪贴板焦点时序。
+- 用户实体设备上的剪贴板系统提示、系统键盘、排序尖角触控和长金额仍需最终回归。
 
 ## 关键决策
 
@@ -170,6 +179,13 @@
 - **取舍**：日期选择入口只在展开后的数字键盘中显示；再次进入输入区可继续编辑。
 - **证据**：API34 AVD `EntryEditorScreenTest` 和 `EverydayLedgerFlowTest`，含备注 IME 和金额精确保存。
 
+### 银行通知剪贴板预填
+
+- **决定**：只在应用回到前台并取得窗口焦点时读取；限定两类通知；选择最近有效且不晚于今天的日期；暂存期间不覆盖草稿；表单首次展示才持久记录 SHA-256 指纹。
+- **原因**：自动填表减少重复录入，同时避免错误分类或覆盖草稿。
+- **取舍**：分类留空且不自动保存；Android 系统会提示剪贴板访问。
+- **证据**：`ClipboardTransactionParserTest` 和 API34 `MainActivityClipboardTest.foregroundClipboardNotificationOpensPrefilledEntryOnlyOnce`。
+
 ## 已知问题与后续工作
 
 ### 用户实体设备回归
@@ -179,6 +195,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-01 — 0.2.2 实机反馈与剪贴板记账
+
+- **状态**：已完成
+- **变化**：每日收支并排；月账单年份范围扩至 1900 年至当年；调整期间表格和记账输入区；允许未选分类时展开金额键盘；新增两种交易提醒的剪贴板预填及指纹去重。
+- **原因**：按用户实机验证结果优化常用浏览和记账流程。
+- **兼容性**：Room schema 1、整数分金额、备份格式 2 均不变；使用既有正式签名覆盖升级。
+- **验证**：JVM、60 项 API34 仪器、lint、0.2.2/code5 APK 包名/版本/签名/zipalign/SHA-256 及同签名 0.2.1 覆盖升级保留 ¥1.23 均通过。
 
 ### 2026-11-01 — 0.2.1 明细、记账与汇总布局调整
 

@@ -1,6 +1,8 @@
 package app.caiji.android
 
 import android.content.Intent
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -45,6 +47,8 @@ import app.caiji.android.backup.BackupException
 import app.caiji.android.backup.BackupSummary
 import app.caiji.android.data.LedgerEntry
 import app.caiji.android.domain.EntryType
+import app.caiji.android.domain.ClipboardTransaction
+import app.caiji.android.domain.ClipboardTransactionParser
 import app.caiji.android.ui.BackupFeedbackBanner
 import app.caiji.android.ui.BackupPasswordDialog
 import app.caiji.android.ui.BackupProcessingDialog
@@ -63,6 +67,10 @@ import app.caiji.android.ui.SettingsScreen
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiTheme
 import java.time.LocalDate
+import java.security.MessageDigest
+import java.util.UUID
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -70,6 +78,35 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
+    internal val clipboardReads = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
+    private var shouldReadClipboard = false
+
+    override fun onStart() {
+        super.onStart()
+        shouldReadClipboard = true
+        window.decorView.post {
+            if (hasWindowFocus() && shouldReadClipboard) {
+                shouldReadClipboard = false
+                readClipboardForForeground()
+            }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && shouldReadClipboard) {
+            shouldReadClipboard = false
+            readClipboardForForeground()
+        }
+    }
+
+    internal fun readClipboardForForeground() {
+        val manager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipText = runCatching { manager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString() }
+            .getOrNull()
+        if (!clipText.isNullOrBlank()) clipboardReads.tryEmit(clipText)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = getColor(app.caiji.android.R.color.caiji_page_background)
@@ -108,6 +145,10 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var reportCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
     var editEntryId by rememberSaveable { mutableStateOf<String?>(null) }
     var editEntry by remember { mutableStateOf<LedgerEntry?>(null) }
+    var clipboardPrefill by remember { mutableStateOf<ClipboardTransaction?>(null) }
+    var clipboardPrefillId by remember { mutableStateOf<String?>(null) }
+    var pendingClipboard by remember { mutableStateOf<Pair<String, ClipboardTransaction>?>(null) }
+
     LaunchedEffect(editEntryId) {
         editEntry = editEntryId?.let { model.entryById(it) }
     }
@@ -120,6 +161,38 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var restorePasswordVisible by remember { mutableStateOf(false) }
     var selectedRestoreUri by remember { mutableStateOf(Uri.EMPTY) }
     var pickerError by remember { mutableStateOf<String?>(null) }
+    var restoreSessionActive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(context) {
+        val activity = context as? MainActivity ?: return@LaunchedEffect
+        activity.clipboardReads.collectLatest { text ->
+            val transaction = ClipboardTransactionParser.parse(text, LocalDate.now()) ?: return@collectLatest
+            val fingerprint = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+            val preferences = activity.getSharedPreferences("clipboard_transaction_imports", Context.MODE_PRIVATE)
+            if (fingerprint in preferences.getStringSet("fingerprints", emptySet()).orEmpty()) return@collectLatest
+            pendingClipboard = fingerprint to transaction
+        }
+    }
+    LaunchedEffect(page, restoreFlow, restoreSessionActive, pendingClipboard, editEntryId) {
+        val pending = pendingClipboard ?: return@LaunchedEffect
+        if (page == Page.EDITOR || restoreFlow != RestoreFlow.IDLE || restoreSessionActive || editEntryId != null) return@LaunchedEffect
+        val activity = context as? MainActivity ?: return@LaunchedEffect
+        val preferences = activity.getSharedPreferences("clipboard_transaction_imports", Context.MODE_PRIVATE)
+        val seen = preferences.getStringSet("fingerprints", emptySet()).orEmpty().toMutableSet()
+        if (pending.first !in seen) {
+            seen.add(pending.first)
+            preferences.edit().putStringSet("fingerprints", seen).apply()
+            clipboardPrefill = pending.second
+            clipboardPrefillId = UUID.randomUUID().toString()
+            initialEditorType = pending.second.type
+            editEntry = null
+            editEntryId = null
+            editorReturnPage = Page.LEDGER.name
+            page = Page.EDITOR
+        }
+        pendingClipboard = null
+    }
 
     LaunchedEffect(page, billListMode, reportYear, reportMonthValue, reportTypeName, reportCategoryId) {
         when (page) {
@@ -199,6 +272,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 try {
                     model.beginRestoreSession()
                     sessionStarted = true
+                    restoreSessionActive = true
                     restoreFlow = RestoreFlow.WRITING_BACKUP
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri, "w")?.use {
@@ -217,7 +291,11 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     pickerError = error.message ?: "恢复失败，现有账单未更改"
                     restoreFlow = RestoreFlow.PREVIEW
                 } finally {
-                    if (sessionStarted) withContext(NonCancellable) { model.endRestoreSession() }
+                    try {
+                        if (sessionStarted) withContext(NonCancellable) { model.endRestoreSession() }
+                    } finally {
+                        restoreSessionActive = false
+                    }
                 }
             }
         }
@@ -264,6 +342,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     try {
                         model.beginRestoreSession()
                         sessionStarted = true
+                        restoreSessionActive = true
                         val hasExistingData = withContext(Dispatchers.IO) { model.hasExistingData() }
                         if (hasExistingData) {
                             withContext(NonCancellable) { model.endRestoreSession() }
@@ -282,7 +361,12 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                         pickerError = error.message ?: "恢复失败，现有账单未更改"
                         restoreFlow = RestoreFlow.PREVIEW
                     } finally {
-                        if (sessionStarted) withContext(NonCancellable) { model.endRestoreSession() }
+                        try {
+                            if (sessionStarted) withContext(NonCancellable) { model.endRestoreSession() }
+                        } finally {
+                            restoreSessionActive = false
+                        }
+                    restoreSessionActive = false
                     }
                 }
             })
@@ -312,6 +396,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 colors = navigationColors, modifier = Modifier.testTag("nav-ledger"))
             NavigationBarItem(selected = false, onClick = {
                 editEntry = null; editEntryId = null; initialEditorType = EntryType.EXPENSE
+                clipboardPrefill = null; clipboardPrefillId = null
                 editorReturnPage = Page.LEDGER.name; page = Page.EDITOR
             }, icon = {
                 Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.Primary, modifier = Modifier.size(40.dp)) {
@@ -341,6 +426,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     onCreateEntry = {
                         editEntry = null
                         editEntryId = null
+                        clipboardPrefill = null
+                        clipboardPrefillId = null
                         initialEditorType = EntryType.EXPENSE
                         editorReturnPage = Page.LEDGER.name; page = Page.EDITOR
                     }, onOpenBills = {
@@ -374,12 +461,16 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.EDITOR -> if (editEntryId != null && editEntry == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("正在加载账单…") }
                 } else EntryEditorScreen(categories, editEntry, initialEditorType,
-                    onCancel = { page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER); editEntry = null; editEntryId = null },
+                    clipboardPrefill = clipboardPrefill,
+                    clipboardPrefillId = clipboardPrefillId,
+                    onCancel = { page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER); editEntry = null; editEntryId = null; clipboardPrefill = null; clipboardPrefillId = null },
                     onSave = { type, fen, categoryId, date, note, onComplete ->
                         val entryBeingEdited = editEntry
                         val saved = {
                             page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER)
                             editEntryId = null
+                            clipboardPrefill = null
+                            clipboardPrefillId = null
                             onComplete(true)
                         }
                         val failed = { onComplete(false) }

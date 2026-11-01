@@ -43,6 +43,7 @@ import java.time.Year
 import java.time.YearMonth
 
 internal enum class BillListMode { MONTH, YEAR }
+private const val FIRST_BILL_YEAR = 1900
 
 @Composable
 internal fun BillReportsScreen(
@@ -70,9 +71,8 @@ internal fun BillReportsScreen(
             }
             Text("账单", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             if (mode == BillListMode.MONTH) {
-                val oldestYear = yearReports.minOfOrNull { it.first } ?: Year.now().value
                 PeriodArrowButton("上一年", "bill-previous-year", isNext = false,
-                    enabled = year > oldestYear, onClick = onPreviousYear)
+                    enabled = year > FIRST_BILL_YEAR, onClick = onPreviousYear)
                 Text("${year}年", Modifier.padding(horizontal = 2.dp).testTag("bill-selected-year"),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 PeriodArrowButton("下一年", "bill-next-year", isNext = true,
@@ -253,8 +253,8 @@ private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
                 "${if (row.totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(row.totals.balanceFen.abs())}"
             ).maxOf(String::length)
         } ?: 8
-        val firstWidth = 112.dp
-        val numericWidth = maxOf(112.dp, (maxNumberLength * 8.3f * fontScale + 20f).dp)
+        val firstWidth = 48.dp
+        val numericWidth = maxOf(74.dp, (maxNumberLength * 6.3f * fontScale + 12f).dp)
         val tableWidth = maxOf(maxWidth, firstWidth + numericWidth * 3)
         Column(Modifier.horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
             Column(Modifier.width(tableWidth)) {

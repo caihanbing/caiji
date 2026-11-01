@@ -1,6 +1,7 @@
 package app.caiji.android.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.caiji.android.data.LedgerEntry
 import app.caiji.android.domain.CategoryCatalog
+import app.caiji.android.domain.ClipboardTransaction
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiTheme
 import java.time.LocalDate
@@ -73,8 +76,29 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").assertIsDisplayed()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasText("请选择分类"))
-        compose.onNodeWithText("请选择分类").assertIsDisplayed()
+        compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
+        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
+    }
+
+    @Test fun clipboardPrefillOpensKeypadWithAmountAndDateButLeavesCategoryEmpty() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    clipboardPrefill = ClipboardTransaction(EntryType.INCOME, 2_571_949, LocalDate.of(2026, 10, 23)),
+                    clipboardPrefillId = "clipboard-test", onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-type-income").assertIsSelected()
+        compose.onNodeWithTag("amount-display").assertTextContains("25,719.49")
+        compose.onNodeWithTag("entry-key-date").assertTextContains("10月23日")
+        compose.onNodeWithTag("entry-key-save").assertIsNotEnabled()
+        compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
     }
 
     @Test fun choosingCategoryShowsKeypadAndChangingTypeHidesItAgain() {
@@ -126,8 +150,7 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasText("请选择分类"))
-        compose.onNodeWithText("请选择分类").assertIsDisplayed()
+        compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
     }
 
     @Test
@@ -188,7 +211,6 @@ class EntryEditorScreenTest {
 
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-note"))
         compose.onNodeWithTag("entry-note").assertIsDisplayed()
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-date").assertCountEquals(0)
@@ -271,7 +293,6 @@ class EntryEditorScreenTest {
         }
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-note"))
         compose.onNodeWithTag("entry-note").assertIsDisplayed()
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-key-save").assertCountEquals(0)

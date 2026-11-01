@@ -43,7 +43,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("nav-entry").performClick()
         compose.onNodeWithTag("entry-type-expense").assertIsSelected()
         compose.onNodeWithTag("entry-type-income").assertIsNotSelected()
-        compose.onNodeWithText("请选择分类").assertIsDisplayed()
+        compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
     }
 
@@ -134,7 +134,6 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithContentDescription("删除账单").performClick()
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithTag("amount-display").performClick()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-note"))
         compose.onNodeWithTag("entry-note").assertTextContains(note)
         compose.onNodeWithContentDescription("删除账单").performClick()
         compose.onNodeWithTag("confirm-delete-entry").performClick()
