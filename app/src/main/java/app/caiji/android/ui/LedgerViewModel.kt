@@ -6,8 +6,12 @@ import androidx.lifecycle.viewModelScope
 import app.caiji.android.CaijiApplication
 import app.caiji.android.backup.BackupCodec
 import app.caiji.android.data.LedgerEntry
+import app.caiji.android.data.LatestRequestGate
 import app.caiji.android.data.LedgerRestoreSink
 import app.caiji.android.data.MonthTotals
+import app.caiji.android.data.LedgerPeriodTotals
+import app.caiji.android.data.MonthLedgerTotal
+import app.caiji.android.data.PeriodLedgerReport
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.EntryType
 import java.math.BigInteger
@@ -32,6 +36,17 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
     private var monthRequest = 0L
+    private val _monthlyReports = MutableStateFlow<List<MonthLedgerTotal>>(emptyList())
+    val monthlyReports: StateFlow<List<MonthLedgerTotal>> = _monthlyReports.asStateFlow()
+    private val _yearlyReports = MutableStateFlow<List<Pair<Int, LedgerPeriodTotals>>>(emptyList())
+    val yearlyReports: StateFlow<List<Pair<Int, LedgerPeriodTotals>>> = _yearlyReports.asStateFlow()
+    private val _reportLoading = MutableStateFlow(false)
+    val reportLoading: StateFlow<Boolean> = _reportLoading.asStateFlow()
+    private val _reportError = MutableStateFlow<String?>(null)
+    val reportError: StateFlow<String?> = _reportError.asStateFlow()
+    private val _periodReport = MutableStateFlow<PeriodLedgerReport?>(null)
+    val periodReport: StateFlow<PeriodLedgerReport?> = _periodReport.asStateFlow()
+    private val reportRequests = LatestRequestGate()
 
     init { refresh() }
 
@@ -60,6 +75,56 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun loadMonthlyReports(year: Int) = viewModelScope.launch {
+        val request = reportRequests.begin()
+        _monthlyReports.value = emptyList()
+        _reportLoading.value = true
+        _reportError.value = null
+        runCatching { repository.monthlyReports(year) }
+            .onSuccess { if (reportRequests.isCurrent(request)) _monthlyReports.value = it }
+            .onFailure { if (reportRequests.isCurrent(request)) _reportError.value = it.message ?: "读取月账单失败" }
+        if (reportRequests.isCurrent(request)) _reportLoading.value = false
+    }
+
+    fun loadBillLists(year: Int) = viewModelScope.launch {
+        val request = reportRequests.begin()
+        _monthlyReports.value = emptyList()
+        _reportLoading.value = true
+        _reportError.value = null
+        runCatching { repository.monthlyReports(year) to repository.yearlyReports() }
+            .onSuccess { (months, years) ->
+                if (reportRequests.isCurrent(request)) {
+                    _monthlyReports.value = months
+                    _yearlyReports.value = years
+                }
+            }
+            .onFailure { if (reportRequests.isCurrent(request)) _reportError.value = it.message ?: "读取账单失败" }
+        if (reportRequests.isCurrent(request)) _reportLoading.value = false
+    }
+
+    fun loadYearlyReports() = viewModelScope.launch {
+        val request = reportRequests.begin()
+        _reportLoading.value = true
+        _reportError.value = null
+        runCatching { repository.yearlyReports() }
+            .onSuccess { if (reportRequests.isCurrent(request)) _yearlyReports.value = it }
+            .onFailure { if (reportRequests.isCurrent(request)) _reportError.value = it.message ?: "读取年账单失败" }
+        if (reportRequests.isCurrent(request)) _reportLoading.value = false
+    }
+
+    fun loadPeriodReport(year: Int, monthValue: Int, type: EntryType, categoryId: String? = null) = viewModelScope.launch {
+        val request = reportRequests.begin()
+        _periodReport.value = null
+        _reportLoading.value = true
+        _reportError.value = null
+        val start = if (monthValue == 0) LocalDate.of(year, 1, 1) else YearMonth.of(year, monthValue).atDay(1)
+        val end = if (monthValue == 0) LocalDate.of(year + 1, 1, 1) else YearMonth.of(year, monthValue).plusMonths(1).atDay(1)
+        runCatching { repository.periodReport(start, end, type, categoryId) }
+            .onSuccess { if (reportRequests.isCurrent(request)) _periodReport.value = it }
+            .onFailure { if (reportRequests.isCurrent(request)) _reportError.value = it.message ?: "读取账单报告失败" }
+        if (reportRequests.isCurrent(request)) _reportLoading.value = false
+    }
+
     fun addEntry(type: EntryType, fen: Long, categoryId: String, date: LocalDate, note: String?,
         onSaved: () -> Unit, onFailed: () -> Unit) {
         viewModelScope.launch {
@@ -77,11 +142,11 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun deleteEntry(id: String, onDeleted: () -> Unit) {
+    fun deleteEntry(id: String, onDeleted: () -> Unit, onFailed: () -> Unit = {}) {
         viewModelScope.launch {
             runCatching { repository.deleteEntry(id) }
                 .onSuccess { _error.value = null; refresh(); onDeleted() }
-                .onFailure { _error.value = it.message ?: "删除账单失败" }
+                .onFailure { _error.value = it.message ?: "删除账单失败"; onFailed() }
         }
     }
 
@@ -101,10 +166,11 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun reorderCategory(categoryId: String, order: Int) {
+    fun reorderCategory(categoryId: String, order: Int, onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
             runCatching { repository.reorderCategory(categoryId, order); _error.value = null; refresh() }
-                .onFailure { _error.value = it.message ?: "更新分类顺序失败" }
+                .onSuccess { onComplete(true) }
+                .onFailure { _error.value = it.message ?: "更新分类顺序失败"; onComplete(false) }
         }
     }
 

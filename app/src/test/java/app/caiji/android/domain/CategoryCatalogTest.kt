@@ -23,4 +23,15 @@ class CategoryCatalogTest {
             Category("three", EntryType.EXPENSE, "购物", active = false)
         )))
     }
+
+    @Test fun exposesFortyEightUniqueAccessibleIconsAndRetainsEveryLegacyKey() {
+        val icons = CategoryCatalog.iconKeys()
+
+        assertEquals(48, icons.size)
+        assertEquals(48, icons.map { it.key }.toSet().size)
+        assertTrue(icons.all { it.label.isNotBlank() && it.group.isNotBlank() })
+        assertTrue(listOf("restaurant", "shopping_bag", "train", "home", "daily", "movie", "medical", "school",
+            "phone", "favorite", "salary", "gift", "work", "savings", "other").all(CategoryCatalog::isAllowedIcon))
+        assertTrue(icons.all { CategoryCatalog.isAllowedIcon(it.key) })
+    }
 }

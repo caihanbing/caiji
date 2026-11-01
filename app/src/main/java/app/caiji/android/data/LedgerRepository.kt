@@ -192,6 +192,60 @@ class RoomLedgerRepository(private val database: LedgerDatabase) {
 
     suspend fun monthTotals(month: YearMonth): MonthTotals = monthSnapshot(month).totals
 
+    suspend fun monthlyReports(year: Int): List<MonthLedgerTotal> {
+        initialize()
+        return database.withTransaction {
+            LedgerReports.monthlyReports(dao.allEntries().map(EntryRow::toDomain), year)
+        }
+    }
+
+    suspend fun yearlyReports(): List<Pair<Int, LedgerPeriodTotals>> {
+        initialize()
+        return database.withTransaction {
+            LedgerReports.yearlyReports(dao.allEntries().map(EntryRow::toDomain))
+        }
+    }
+
+    suspend fun categoryTotals(
+        startInclusive: LocalDate,
+        endExclusive: LocalDate,
+        type: EntryType
+    ): List<CategoryPeriodTotal> {
+        initialize()
+        return database.withTransaction {
+            require(!endExclusive.isBefore(startInclusive)) { "账单期间无效" }
+            val entries = dao.entriesBetween(startInclusive.toString(), endExclusive.toString()).map(EntryRow::toDomain)
+            LedgerReports.categoryTotals(entries, dao.categories().map(CategoryRow::toDomain), startInclusive, endExclusive, type)
+        }
+    }
+
+    suspend fun periodReport(
+        startInclusive: LocalDate,
+        endExclusive: LocalDate,
+        type: EntryType,
+        categoryId: String? = null
+    ): PeriodLedgerReport {
+        initialize()
+        return database.withTransaction {
+            require(endExclusive.isAfter(startInclusive)) { "账单期间无效" }
+            val entries = dao.entriesBetween(startInclusive.toString(), endExclusive.toString()).map(EntryRow::toDomain)
+            val storedCategories = dao.categories().map(CategoryRow::toDomain)
+            val categoryTotals = LedgerReports.categoryTotals(entries, storedCategories, startInclusive, endExclusive, type)
+            val categoriesForDisplay = if (categoryId != null && categoryTotals.none { it.category.id == categoryId }) {
+                storedCategories.firstOrNull { it.id == categoryId && it.type == type }
+                    ?.let { categoryTotals + CategoryPeriodTotal(it, BigInteger.ZERO) }
+                    ?: categoryTotals
+            } else categoryTotals
+            PeriodLedgerReport(
+                startInclusive = startInclusive,
+                endExclusive = endExclusive,
+                totals = LedgerPeriodTotals.from(entries),
+                categories = categoriesForDisplay,
+                entries = if (categoryId == null) emptyList() else entries.filter { it.categoryId == categoryId && it.type == type }
+            )
+        }
+    }
+
     suspend fun allEntries(): List<LedgerEntry> {
         initialize()
         return dao.allEntries().map(EntryRow::toDomain)

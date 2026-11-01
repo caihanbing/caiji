@@ -1,10 +1,10 @@
 <resources>
     <style name="Theme.Caiji" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#FFD943</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:colorAccent">#C4821C</item>
+        <item name="android:navigationBarColor">@color/caiji_page_background</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:statusBarColor">#FFD943</item>
+        <item name="android:statusBarColor">@color/caiji_page_background</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>
