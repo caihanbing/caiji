@@ -6,171 +6,164 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币收支账单，按日查看并计算月度收支。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 35a0d1b123f6; worktree-digest sha256:6677b16332d9d92a617f94a5bfc34803c3557e86564256bbeb962f98cf8721cb -->
+<!-- code-basis: HEAD 337efbd2d13f; worktree-digest sha256:8544c0565bd9308207c73a340fba06f1ee42362709f879c40dda93505091d34c -->
 
 ## 快速上下文
 
-V0.1 账单功能已实现，入口为底部“明细”和“记账”。记账页以支出/收入分段控件选择类型，分类标题行右侧提供“管理分类”快捷入口；分类管理页按当前收支类型打开并支持返回原草稿。数据由 `LedgerViewModel` 经 `RoomLedgerRepository` 保存到 Room；不需要账号或网络服务。
+财记 0.1.1 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页有月度结余卡、收入/支出汇总、按日分组列表和空账本入口；记账页支持新增、编辑、删除确认和草稿返回。数据仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room，无账号或网络服务。
 
-金额保存为正整数分，日期使用本地 `LocalDate`。汇总使用 `BigInteger`，避免多笔账单相加后溢出；编辑时允许把支出改为收入或反向修改，并需选择目标类型的启用分类。
+金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
 ## 目标与边界
 
 ### 目标
 
-- 记录、修订、删除日常收入与支出。
-- 以本地日期按日分组，并查看所选月份的收入、支出和每日小计。
+- 新增、编辑、删除收入与支出账单。
+- 按本地日期查看所选月份的账单、月度收支与每日小计。
 
 ### 范围内
 
-- 新增账单默认支出和今天；通过分段控件切换收支；金额键盘支持单次加减，分类必须主动选择。
-- 可更改收支类型、金额、分类、日期和备注；日期不能晚于今天。
-- 首页默认当前月，可前后切换月份；按日期倒序显示账单，月度汇总只统计该月记录。
-- 编辑、删除完成后刷新列表和汇总；删除及放弃未保存内容均需确认。
+- 默认新增支出和今天；收支类型需要明确选择，分类不预选。
+- 金额键盘支持单次加减，日期不能晚于今天，备注为选填。
+- 首页可切换月份；空月份提供“开始记账”入口。
+- 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
 ### 范围外
 
-- 多账本、账户转账、多币种、云同步、登录、报表、预算和资产管理。
+- 多账本、转账、多币种、云同步、登录、报表、预算和资产管理。
 
 ### 不变量
 
-- `amountFen > 0`；输入至多两位小数，溢出、零值、负值及未来日期不能保存。
-- 账单通过稳定 ID 引用分类；账单类型必须与所选分类类型一致。
-- 备注最多 20,000 个字符；月度和每日合计以任意精度整数计算。
+- `amountFen > 0`；最多输入两位小数；金额溢出、零值、负值及未来日期不能保存。
+- 账单以稳定 ID 引用分类，账单类型必须与分类类型一致。
+- 备注最多 20,000 个字符；总和采用任意精度整数。
 
 ## 业务行为
 
-- 用户在“记账”选择收支类型和启用分类后输入金额、日期、备注并保存；默认不预选分类。
-- 收支类型通过支出/收入分段控件显示，当前项用深色底和黄色文字突出；选择类型后展示同类型启用分类。
-- 分类标题行右侧的“管理分类”打开复用的分类管理页面，并以当前记账类型为初始类型；返回时保留未保存类型、分类、金额、日期和备注。新分类在列表中出现但不自动选中。
-- 新账单选中的分类若在管理期间被停用，返回时自动清除所选分类并提示“该分类已停用，请重新选择启用分类”；编辑历史账单可以保留已有的停用分类关联。
-- 编辑时可切换支出/收入。切换后旧分类清空，需重新选择相同类型的启用分类；数据库类型字段与月汇总同步更新。
-- 历史账单引用停用分类时，编辑其他字段可保留该分类；新选分类仍须启用。
-- 首页使用本地日历日期，不做 UTC 日期转换；跨月或跨年账单只进入其本地月份。
+- `LedgerHome` 显示本月结余、收入、支出和每日分类账单；每条明细显示类别、备注及带正负号的金额。
+- 新增、编辑共享 `EntryEditorScreen`；类型切换后清空原分类，要求选目标类型的启用分类。
+- 在记账页管理分类后返回会保留类型、金额、日期和备注；新分类显示但不会自动选中。
+- 新账单已选分类若在管理期间被停用，返回后清空选择并要求重选；编辑历史账单可以保留其已停用分类。
+- 编辑可切换收支类型并更新对应月度汇总；删除需二次确认。
+- 备注输入期间显示系统文字键盘、隐藏自定义数字键盘；表单可滚动，日期和备注可触达，保存按钮固定在底部。输入完成或清除焦点后可继续使用金额键盘。
+- 320dp 或较大字体下，月标题切换为上下布局；金额、分类和表单通过省略或滚动避免互相遮挡。
 
 ## 架构与代码地图
 
-- `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、`LedgerHome`、`EntryEditor`、`EntryTypeToggle`：页面状态、分段收支选择、分类管理快捷入口、输入校验提示、月份入口和账单编辑流程。
-- `app/src/main/java/app/caiji/android/ui/LedgerViewModel.kt` — `LedgerViewModel`：提供月份、账单、分类、汇总状态并调用 Repository。
-- `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `RoomLedgerRepository`、`MonthTotals`：业务校验、事务写入、月份快照和精确汇总。
-- `app/src/main/java/app/caiji/android/data/LedgerDatabase.kt` — `EntryRow`、`LedgerDao`、`LedgerDatabase`：Room 表、索引、外键及 SQL。
-- `app/src/main/java/app/caiji/android/domain/Money.kt` — `Money`：十进制金额解析、加减及溢出检查。
+- `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
+- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、月度汇总、每日分组、账单行和空状态。
+- `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、金额/分类/日期/备注控件、数字键盘和删除/放弃确认。
+- `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
+- `app/src/main/java/app/caiji/android/ui/theme/CaijiTheme.kt`、`CaijiIcons.kt` — 共用暖白/琥珀主题、图标和系统栏视觉。
+- `app/src/main/java/app/caiji/android/ui/LedgerViewModel.kt` — UI 状态与 Repository 协调。
+- `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `RoomLedgerRepository`、金额/日期/分类校验和汇总。
+- `app/src/main/java/app/caiji/android/domain/Money.kt` — 十进制输入解析、加减和溢出检查。
 
 ## API、事件与任务
 
 ### `LedgerViewModel.addEntry` / `updateEntry`
 
-- 输入类型、分值金额、稳定分类 ID、本地日期及可选备注；成功后刷新 UI 状态，失败时更新错误状态并通知编辑器。
-- `RoomLedgerRepository` 在数据库事务内校验金额、日期、备注、分类状态和类型；更新操作也写回账单类型字段。
-- 这是应用内部 Kotlin 契约，不提供外部 HTTP API。
+- 输入收支类型、分值金额、分类 ID、本地日期和可选备注；成功后刷新状态，失败时保留表单并显示错误。
+- `RoomLedgerRepository` 在数据库事务内检查金额、日期、备注和分类状态/类型；不是外部 HTTP API。
 
 ### `LedgerViewModel.changeMonth`
 
-- 输入 `YearMonth`，读取一个事务快照中的月份账单和汇总；请求序号丢弃过期月份结果。
+- 输入 `YearMonth`，读取该月账单和精确汇总；月份请求序号避免旧查询覆盖新月份。
 
 ## 数据模型与迁移
 
-`entries` 保存 `id`、`type`、`amountFen`、`categoryId`、ISO `occurredOn`、`note` 及创建/更新时间；`categories` 保存稳定 ID、类型、名称、图标键、排序和启用状态。`entries.categoryId` 外键限制引用类别删除。
-
-数据库初始版本为 Room schema 1，实体定义在 `LedgerDatabase.kt`，快照在 `app/schemas/app.caiji.android.data.LedgerDatabase/1.json`。这是 V0.1 首次发布库，没有既有用户库迁移；后续字段变化必须提供显式迁移，不得 destructive fallback。
+`entries` 保存 ID、类型、分值金额、分类 ID、本地日期、备注及创建/更新时间。账单通过外键关联稳定分类 ID。当前 Room schema 为 1；本次 UI 更新没有数据库字段、索引或迁移变化。将来结构更新必须添加显式 Room Migration。
 
 ## 核心流程
 
-1. `EntryEditor` 将金额表达式解析为整数分，并要求分类、有效金额和不晚于今天的日期。
-2. `EntryEditor` 保留可保存表单状态，在账单表单和 `CategoryManager` 之间切换；管理页使用当前收支类型初始化，系统返回或页面返回均回到原草稿。新账单已选分类在管理期间被停用时，会清空选择并提示重新选择启用分类。
-3. ViewModel 调用 Repository；新增或编辑在 `database.withTransaction` 内校验分类并写入 Room。
-4. Room 提交后 ViewModel 重新读取所选月 `MonthSnapshot`；按日期倒序更新列表和 `BigInteger` 汇总。
-5. 删除前显示确认框，确认后删除记录并重新查询月快照。
+1. `EntryEditorScreen` 将金额表达式解析为整数分，并验证分类、日期和备注。
+2. 编辑器通过 `CategoryManagerScreen` 保留草稿；分类停用会触发新建账单重选提示。
+3. `LedgerViewModel` 调用 Repository；Room 在事务中写入或删除账单。
+4. 成功后重新读取所选月快照，按本地日期显示列表并用 `BigInteger` 更新汇总。
+5. 空月份使用现有记账页入口新增第一笔账单。
 
 ## 异常与边界条件
 
-- 格式错误、精度超过两位、非正金额或加减溢出 — 不提交并显示输入错误。
-- 未来日期 — 保存按钮不执行；日期选择器上限为今天。
-- 被并发删除的编辑记录或无效分类 — Repository 校验失败，原有数据库事务回滚并显示错误。
-- 合计超过 `Long` 范围 — 通过 `BigInteger` 显示，不发生整数回绕。
+- 格式错误、超过两位小数、非正金额或加减溢出 — 不提交并显示输入错误。
+- 未来日期 — 日期选择器不可选，保存校验仍拒绝。
+- 无效/停用分类或并发失效记录 — Repository 校验失败并回滚事务；编辑输入保留。
+- 月度合计超过 `Long` 范围 — 以 `BigInteger` 计算和显示。
 
 ## 并发与幂等
 
-- Room 写入事务保证单次修改原子性；`RestoreWriteGate` 等待已开始的写入，并在恢复会话内拒绝新的用户写入。
-- 编辑期间通过账单 ID 定位记录；重复点击“完成”由 `saving` 状态禁用。
-- 月份请求序号防止较早的异步查询覆盖较新月份。
-- 新账单 ID 使用 UUID；重复 ID 由主键约束拒绝。
+- Room 写事务保证单次修改原子性；`RestoreWriteGate` 在恢复期间拒绝普通写入。
+- 编辑通过账单 ID 定位；`saving` 状态阻止重复提交。
+- 月份请求序号避免较早查询覆盖新选择；账单 ID 使用 UUID，重复 ID 受主键约束。
 
 ## 安全与权限
 
-- 所有账单存于应用私有 Room 数据库；应用不申请网络或广泛存储权限，也不集成广告和分析 SDK。
-- Manifest 禁用 Android 自动应用备份，避免账单随系统云备份导出。
-- 日常页面不输出账单或备注日志；本机拥有设备解锁权限的用户可使用应用数据。
+- 账单保存在应用私有数据库；应用不申请网络或广泛存储权限。
+- Manifest 禁用 Android 自动备份，避免账单随系统云备份导出。
+- 页面不记录账单、备注或备份密码日志。
 
 ## 配置与依赖
 
-- Android `minSdk=26`，应用版本 `0.1.0`；Room schema 版本为 1。
-- 依赖 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Kotlin Coroutines 和 AndroidX Room；无外部业务服务。
+- Android `minSdk=26`、`targetSdk=34`；版本 `0.1.1`、`versionCode=2`；Room schema 1。
+- 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room，无业务后端。
+- macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
 ## 可观测性与运维
 
-- 没有遥测、后台任务或服务器日志；读写失败通过页面错误提示显示。
-- 更新安装应保留应用数据并沿用相同签名；数据库结构变化必须在后续版本提供迁移。
+- 无遥测、后台任务或服务器日志；读写失败通过统一反馈提示显示。
+- 生产安装包使用本机新签名；从旧版安装时，按 release guide 先导出加密备份再卸载旧版。
 
 ## 测试与验证
 
 ### 已执行
 
-- `.\gradlew.bat testDebugUnitTest` — 通过；金额解析、分类目录、加减精度、溢出和大数汇总测试通过。
-- `.\gradlew.bat compileDebugAndroidTestKotlin` — 通过；Room 持久化、收支类型切换和 Compose 交互仪器测试源码编译成功。
-- `.\gradlew.bat lintDebug` — 通过，0 errors、2 个工具建议警告。
-- `testDebugUnitTest compileDebugAndroidTestKotlin lintDebug assembleDebug` — 2026-11-01 通过；仪器交互源码包含收支分段切换、管理分类、草稿返回和所选分类停用处理。
-- `.\gradlew.bat assembleRelease` — 通过；release APK 已生成并完成包信息、签名与对齐核验。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API 34 AVD 在 320dp、`font_scale=1.3` 下运行 34 个仪器测试，0 失败、0 跳过。
+- UI 运行时查看了月度空账本、账单明细、记账页和真实 Gboard；系统键盘出现后自定义键盘隐藏，日期、备注和保存操作可见。
+- `./scripts/build-release-macos.sh` — 通过，生成并签名 0.1.1/code 2 APK。
+- API 34 AVD 全新安装 release APK 后导入格式 2 备份；账单和分类数、收支汇总与预览摘要一致。
 
 ### 未执行
 
-- `connectedDebugAndroidTest` — 未运行成功，Gradle 报 `No connected devices!`；API 34 与 API 30 模拟器均因本机已有实例过多退出。Room 实际运行、Compose 布局、API 26 及覆盖升级仍需设备回归；仪器源码编译不代表 UI 运行通过。
+- 未在 Android API 26 设备上运行实际 UI；最低 API 由 manifest/aapt metadata 确认为 26。
+- 仓库没有旧 0.1.0 签名 APK，无法对那一份实际旧包做覆盖安装；不同签名的同包安装冲突已在 AVD 验证。
+- 用户实体设备上的备份后卸载/安装与常用操作回归仍需用户按 release guide 执行。
 
 ## 关键决策
 
 ### 金额以分保存，合计用任意精度整数
 
-- **决定**：账单存 `Long` 分值，统计用 `BigInteger`。
-- **原因**：避免浮点小数误差和多笔合法金额累加溢出。
-- **取舍**：显示层将精确分值格式化为人民币元。
-- **证据**：`MoneyTest`、`MonthTotalsTest` 和 `LedgerRepositoryTest`。
+- **决定**：账单金额保存为 Long 分值，汇总用 `BigInteger`。
+- **原因**：避免浮点误差和多笔合法金额累加溢出。
+- **取舍**：展示格式与业务计算分离。
+- **证据**：`MoneyTest`、`MonthTotalsTest`、`MoneyDisplayFormatTest` 和 `LedgerScreensTest`。
 
 ### 编辑账单允许切换收支类型
 
-- **决定**：切换后要求用户从目标类型中选择启用分类，并更新数据库类型及对应月度汇总。
-- **原因**：用户在本版本实施期间确认该行为。
-- **取舍**：旧分类在类型切换后清空，避免类型与类别不匹配。
-- **证据**：`LedgerRepositoryTest.changingEntryTypeRequiresTheMatchingEnabledCategoryAndMovesMonthlyTotals`；Compose 仪器用例已编译，尚待设备执行。
+- **决定**：切换后清空原分类，要求选择目标类型启用分类，并同步月度汇总。
+- **原因**：账单类型必须与分类类型一致。
+- **取舍**：用户不能保留与新类型不匹配的分类 ID。
+- **证据**：`LedgerRepositoryTest.changingEntryTypeRequiresTheMatchingEnabledCategoryAndMovesMonthlyTotals`、`EverydayLedgerFlowTest.anExistingEntryCanSwitchFromExpenseToIncomeAndBeDeleted`。
 
-### 记账页收支分段切换和分类入口
+### 记账页与小屏输入布局
 
-- **决定**：收支选择使用清晰的分段控件；分类标题行右侧提供“管理分类”，设置中的分类入口继续保留。记账页打开管理器时默认当前收支类型，返回后保留草稿；新建分类出现但不自动选中。
-- **原因**：减少记账过程中进入设置维护分类的步骤，并让收支选择更容易识别。
-- **取舍**：分类标题行增加辅助操作；新建分类仍由用户主动选择。
-- **证据**：用户于 2026-10-31 确认 A 版 UI；`EntryEditor`/`EntryTypeToggle` 实现，Compose 仪器源码覆盖入口、草稿及新分类行为。
+- **决定**：记账页保留现有数字键盘；备注获得焦点时显示系统键盘，隐藏自定义键盘并固定保存按钮；小屏表单可滚动。
+- **原因**：输入备注时仍能到达日期、备注及保存，320dp/大字体也可浏览类别。
+- **取舍**：小屏下分类、日期和备注需要在表单内容区滚动查看。
+- **证据**：API 34 AVD 320dp/1.3 字体交互测试与 `task-6-editor-ime-small-large-text.png` 运行截图。
 
 ## 已知问题与后续工作
 
-### 设备端回归待执行
+### 实体设备和旧签名包回归
 
-- **影响**：实际 Room 行为、软键盘/小屏布局、API 26 兼容和覆盖安装保留数据尚无设备运行证据。
-- **当前处理**：Room 与 Compose 仪器测试源码已编译；本机没有可连接设备，API 34/API 30 模拟器启动均遇到实例冲突。记账页分类入口、返回草稿和停用所选分类提示的仪器用例尚未设备运行。
-- **后续动作**：设备可用后按 Work Item `WORK-20261031-001` 的步骤在 Android 8.0+ 真机和 API 34 设备执行账单与分类交互回归。
+- **影响**：用户实际旧版数据只有通过其设备导出的加密文件可核验；目前没有原 0.1.0 签名 APK 作为更新比较样本。
+- **当前处理**：API 34 release fresh install 与格式 2 恢复已成功；文档说明先备份、再卸载旧版。release APK 对另一签名包的覆盖冲突由 AVD 验证。
+- **后续动作**：用户按 `docs/release/macOS-install.md` 导出自身账本、fresh install，并核对历史数据和常用操作。
 
 ## 变更记录
 
-### 2026-11-01 — 记账页输入体验调整
-
-- **状态**：部分完成
-- **变化**：收支选择改为分段控件；分类标题行增加“管理分类”快捷入口，进入管理页默认当前收支类型并保留原账单草稿；新建分类返回后显示但不自动选中。新账单所选分类在管理期间被停用时自动清空并提示重新选择启用项。
-- **原因**：记账时管理分类原先只能从设置进入，且收支切换样式不够清楚。
-- **兼容性**：无数据库结构、Repository 分类规则或设置入口变化；无需 Room 迁移。
-- **验证**：单测、仪器源码编译、lint 和 debug 构建通过；无连接设备且模拟器启动受实例冲突影响，UI 仪器运行未执行。
-
-### 2026-10-31 — V0.1 首版
+### 2026-11-01 — 轻盈账本界面和 0.1.1 安装包
 
 - **状态**：已完成
-- **变化**：建立 Room 本机账单、月度快照和 Compose 收支编辑流程。
-- **原因**：支持离线人民币日常记账。
-- **兼容性**：Android 8.0+；Room schema 1；后续数据库版本需显式迁移。
-- **验证**：单元测试、lint、Android 仪器测试源码编译及签名 APK 构建通过；设备运行未执行。
+- **变化**：完成暖白/琥珀月度明细、日分组、空账本入口、记账/编辑、系统键盘适配与千位金额格式；用户可从设置和记账页维护分类。
+- **原因**：用户选定并确认“轻盈账本”完整设计。
+- **兼容性**：Room schema 1、业务 Repository 契约、整数分金额和备份格式 2 不变；新签名需要先备份后全新安装。
+- **验证**：API34 AVD 320dp/1.3 字体 34 个仪器测试全通过；release APK 签名和 fresh install/格式 2 restore 成功。

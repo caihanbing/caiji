@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.caiji.android.backup.BackupCodec
+import app.caiji.android.backup.BackupException
 import app.caiji.android.domain.EntryType
+import java.io.ByteArrayInputStream
 import java.time.LocalDate
 import java.time.YearMonth
 import java.math.BigInteger
@@ -63,9 +66,11 @@ class LedgerRepositoryTest {
         assertTrue(repository.categories().single { it.id == food.id }.active.not())
     }
 
-    @Test fun rejectsDuplicateActiveCategoryNamesAfterTrimming() = runBlocking {
-        assertThrows(IllegalArgumentException::class.java) {
-            runBlocking { repository.createCategory(EntryType.EXPENSE, " 餐饮 ", "restaurant") }
+    @Test fun rejectsDuplicateActiveCategoryNamesAfterTrimming() {
+        runBlocking {
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repository.createCategory(EntryType.EXPENSE, " 餐饮 ", "restaurant") }
+            }
         }
     }
 
@@ -80,10 +85,12 @@ class LedgerRepositoryTest {
         assertEquals(BigInteger.valueOf(890), repository.monthTotals(YearMonth.now()).incomeFen)
     }
 
-    @Test fun rejectsNotesOutsideTheBackupRoundTripLimit() = runBlocking {
-        val food = repository.categories().first { it.type == EntryType.EXPENSE }
-        assertThrows(IllegalArgumentException::class.java) {
-            runBlocking { repository.addEntry(EntryType.EXPENSE, 100, food.id, LocalDate.now(), "x".repeat(20_001)) }
+    @Test fun rejectsNotesOutsideTheBackupRoundTripLimit() {
+        runBlocking {
+            val food = repository.categories().first { it.type == EntryType.EXPENSE }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repository.addEntry(EntryType.EXPENSE, 100, food.id, LocalDate.now(), "x".repeat(20_001)) }
+            }
         }
     }
 
@@ -114,6 +121,28 @@ class LedgerRepositoryTest {
         assertEquals(before, repository.backupData())
         assertEquals(MonthTotals(BigInteger.valueOf(530), BigInteger.ZERO), repository.monthTotals(YearMonth.now()))
         assertEquals(16, repository.categories().size)
+    }
+
+    @Test fun wrongPasswordRestoreRollsBackTheExistingLedger() = runBlocking {
+        val category = repository.categories().first { it.type == EntryType.EXPENSE }
+        repository.addEntry(EntryType.EXPENSE, 530, category.id, LocalDate.now(), "仍要保留")
+        val before = repository.backupData()
+        val encrypted = BackupCodec().export("correct-password", before.first, before.second)
+
+        repository.beginRestoreSession()
+        try {
+            assertThrows(BackupException::class.java) {
+                runBlocking {
+                    repository.replaceAllForRestore { sink ->
+                        BackupCodec().restore(ByteArrayInputStream(encrypted), "incorrect-password", sink)
+                    }
+                }
+            }
+        } finally {
+            repository.endRestoreSession()
+        }
+
+        assertEquals(before, repository.backupData())
     }
 
     @Test fun closingAndReopeningKeepsLedgerDataAndCategoryReferences() = runBlocking {

@@ -7,5 +7,5 @@
 | --- | --- | --- | --- | --- | --- |
 | [`entry-categories`](entry-categories.md) | 账单分类管理 | categories, 分类 | active | 管理收支类别、图标、顺序和启用状态，并保留历史账单关联。 | 2026-11-01 |
 | [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分人民币收支账单，按日查看并计算月度收支。 | 2026-11-01 |
-| [`local-backup`](local-backup.md) | 本地加密备份与恢复 | backup, 恢复, 加密备份 | active | 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 | 2026-10-31 |
+| [`local-backup`](local-backup.md) | 本地加密备份与恢复 | backup, 恢复, 加密备份 | active | 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 | 2026-11-01 |
 <!-- manage-feature-docs:index:end -->
