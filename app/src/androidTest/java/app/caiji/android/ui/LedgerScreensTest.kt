@@ -1,10 +1,14 @@
 package app.caiji.android.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -131,9 +135,10 @@ class LedgerScreensTest {
             }
         }
 
-        val headingHeight = compose.onNodeWithText("收支明细").fetchSemanticsNode().size.height
-        assertTrue("Compact header should keep the ledger title on one line", headingHeight < with(compose.density) { 52.dp.toPx() })
+        compose.onAllNodesWithText("收支明细").assertCountEquals(0)
+        compose.onAllNodesWithText("按月查看").assertCountEquals(0)
         compose.onNodeWithText("2026年11月").assertIsDisplayed()
+        compose.onNodeWithTag("ledger-open-bills").assertIsDisplayed()
         compose.onNodeWithTag("empty-start-entry").assertIsDisplayed()
     }
 
@@ -177,5 +182,44 @@ class LedgerScreensTest {
         amount.assertIsDisplayed()
         assertTrue("Category text and amount must not overlap", name.fetchSemanticsNode().boundsInRoot.right <= amount.fetchSemanticsNode().boundsInRoot.left)
         compose.onNodeWithText("11月1日 · 星期日").assertIsDisplayed()
+    }
+
+    @Test fun leftSwipeRequiresConfirmationAndCancelLeavesTheEntryUntouched() {
+        val entry = LedgerEntry("swipe-delete", EntryType.EXPENSE, 1200, expenseCategory.id, LocalDate.of(2026, 11, 1))
+        val deleted = AtomicBoolean(false)
+        compose.setContent {
+            CaijiTheme {
+                LedgerHome(
+                    month = YearMonth.of(2026, 11), expenseFen = BigInteger.valueOf(1200), incomeFen = BigInteger.ZERO,
+                    entries = listOf(entry), categories = listOf(expenseCategory), onPrevious = {}, onNext = {},
+                    onEdit = {}, onCreateEntry = {}, onDelete = { _, done -> deleted.set(true); done(true) }
+                )
+            }
+        }
+
+        compose.onNodeWithTag("entry-row-swipe-delete").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-swipe-delete").assertIsDisplayed().performClick()
+        compose.onNodeWithText("删除这笔账单？").assertIsDisplayed()
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithTag("entry-row-swipe-delete").assertIsDisplayed()
+        assertEquals(false, deleted.get())
+    }
+
+    @Test fun confirmedSwipeDeletionCallsTheRepositoryCallbackOnce() {
+        val entry = LedgerEntry("swipe-confirm", EntryType.EXPENSE, 1200, expenseCategory.id, LocalDate.of(2026, 11, 1))
+        val deleteCount = java.util.concurrent.atomic.AtomicInteger()
+        compose.setContent {
+            CaijiTheme {
+                LedgerHome(
+                    month = YearMonth.of(2026, 11), expenseFen = BigInteger.valueOf(1200), incomeFen = BigInteger.ZERO,
+                    entries = listOf(entry), categories = listOf(expenseCategory), onPrevious = {}, onNext = {},
+                    onEdit = {}, onCreateEntry = {}, onDelete = { _, done -> deleteCount.incrementAndGet(); done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-row-swipe-confirm").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-swipe-confirm").performClick()
+        compose.onNodeWithTag("ledger-confirm-delete").performClick()
+        assertEquals(1, deleteCount.get())
     }
 }

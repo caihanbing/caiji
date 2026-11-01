@@ -4,13 +4,13 @@
 <!-- feature-title: 收支账单与月度明细 -->
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 在本机维护整数分人民币收支账单，按日查看并计算月度收支。 -->
+<!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览及汇总收支。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 337efbd2d13f; worktree-digest sha256:8544c0565bd9308207c73a340fba06f1ee42362709f879c40dda93505091d34c -->
+<!-- code-basis: HEAD 7e9cc5743f1c; worktree-digest sha256:21fc9ce0fc332f187f08394a6f8e3fc4c4e5ed08104c1fe9fcb206d1fbbc4da1 -->
 
 ## 快速上下文
 
-财记 0.1.1 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页有月度结余卡、收入/支出汇总、按日分组列表和空账本入口；记账页支持新增、编辑、删除确认和草稿返回。数据仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room，无账号或网络服务。
+财记 0.2.0 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页显示月度结余、日分组账单和空账本入口；“账单”页提供月/年总表、期间报告、分类排行和分类明细。记账页支持新增、编辑、两种入口的删除确认，以及选择分类后展开金额键盘。账单仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room。
 
 金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
@@ -20,12 +20,16 @@
 
 - 新增、编辑、删除收入与支出账单。
 - 按本地日期查看所选月份的账单、月度收支与每日小计。
+- 按自然年和自然月汇总历史收支，查看分类排行并钻取筛选账单。
 
 ### 范围内
 
 - 默认新增支出和今天；收支类型需要明确选择，分类不预选。
 - 金额键盘支持单次加减，日期不能晚于今天，备注为选填。
 - 首页可切换月份；空月份提供“开始记账”入口。
+- 月账单显示所选年 12 个月收支，年账单显示最早账单年至当前年的汇总；空月和空年显示零值。
+- 年/月报告展示结余、收入、支出和分类排行；点击分类显示对应期间账单，点击账单可编辑并保留筛选。
+- 账单行可左滑展开删除，点击后仍需二次确认；同一时间只展开一行。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
 ### 范围外
@@ -52,6 +56,9 @@
 
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
 - `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、月度汇总、每日分组、账单行和空状态。
+- `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
+- `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
+- `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求序号门闩，丢弃过期异步结果。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、金额/分类/日期/备注控件、数字键盘和删除/放弃确认。
 - `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
 - `app/src/main/java/app/caiji/android/ui/theme/CaijiTheme.kt`、`CaijiIcons.kt` — 共用暖白/琥珀主题、图标和系统栏视觉。
@@ -70,6 +77,12 @@
 
 - 输入 `YearMonth`，读取该月账单和精确汇总；月份请求序号避免旧查询覆盖新月份。
 
+### `RoomLedgerRepository.monthlyReports` / `yearlyReports` / `periodReport`
+
+- 在 Room 只读快照内读取账单，再由 Kotlin 以 `BigInteger` 聚合月份、年份和分类金额，避免 SQLite `SUM(Long)` 溢出。
+- 报告查询前初始化默认分类目录，确保首启空数据库可提供完整分类榜单。
+- `LedgerViewModel` 通过 `LatestRequestGate` 阻止较早月份/年份查询覆盖当前报告；`LedgerReportsTest.newerPeriodRequestPreventsOlderQueryFromUpdatingTheScreen` 覆盖顺序规则。
+
 ## 数据模型与迁移
 
 `entries` 保存 ID、类型、分值金额、分类 ID、本地日期、备注及创建/更新时间。账单通过外键关联稳定分类 ID。当前 Room schema 为 1；本次 UI 更新没有数据库字段、索引或迁移变化。将来结构更新必须添加显式 Room Migration。
@@ -81,6 +94,7 @@
 3. `LedgerViewModel` 调用 Repository；Room 在事务中写入或删除账单。
 4. 成功后重新读取所选月快照，按本地日期显示列表并用 `BigInteger` 更新汇总。
 5. 空月份使用现有记账页入口新增第一笔账单。
+6. 报告页按期间加载汇总和分类排行；选择分类后提供该期间分类账单的编辑入口。
 
 ## 异常与边界条件
 
@@ -103,28 +117,29 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 `0.1.1`、`versionCode=2`；Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；版本 `0.2.0`、`versionCode=3`；Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
 ## 可观测性与运维
 
 - 无遥测、后台任务或服务器日志；读写失败通过统一反馈提示显示。
-- 生产安装包使用本机新签名；从旧版安装时，按 release guide 先导出加密备份再卸载旧版。
+- 生产安装包沿用 0.1.1 的签名并支持覆盖升级；更新前建议导出加密备份。含新增分类图标键的备份不能由 0.1.1 恢复。
 
 ## 测试与验证
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API 34 AVD 在 320dp、`font_scale=1.3` 下运行 34 个仪器测试，0 失败、0 跳过。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API34 AVD 最终回归 49 项 instrumentation，包含 320dp/1.3 字体布局。
+- API34 AVD 最终运行 49 项 instrumentation；测试覆盖报告钻取、编辑后筛选刷新和首次报告查询初始化，单测覆盖闰日、空月、跨年、过期请求和超过 Long 的精确汇总。
 - UI 运行时查看了月度空账本、账单明细、记账页和真实 Gboard；系统键盘出现后自定义键盘隐藏，日期、备注和保存操作可见。
-- `./scripts/build-release-macos.sh` — 通过，生成并签名 0.1.1/code 2 APK。
-- API 34 AVD 全新安装 release APK 后导入格式 2 备份；账单和分类数、收支汇总与预览摘要一致。
+- `./scripts/build-release-macos.sh` — 通过，生成并签名 0.2.0/code 3 版本化 APK，校验签名与 SHA-256。
+- API34 release 成功导入 0.1.1 导出的格式 2 文件；预览和恢复均核对 1 笔账单、16 个分类、收入 ¥0、支出 ¥1。
 
 ### 未执行
 
 - 未在 Android API 26 设备上运行实际 UI；最低 API 由 manifest/aapt metadata 确认为 26。
-- 仓库没有旧 0.1.0 签名 APK，无法对那一份实际旧包做覆盖安装；不同签名的同包安装冲突已在 AVD 验证。
+- 原始 0.1.1 APK 不在工作树；从对应基线源码用相同 release key 重建 0.1.1，恢复旧备份后在 API34 AVD 覆盖升级到 0.2.0，确认账单保留。
 - 用户实体设备上的备份后卸载/安装与常用操作回归仍需用户按 release guide 执行。
 
 ## 关键决策
@@ -152,18 +167,18 @@
 
 ## 已知问题与后续工作
 
-### 实体设备和旧签名包回归
+### 用户实体设备回归
 
-- **影响**：用户实际旧版数据只有通过其设备导出的加密文件可核验；目前没有原 0.1.0 签名 APK 作为更新比较样本。
-- **当前处理**：API 34 release fresh install 与格式 2 恢复已成功；文档说明先备份、再卸载旧版。release APK 对另一签名包的覆盖冲突由 AVD 验证。
-- **后续动作**：用户按 `docs/release/macOS-install.md` 导出自身账本、fresh install，并核对历史数据和常用操作。
+- **影响**：用户真实设备型号、字体和自有历史账本尚未在本轮实测。
+- **当前处理**：API34 AVD 已验证旧备份恢复、同签名覆盖升级、报表和记账交互。
+- **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
 
-### 2026-11-01 — 轻盈账本界面和 0.1.1 安装包
+### 2026-11-01 — 月/年账单报告和实机反馈优化
 
 - **状态**：已完成
-- **变化**：完成暖白/琥珀月度明细、日分组、空账本入口、记账/编辑、系统键盘适配与千位金额格式；用户可从设置和记账页维护分类。
-- **原因**：用户选定并确认“轻盈账本”完整设计。
-- **兼容性**：Room schema 1、业务 Repository 契约、整数分金额和备份格式 2 不变；新签名需要先备份后全新安装。
-- **验证**：API34 AVD 320dp/1.3 字体 34 个仪器测试全通过；release APK 签名和 fresh install/格式 2 restore 成功。
+- **变化**：增加月/年报告与分类明细、按分类展开金额键盘、左滑删除确认、48 个分类图标及拖动排序。
+- **原因**：根据用户实机验证的优化清单改进浏览和常用操作。
+- **兼容性**：Room schema 1、整数分金额和备份格式 2 不变；沿用 0.1.1 签名覆盖升级；新版图标键备份不能由 0.1.1 恢复。
+- **验证**：API34 AVD 43 个仪器测试通过；release 成功恢复旧格式 2 文件并核对数量和汇总。

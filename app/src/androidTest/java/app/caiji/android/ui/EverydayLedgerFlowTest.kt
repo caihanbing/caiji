@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -42,7 +43,8 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("nav-entry").performClick()
         compose.onNodeWithTag("entry-type-expense").assertIsSelected()
         compose.onNodeWithTag("entry-type-income").assertIsNotSelected()
-        compose.onNodeWithText("完成").assertIsDisplayed()
+        compose.onNodeWithText("请选择分类").assertIsDisplayed()
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
     }
 
     @Suppress("DEPRECATION")
@@ -58,6 +60,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-type-income").performClick()
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
+        compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         listOf("1", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
         val dateBefore = compose.onNodeWithTag("entry-date").fetchSemanticsNode().config[SemanticsProperties.Text]
         compose.onNodeWithTag("entry-note").performTextInput(note)
@@ -79,8 +82,6 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasText(categoryName))
         compose.onNodeWithText(categoryName).assertIsDisplayed()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasText("请选择分类"))
-        compose.onNodeWithText("请选择分类").assertIsDisplayed()
         compose.onNodeWithText(categoryName).performClick()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
 
@@ -110,18 +111,22 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        listOf("1", ".", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
+        compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
         compose.onNodeWithTag("entry-note").performTextInput(note)
         compose.onNodeWithTag("entry-note").performImeAction()
-        listOf("1", ".", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
-        compose.onNodeWithTag("entry-key-complete").performClick()
+        compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
+        compose.onNodeWithTag("entry-save").performClick()
         compose.onNodeWithText(note).assertIsDisplayed()
         compose.onNodeWithText(note).performClick()
+        compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
         compose.onNodeWithTag("entry-type-income").performClick()
+        compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
-        compose.onNodeWithTag("entry-key-complete").performClick()
-        compose.onNodeWithText("+¥1.23").assertIsDisplayed()
+        compose.onNodeWithTag("entry-save").performClick()
+        compose.onNodeWithText(note).assertTextContains("+¥1.23")
 
         compose.onNodeWithText(note).performClick()
         compose.onNodeWithContentDescription("删除账单").performClick()
@@ -131,6 +136,49 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithContentDescription("删除账单").performClick()
         compose.onNodeWithTag("confirm-delete-entry").performClick()
         compose.onNodeWithTag("nav-ledger").assertIsDisplayed()
+    }
+
+    @Test fun editingAFilteredReportEntryRefreshesTheReportAndKeepsItsCategoryFilter() {
+        val note = "期间报告编辑-${System.currentTimeMillis()}"
+        compose.onNodeWithTag("nav-entry").performClick()
+        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        listOf("1", "7").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
+        compose.onNodeWithTag("entry-note").performTextInput(note)
+        compose.onNodeWithTag("entry-note").performImeAction()
+        compose.onNodeWithTag("entry-save").performClick()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        val month = java.time.YearMonth.now()
+        compose.onNodeWithTag("ledger-open-bills").performClick()
+        compose.onNodeWithTag("month-row-${month.monthValue}").performClick()
+        compose.onNodeWithTag("report-category-seed-expense-0").performClick()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText("分类明细").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithText("该分类暂无账单").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("report-retry").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("report-loading").fetchSemanticsNodes().isNotEmpty()
+        }
+        val empty = compose.onAllNodesWithText("该分类暂无账单").fetchSemanticsNodes().isNotEmpty()
+        val failed = compose.onAllNodesWithTag("report-retry").fetchSemanticsNodes().isNotEmpty()
+        val loading = compose.onAllNodesWithTag("report-loading").fetchSemanticsNodes().isNotEmpty()
+        assertEquals("filtered period should show the newly added ledger entry (empty=$empty error=$failed loading=$loading)", false, empty || failed || loading)
+        compose.onNodeWithText(note, substring = true).performClick()
+        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-key-⌫").performClick()
+        compose.onNodeWithTag("entry-key-9").performClick()
+        compose.onNodeWithTag("entry-save").performClick()
+
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText("−¥19.00").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(note, substring = true).assertTextContains("−¥19.00")
+        compose.onNodeWithText("分类明细").assertIsDisplayed()
     }
 
     @Test fun rejectedCategorySaveKeepsTheDialogOpenForCorrection() {

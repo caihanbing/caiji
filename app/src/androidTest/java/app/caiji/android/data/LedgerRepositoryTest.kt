@@ -54,6 +54,44 @@ class LedgerRepositoryTest {
         assertEquals(MonthTotals(BigInteger.ZERO, BigInteger.ZERO), repository.monthTotals(YearMonth.of(2026, 1)))
     }
 
+    @Test fun reportQueriesReturnAllMonthsYearsAndCategoryTotalsFromLocalEntries() = runBlocking {
+        val food = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "餐饮" }
+        val salary = repository.categories().first { it.type == EntryType.INCOME && it.name == "工资" }
+        repository.addEntry(EntryType.EXPENSE, 1200, food.id, LocalDate.of(2024, 2, 29), "闰日")
+        repository.addEntry(EntryType.EXPENSE, 500, food.id, LocalDate.of(2024, 2, 29), "另一笔")
+        repository.addEntry(EntryType.INCOME, 9000, salary.id, LocalDate.of(2025, 1, 1), "新年")
+        repository.setCategoryActive(food.id, false)
+
+        val months = repository.monthlyReports(2024)
+        val years = repository.yearlyReports()
+        val categories = repository.categoryTotals(LocalDate.of(2024, 2, 1), LocalDate.of(2024, 3, 1), EntryType.EXPENSE)
+
+        assertEquals(12, months.size)
+        assertEquals(LedgerPeriodTotals(BigInteger.valueOf(1700), BigInteger.ZERO), months[1].totals)
+        assertEquals(listOf(2025, 2024), years.map { it.first })
+        assertEquals(LedgerPeriodTotals(BigInteger.valueOf(1700), BigInteger.ZERO), years[1].second)
+        assertEquals(food.id, categories.single().category.id)
+        assertEquals(BigInteger.valueOf(1700), categories.single().amountFen)
+    }
+
+    @Test fun reportQueriesInitializeTheDefaultCategoryCatalogOnFirstLaunch() = runBlocking {
+        assertTrue(repository.yearlyReports().isEmpty())
+        assertEquals(16, database.ledgerDao().categories().size)
+    }
+
+    @Test fun filteredPeriodReportRetainsCategoryLabelWhenItsLastEntryIsDeleted() = runBlocking {
+        val food = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "餐饮" }
+        val date = LocalDate.of(2024, 5, 3)
+        val entry = repository.addEntry(EntryType.EXPENSE, 99, food.id, date, null)
+        repository.deleteEntry(entry.id)
+
+        val report = repository.periodReport(LocalDate.of(2024, 5, 1), LocalDate.of(2024, 6, 1), EntryType.EXPENSE, food.id)
+
+        assertEquals(food.name, report.categories.single().category.name)
+        assertEquals(BigInteger.ZERO, report.categories.single().amountFen)
+        assertTrue(report.entries.isEmpty())
+    }
+
     @Test fun deactivatedCategoryStaysLinkedToHistoryButCannotBePickedForNewEntries() = runBlocking {
         val food = repository.categories().first { it.name == "餐饮" }
         val original = repository.addEntry(EntryType.EXPENSE, 123, food.id, LocalDate.now(), "旧记录")
@@ -102,6 +140,39 @@ class LedgerRepositoryTest {
             .filter { it.type == EntryType.EXPENSE }.sortedBy { it.sortOrder }.take(2).map { it.name })
         assertEquals(0, repository.categories().single { it.id == shopping.id }.sortOrder)
         assertEquals(1, repository.categories().single { it.id == food.id }.sortOrder)
+    }
+
+    @Test fun deactivatedCategoriesRemainIncludedInPersistentReordering() = runBlocking {
+        val food = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "餐饮" }
+        repository.setCategoryActive(food.id, false)
+        repository.reorderCategory(food.id, 2)
+        val reordered = repository.categories().filter { it.type == EntryType.EXPENSE }.sortedBy { it.sortOrder }
+
+        assertEquals(food.id, reordered[2].id)
+        assertEquals(false, reordered[2].active)
+    }
+
+    @Test fun categoryReorderingSurvivesClosingAndReopeningTheRoomDatabase() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "caiji-category-order-${UUID.randomUUID()}"
+        val first = Room.databaseBuilder(context, LedgerDatabase::class.java, name).build()
+        try {
+            val repository = RoomLedgerRepository(first)
+            val shopping = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "购物" }
+            repository.reorderCategory(shopping.id, 0)
+            first.close()
+
+            val reopened = Room.databaseBuilder(context, LedgerDatabase::class.java, name).build()
+            try {
+                val ordered = RoomLedgerRepository(reopened).categories().filter { it.type == EntryType.EXPENSE }.sortedBy { it.sortOrder }
+                assertEquals(listOf("购物", "餐饮"), ordered.take(2).map { it.name })
+            } finally {
+                reopened.close()
+            }
+        } finally {
+            runCatching { first.close() }
+            context.deleteDatabase(name)
+        }
     }
 
     @Test fun failedFullReplacementRollsBackTheExistingLedger() = runBlocking {

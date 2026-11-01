@@ -31,7 +31,9 @@ enum class CaijiIconName {
     CATEGORY,
     DATE,
     EDIT,
-    DELETE
+    DELETE,
+    MONTH_PREVIOUS,
+    MONTH_NEXT
 }
 
 @Composable
@@ -49,9 +51,11 @@ fun CaijiIcon(
         CaijiIconName.DATE -> Icons.Outlined.DateRange
         CaijiIconName.EDIT -> Icons.Outlined.Edit
         CaijiIconName.DELETE -> Icons.Outlined.Delete
+        CaijiIconName.MONTH_PREVIOUS, CaijiIconName.MONTH_NEXT -> null
     }
     if (image == null) {
-        CategoryTagGlyph(contentDescription, modifier)
+        if (name == CaijiIconName.CATEGORY) CategoryTagGlyph(contentDescription, modifier)
+        else MonthChevronGlyph(name == CaijiIconName.MONTH_NEXT, contentDescription, modifier)
         return
     }
     Icon(
@@ -60,6 +64,26 @@ fun CaijiIcon(
         modifier = modifier,
         tint = LocalContentColor.current
     )
+}
+
+@Composable
+private fun MonthChevronGlyph(isRight: Boolean, contentDescription: String?, modifier: Modifier) {
+    val color = LocalContentColor.current
+    Canvas(
+        modifier.size(24.dp).semantics {
+            if (contentDescription != null) this.contentDescription = contentDescription
+        }
+    ) {
+        val scale = size.minDimension / 24f
+        val left = if (isRight) 9f else 15f
+        val right = if (isRight) 15f else 9f
+        val path = Path().apply {
+            moveTo(left * scale, 5f * scale)
+            lineTo(right * scale, 12f * scale)
+            lineTo(left * scale, 19f * scale)
+        }
+        drawPath(path, color, style = Stroke(width = 2.2f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
 }
 
 @Composable
@@ -93,5 +117,11 @@ private fun CategoryTagGlyph(contentDescription: String?, modifier: Modifier) {
 internal fun categoryEmoji(key: String): String = when (key) {
     "restaurant" -> "🍜"; "shopping_bag" -> "🛍️"; "train" -> "🚆"; "home" -> "🏠"; "daily" -> "🧹"
     "movie" -> "🎬"; "medical" -> "✚"; "school" -> "📚"; "phone" -> "📱"; "favorite" -> "💝"
-    "salary" -> "💼"; "gift" -> "🎁"; "work" -> "🧰"; "savings" -> "💰"; else -> "✨"
+    "salary" -> "💼"; "gift" -> "🎁"; "work" -> "🧰"; "savings" -> "💰"
+    "coffee" -> "☕"; "tea" -> "🧋"; "fruit" -> "🍎"; "dessert" -> "🍰"; "grocery" -> "🥬"
+    "clothes" -> "👕"; "beauty" -> "💄"; "haircut" -> "💇"; "digital" -> "📷"; "insurance" -> "🛡️"; "tax" -> "🧾"; "refund" -> "💳"
+    "bus" -> "🚌"; "taxi" -> "🚕"; "car" -> "🚗"; "fuel" -> "⛽"; "parking" -> "🅿️"; "bicycle" -> "🚲"
+    "flight" -> "✈️"; "travel" -> "🧳"; "hotel" -> "🏨"; "utilities" -> "💡"; "repair" -> "🛠️"; "furniture" -> "🪑"
+    "game" -> "🎮"; "music" -> "🎵"; "fitness" -> "🏋️"; "pet" -> "🐾"; "baby" -> "🍼"; "family" -> "👨‍👩‍👧"
+    "rent_income" -> "🏠"; "interest" -> "📈"; "allowance" -> "💵"; else -> "✨"
 }

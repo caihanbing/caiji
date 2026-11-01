@@ -27,6 +27,19 @@ class BackupCodecTest {
         assertEquals(listOf(entry), restored.entries)
     }
 
+    @Test fun roundTripsCategoriesUsingNewIconKeysWithoutChangingBackupFormat() = runBlocking {
+        val iconKey = CategoryCatalog.iconKeys().last().key
+        val categoriesWithNewIcon = categories.mapIndexed { index, category ->
+            if (index == 0) category.copy(iconKey = iconKey) else category
+        }
+
+        val file = BackupCodec().export("12345678", categoriesWithNewIcon, listOf(entry))
+        val restored = BackupCodec().import(file, "12345678")
+
+        assertEquals(2, file[8].toInt())
+        assertEquals(iconKey, restored.categories.first().iconKey)
+    }
+
     @Test fun randomSaltAndNonceMakeExportsDifferent() = runBlocking {
         val codec = BackupCodec()
         assertFalse(codec.export("12345678", categories, listOf(entry))

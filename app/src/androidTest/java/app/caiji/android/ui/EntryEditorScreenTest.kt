@@ -48,7 +48,7 @@ class EntryEditorScreenTest {
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
                     onSetCategoryActive = { _, _ -> },
-                    onReorderCategory = { _, _ -> }
+                    onReorderCategory = { _, _, done -> done(true) }
                 )
             }
         }
@@ -56,6 +56,7 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-type-expense").assertIsSelected()
         compose.onNodeWithTag("entry-type-income").assertIsNotSelected()
         compose.onNodeWithTag("amount-display").assertIsDisplayed()
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
         compose.onNodeWithTag("entry-save").assertIsDisplayed()
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
@@ -66,6 +67,30 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-note").assertIsDisplayed()
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasText("请选择分类"))
         compose.onNodeWithText("请选择分类").assertIsDisplayed()
+    }
+
+    @Test fun choosingCategoryShowsKeypadAndChangingTypeHidesItAgain() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
+        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
+        compose.onNodeWithTag("entry-key-dismiss").performClick()
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
+        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
+        compose.onNodeWithTag("entry-type-income").performClick()
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
     }
 
     @Test
@@ -81,7 +106,7 @@ class EntryEditorScreenTest {
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
                     onSetCategoryActive = { _, _ -> },
-                    onReorderCategory = { _, _ -> }
+                    onReorderCategory = { _, _, done -> done(true) }
                 )
             }
         }
@@ -123,13 +148,14 @@ class EntryEditorScreenTest {
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
                     onSetCategoryActive = { _, _ -> },
-                    onReorderCategory = { _, _ -> }
+                    onReorderCategory = { _, _, done -> done(true) }
                 )
             }
         }
 
         compose.onNodeWithTag("amount-display").assertTextEquals("8,500.00")
-        compose.onNodeWithTag("entry-key-complete").performClick()
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
+        compose.onNodeWithTag("entry-save").performClick()
         assertEquals(850000, savedFen.get())
     }
 
@@ -146,7 +172,7 @@ class EntryEditorScreenTest {
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
                     onSetCategoryActive = { _, _ -> },
-                    onReorderCategory = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) },
                     imeVisible = true
                 )
             }
@@ -172,11 +198,13 @@ class EntryEditorScreenTest {
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
                     onSetCategoryActive = { _, _ -> },
-                    onReorderCategory = { _, _ -> }
+                    onReorderCategory = { _, _, done -> done(true) }
                 )
             }
         }
 
+        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-note").performTextInput("早餐")
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
         compose.onNodeWithTag("entry-note").performImeAction()

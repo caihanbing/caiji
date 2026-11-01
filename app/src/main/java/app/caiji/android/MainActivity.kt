@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +52,9 @@ import app.caiji.android.ui.CaijiIcon
 import app.caiji.android.ui.CaijiIconName
 import app.caiji.android.ui.backupFeedbackTone
 import app.caiji.android.ui.CategoryManagerScreen
+import app.caiji.android.ui.BillListMode
+import app.caiji.android.ui.BillPeriodReportScreen
+import app.caiji.android.ui.BillReportsScreen
 import app.caiji.android.ui.EntryEditorScreen
 import app.caiji.android.ui.LedgerHome
 import app.caiji.android.ui.LedgerViewModel
@@ -78,7 +82,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Page { LEDGER, EDITOR, SETTINGS, CATEGORIES }
+private enum class Page { LEDGER, BILLS, PERIOD_REPORT, EDITOR, SETTINGS, CATEGORIES }
 private enum class RestoreFlow { IDLE, PREVIEW, PREPARING, BACKUP_PASSWORD, SELECTING_BACKUP, PREPARING_BACKUP, WRITING_BACKUP, APPLYING }
 
 @Composable
@@ -90,7 +94,18 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     val categories by model.categories.collectAsState()
     val totals by model.totals.collectAsState()
     val modelError by model.error.collectAsState()
+    val monthlyReports by model.monthlyReports.collectAsState()
+    val yearlyReports by model.yearlyReports.collectAsState()
+    val reportLoading by model.reportLoading.collectAsState()
+    val reportError by model.reportError.collectAsState()
+    val periodReport by model.periodReport.collectAsState()
     var page by rememberSaveable { mutableStateOf(Page.LEDGER) }
+    var editorReturnPage by rememberSaveable { mutableStateOf(Page.LEDGER.name) }
+    var billListMode by rememberSaveable { mutableStateOf(BillListMode.MONTH.name) }
+    var reportYear by rememberSaveable { mutableIntStateOf(month.year) }
+    var reportMonthValue by rememberSaveable { mutableIntStateOf(month.monthValue) }
+    var reportTypeName by rememberSaveable { mutableStateOf(EntryType.EXPENSE.name) }
+    var reportCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
     var editEntryId by rememberSaveable { mutableStateOf<String?>(null) }
     var editEntry by remember { mutableStateOf<LedgerEntry?>(null) }
     LaunchedEffect(editEntryId) {
@@ -105,6 +120,14 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var restorePasswordVisible by remember { mutableStateOf(false) }
     var selectedRestoreUri by remember { mutableStateOf(Uri.EMPTY) }
     var pickerError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(page, billListMode, reportYear, reportMonthValue, reportTypeName, reportCategoryId) {
+        when (page) {
+            Page.BILLS -> if (billListMode == BillListMode.MONTH.name) model.loadBillLists(reportYear) else model.loadYearlyReports()
+            Page.PERIOD_REPORT -> model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
+            else -> Unit
+        }
+    }
 
     suspend fun applyRestoreSource(preview: BackupSummary, password: String) {
         val source = selectedRestoreUri
@@ -288,7 +311,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 icon = { CaijiIcon(CaijiIconName.LEDGER, contentDescription = null) }, label = { Text("明细") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-ledger"))
             NavigationBarItem(selected = false, onClick = {
-                editEntry = null; editEntryId = null; initialEditorType = EntryType.EXPENSE; page = Page.EDITOR
+                editEntry = null; editEntryId = null; initialEditorType = EntryType.EXPENSE
+                editorReturnPage = Page.LEDGER.name; page = Page.EDITOR
             }, icon = {
                 Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.Primary, modifier = Modifier.size(40.dp)) {
                     Box(contentAlignment = Alignment.Center) {
@@ -313,25 +337,59 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.LEDGER -> LedgerHome(month, totals.expenseFen, totals.incomeFen, entries, categories,
                     onPrevious = { model.changeMonth(month.minusMonths(1)) },
                     onNext = { model.changeMonth(month.plusMonths(1)) },
-                    onEdit = { editEntry = it; editEntryId = it.id; page = Page.EDITOR },
+                    onEdit = { editEntry = it; editEntryId = it.id; editorReturnPage = Page.LEDGER.name; page = Page.EDITOR },
                     onCreateEntry = {
                         editEntry = null
                         editEntryId = null
                         initialEditorType = EntryType.EXPENSE
-                        page = Page.EDITOR
+                        editorReturnPage = Page.LEDGER.name; page = Page.EDITOR
+                    }, onOpenBills = {
+                        billListMode = BillListMode.MONTH.name
+                        reportYear = month.year
+                        reportMonthValue = month.monthValue
+                        reportCategoryId = null
+                        page = Page.BILLS
+                    }, onDelete = { entry, complete ->
+                        model.deleteEntry(entry.id, onDeleted = { complete(true) }, onFailed = { complete(false) })
                     })
+                Page.BILLS -> BillReportsScreen(
+                    mode = BillListMode.valueOf(billListMode), year = reportYear,
+                    monthReports = monthlyReports, yearReports = yearlyReports, loading = reportLoading, error = reportError,
+                    onSelectMode = { billListMode = it.name }, onBack = { page = Page.LEDGER },
+                    onPreviousYear = { reportYear -= 1 }, onNextYear = { reportYear += 1 },
+                    onRetryList = { if (billListMode == BillListMode.MONTH.name) model.loadBillLists(reportYear) else model.loadYearlyReports() },
+                    onOpenMonth = { selected -> reportYear = selected.year; reportMonthValue = selected.monthValue; reportTypeName = EntryType.EXPENSE.name; reportCategoryId = null; page = Page.PERIOD_REPORT },
+                    onOpenYear = { selected -> reportYear = selected; reportMonthValue = 0; reportTypeName = EntryType.EXPENSE.name; reportCategoryId = null; page = Page.PERIOD_REPORT }
+                )
+                Page.PERIOD_REPORT -> BillPeriodReportScreen(
+                    year = reportYear, monthValue = reportMonthValue, report = periodReport,
+                    loading = reportLoading, error = reportError, selectedType = EntryType.valueOf(reportTypeName),
+                    selectedCategoryId = reportCategoryId, onBack = { page = Page.BILLS }, onRetry = {
+                        model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
+                    }, onSelectType = { reportTypeName = it.name; reportCategoryId = null },
+                    onSelectCategory = { reportCategoryId = it }, onEditEntry = { entry ->
+                        editEntry = entry; editEntryId = entry.id; editorReturnPage = Page.PERIOD_REPORT.name; page = Page.EDITOR
+                    }
+                )
                 Page.EDITOR -> if (editEntryId != null && editEntry == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("正在加载账单…") }
                 } else EntryEditorScreen(categories, editEntry, initialEditorType,
-                    onCancel = { page = Page.LEDGER; editEntry = null; editEntryId = null },
+                    onCancel = { page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER); editEntry = null; editEntryId = null },
                     onSave = { type, fen, categoryId, date, note, onComplete ->
                         val entryBeingEdited = editEntry
-                        val saved = { page = Page.LEDGER; editEntryId = null; onComplete(true) }
+                        val saved = {
+                            page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER)
+                            editEntryId = null
+                            onComplete(true)
+                        }
                         val failed = { onComplete(false) }
                         if (entryBeingEdited == null) model.addEntry(type, fen, categoryId, date, note, saved, failed)
                         else model.updateEntry(entryBeingEdited.copy(type = type, amountFen = fen, categoryId = categoryId,
                             occurredOn = date, note = note), saved, failed)
-                    }, onDelete = { entry -> model.deleteEntry(entry.id) { page = Page.LEDGER; editEntryId = null } },
+                    }, onDelete = { entry -> model.deleteEntry(entry.id, onDeleted = {
+                        page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER)
+                        editEntryId = null
+                    }) },
                     onSaveCategory = { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },
                     onSetCategoryActive = model::setCategoryActive,
@@ -350,4 +408,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
         }
     }
     BackHandler(enabled = page == Page.CATEGORIES) { page = Page.SETTINGS }
+    BackHandler(enabled = page == Page.BILLS) { page = Page.LEDGER }
+    BackHandler(enabled = page == Page.PERIOD_REPORT) {
+        if (reportCategoryId != null) reportCategoryId = null else page = Page.BILLS
+    }
 }

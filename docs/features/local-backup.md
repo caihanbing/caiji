@@ -6,11 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 337efbd2d13f; worktree-digest sha256:8544c0565bd9308207c73a340fba06f1ee42362709f879c40dda93505091d34c -->
+<!-- code-basis: HEAD 7e9cc5743f1c; worktree-digest sha256:21fc9ce0fc332f187f08394a6f8e3fc4c4e5ed08104c1fe9fcb206d1fbbc4da1 -->
 
 ## 快速上下文
 
-财记 0.1.1 的“设置”提供加密导出和恢复。通过 Android Storage Access Framework 由用户选择 `.cjbackup` 文件和位置；不申请联网或广泛存储权限。导出从 Room 一致快照流式写出，恢复按批次在单个 Room 事务内替换数据库。
+财记 0.2.0 的“设置”提供加密导出和恢复。通过 Android Storage Access Framework 由用户选择 `.cjbackup` 文件和位置；不申请联网或广泛存储权限。导出从 Room 一致快照流式写出，恢复按批次在单个 Room 事务内替换数据库。
 
 备份格式当前为版本 2：`PBKDF2-HMAC-SHA256` 派生 AES-256 密钥，使用 `AES-GCM` 认证加密，每份文件使用新的随机盐和 nonce。密码仅在页面内存使用；忘记密码无法解密。
 
@@ -36,6 +36,7 @@
 ### 不变量
 
 - 当前文件格式仅接受版本 2；文件头参与 GCM AAD 认证。
+- 0.2.0 扩充图标白名单但保持版本 2 文件结构；旧图标键的 0.1.1 备份可以恢复，含新增图标键的 0.2.0 备份不能由 0.1.1 恢复。
 - 恢复验证完整密文认证、字段和值及分类引用。
 - 非空账本须成功保存预备份后才能替换；恢复写入必须为原子事务。
 - 错误密码、损坏、文件变化、取消及事务异常不得留下部分替换。
@@ -111,29 +112,30 @@
 
 ## 配置与依赖
 
-- 当前应用版本 0.1.1/code 2；备份格式仍为版本 2，Room schema 1。
+- 当前应用版本 0.2.0/code 3；备份格式仍为版本 2，Room schema 1。
 - 依赖 Java Cryptography Architecture、PBKDF2、AES-GCM、Android Storage Access Framework、Room transaction 和 Coroutines。
 - 无后端、云密钥服务或外部备份 SDK。
 
 ## 可观测性与运维
 
 - 成功、取消、错误及处理中状态通过统一暖色反馈组件显示；不记录密码、账单明文或密文日志。
-- 新签名 release APK 的安装和回滚步骤见 `docs/release/macOS-install.md`；旧版卸载前先导出加密备份。
+- 0.2.0 沿用 0.1.1 release 签名并可覆盖升级；新增图标键的向后备份兼容限制和回滚步骤见 `docs/release/macOS-install.md`。
 - 后续若改变正文格式，必须升级格式版本并明确兼容策略。
 
 ## 测试与验证
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API34 AVD 320dp、`font_scale=1.3` 下 34 个设备用例通过。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API34 AVD 最终回归 49 项仪器测试。
 - `BackupCodecTest` 覆盖正确/错误密码、修改文件、版本、字段边界和流式格式 2；`BackupFeedbackToneTest` 确认损坏文件和未知失败不能显示成成功；`LedgerRepositoryTest.wrongPasswordRestoreRollsBackTheExistingLedger` 验证错误密码后原库不变。
+- `BackupCodecTest.roundTripsCategoriesUsingNewIconKeysWithoutChangingBackupFormat` 覆盖新增图标键；API34 AVD 真实恢复旧文件后覆盖升级并核对数据库仍在。
 - AVD SAF 实测：导出 `.cjbackup`，查看预览摘要，另存恢复前备份，取消恢复保持原数据，之后成功恢复。
-- release APK 在卸载 debug 包后全新安装；从 Downloads 导入格式 2 加密备份，恢复后账单/分类数和汇总与摘要一致。
+- 在旧 0.1.1 release 安装中从 Downloads 真实 SAF 导入旧格式 2 文件，再覆盖安装 0.2.0 并验证账本仍在；旧文件摘要为 1 笔账单、16 个分类、收入 ¥0、支出 ¥1。
 
 ### 未执行
 
 - 未在 Android API 26 设备实际运行 SAF/加密；最低版本已由 APK metadata 核对为 API 26。
-- 用户自己的旧版数据需用户在实体设备操作；仓库内无旧 0.1.0 签名 APK 可做真实旧证书覆盖对照。
+- 用户自己的数据和设备行为仍需用户实体设备最终回归。
 
 ## 关键决策
 
@@ -153,18 +155,18 @@
 
 ## 已知问题与后续工作
 
-### 用户设备和原版签名回归
+### 用户实体设备回归
 
-- **影响**：用户实际旧数据需要按自己的账本在实体设备回归；没有原 0.1.0 签名 APK 供自动升级对照。
-- **当前处理**：release guide 说明先导出并核验加密备份，再卸载旧包；API34 AVD 已完成 release fresh install 与格式 2 restore。
+- **影响**：用户自己的数据和真实设备行为仍需最终确认。
+- **当前处理**：API34 AVD 用 0.1.1 的旧格式文件恢复账单，然后同签名覆盖到 0.2.0，数据库内容保留。
 - **后续动作**：用户按 release guide 在自有 Android 8.0+ 设备核对账单和分类。
 
 ## 变更记录
 
-### 2026-11-01 — 加密备份与恢复反馈 UI
+### 2026-11-01 — 新增分类图标的备份兼容
 
 - **状态**：已完成
-- **变化**：密码、恢复摘要、处理中及成功/取消/错误反馈使用统一样式；恢复前备份和事务/Codec 流程保持不变。
-- **原因**：用户确认“轻盈账本”完整设计。
-- **兼容性**：备份格式 2、Room schema 1、SAF 调用和密码规则均不变。
-- **验证**：API34 AVD 真实 SAF 导出、取消、预备份和恢复成功；新 release 全新安装后导入格式 2 备份成功。
+- **变化**：48 图标白名单加入格式 2 恢复校验；加密、SAF 文件流程、数据库事务及文件结构保持不变。
+- **原因**：财记扩充分类图标且继续兼容旧备份。
+- **兼容性**：0.1.1 格式 2 备份可由 0.2.0 恢复；含新键的 0.2.0 文件不能由 0.1.1 恢复；Room schema 1。
+- **验证**：新增图标键加密 round-trip 单测；API34 AVD 真实恢复 0.1.1 导出的账单文件成功。

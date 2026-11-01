@@ -4,13 +4,13 @@
 <!-- feature-title: 账单分类管理 -->
 <!-- feature-aliases: categories, 分类 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 管理收支类别、图标、顺序和启用状态，并保留历史账单关联。 -->
+<!-- feature-summary: 管理收支类别、48 个内置图标、拖动顺序和启停状态，并保留历史关联。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 337efbd2d13f; worktree-digest sha256:8544c0565bd9308207c73a340fba06f1ee42362709f879c40dda93505091d34c -->
+<!-- code-basis: HEAD 7e9cc5743f1c; worktree-digest sha256:21fc9ce0fc332f187f08394a6f8e3fc4c4e5ed08104c1fe9fcb206d1fbbc4da1 -->
 
 ## 快速上下文
 
-财记 0.1.1 的分类管理可从“设置—分类管理”进入，也能在记账页点“管理分类”进入。当前提供 11 个支出与 5 个收入预置分类；分类持久化在 Room，账单通过稳定 ID 关联。停用只影响新账单选择，不删除历史分类或关联。
+财记 0.2.0 的分类管理可从“设置—分类管理”进入，也能在记账页点“管理分类”进入。默认仍有 11 个支出与 5 个收入分类；应用内图标目录扩充为 48 个键。分类持久化在 Room，账单通过稳定 ID 关联。停用只影响新账单选择，不删除历史分类或关联。
 
 页面使用暖白背景、琥珀主色、分段收支选择和分类卡片。保留现有 `iconKey` 与 emoji 映射。
 
@@ -25,8 +25,8 @@
 
 - 支出预置：餐饮、购物、交通、住房、日用、娱乐、医疗、学习、通讯、人情、其他。
 - 收入预置：工资、奖金、兼职、理财、其他。
-- 新增分类可选收支类型和 15 个内置图标；编辑时保留分类类型。
-- 同类型分类按 `sortOrder` 排列，并提供上下移和停用开关。
+- 新增分类可选收支类型和 48 个按用途分组的内置图标；编辑时保留分类类型。
+- 同类型分类按 `sortOrder` 排列；长按拖动排序，开关控制启停。
 
 ### 范围外
 
@@ -42,7 +42,8 @@
 ## 业务行为
 
 - 首次初始化在 Room 事务中写入 16 个默认分类；重复初始化不会重复添加。
-- 分类管理页在支出/收入间切换，分类项显示图标、名称、顺序按钮和启用开关。
+- 分类管理页在支出/收入间切换，分类项显示图标、名称、拖动反馈和启用开关。
+- 拖动范围包含当前类型的停用分类；预览顺序于松手后一次保存，取消或失败会回滚。
 - 编辑分类只显示固定类型；新建分类才允许选类型。
 - 新增/重名/数据库写入失败时保留输入，并在对话框中显示错误。
 - 记账页入口以当前收支类型打开；从设置打开则默认支出。返回记账页后保留账单草稿。
@@ -56,6 +57,7 @@
 - `app/src/main/java/app/caiji/android/ui/SettingsScreen.kt` — 设置页分类入口和备份入口。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — 记账页分类入口、当前类型传递、草稿与停用分类重新选择提示。
 - `app/src/main/java/app/caiji/android/domain/Category.kt` — `Category`、`CategoryCatalog`、默认目录和图标白名单。
+- `app/src/main/java/app/caiji/android/ui/CaijiIcons.kt` — 48 个分类图标键的显示映射。
 - `app/src/main/java/app/caiji/android/ui/LedgerViewModel.kt` — 保存、启停和排序调用及错误状态。
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `createCategory`、`renameCategory`、`setCategoryActive`、`reorderCategory` 事务实现。
 - `app/src/main/java/app/caiji/android/data/LedgerDatabase.kt` — Room 分类实体、索引和外键。
@@ -102,31 +104,32 @@
 ## 安全与权限
 
 - 分类和账单均保存在应用私有 Room 数据库；无网络调用和外部权限。
-- 图标由应用内白名单键映射到内置 emoji；不接受文件路径或外部资源。
+- `CategoryCatalog.iconKeys()` 提供 48 个内置键；`iconLabel` 为选择器提供可访问标签，`CaijiIcons.kt` 映射应用内 emoji。
 - Android 自动备份禁用。
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 0.1.1/code 2；Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；版本 0.2.0/code 3；Room schema 1。
 - 依赖 Kotlin、Compose Material 3、Room 和 Coroutines；默认分类不依赖后端配置。
 
 ## 可观测性与运维
 
 - ViewModel 的分类错误在弹窗和页面反馈中显示；无遥测、后台任务或服务器日志。
-- 当前版本升级保留本机数据库；新签名 APK 的安装/回退步骤见 `docs/release/macOS-install.md`。
+- 当前版本沿用 0.1.1 签名，升级保留本机数据库；含新增图标键的新版备份不能由 0.1.1 恢复。
 
 ## 测试与验证
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API 34 AVD 在 320dp、`font_scale=1.3` 下 34 个仪器测试全部通过。
-- 分类类型切换、15 个图标、排序和启停控件、重名错误、记账页分类管理入口、草稿返回及停用分类处理均有设备用例。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API34 AVD 最终回归 48 项 instrumentation，含重启后顺序持久化。
+- 分类类型切换、48 个唯一图标、图标选择/重名错误、记账页入口、草稿保留、停用分类处理及拖动取消/失败回滚均有用例。
+- Repository instrumentation 覆盖停用分类仍可持久排序；新图标键可通过格式 2 备份 round-trip。
 - API34 AVD 逐页查看分类列表与新增对话框；长列表可滚动，类型和图标按钮可达。
 
 ### 未执行
 
 - 未在 Android API 26 设备实测系统栏或实际窗口尺寸；manifest 最低 API 为 26。
-- 用户实体设备上的旧账本回归仍需按 release guide 执行；本机没有原 0.1.0 签名 APK 作为覆盖测试样本。
+- 不同厂商和字体配置下的长按拖动仍需用户实机确认；API34 AVD 上拖动和回滚已通过。
 
 ## 关键决策
 
@@ -153,18 +156,18 @@
 
 ## 已知问题与后续工作
 
-### 实体设备和旧版签名回归
+### 用户实体设备排序回归
 
-- **影响**：不同 Android 设备/字体下的分类触控仍需在用户设备走查；旧 0.1.0 签名 APK 不在当前仓库。
-- **当前处理**：API34 AVD 320dp/1.3 字体已运行分类仪器用例和人工截图；release guide 写明先备份再卸载旧版。
-- **后续动作**：用户安装后确认分类名称、图标、排序、启停及历史账单显示符合预期。
+- **影响**：不同 Android 设备/字体下的长按拖动仍需在用户设备走查。
+- **当前处理**：API34 AVD 完成跨行拖动、取消回滚和失败回滚；48 键目录和备份 round-trip 单测通过。
+- **后续动作**：用户安装后回归分类排序、启停和历史账单显示。
 
 ## 变更记录
 
-### 2026-11-01 — 轻盈账本分类和设置页
+### 2026-11-01 — 分类拖动排序和 48 图标目录
 
 - **状态**：已完成
-- **变化**：分类管理、分类编辑和设置页统一使用暖白/琥珀组件；分类错误在弹窗内显示，长名称在窄屏两行省略，15 个图标键与 ID/排序/启停业务规则不变。
-- **原因**：用户确认“轻盈账本”完整设计。
-- **兼容性**：无 Repository 规则、数据库结构或历史关联变化；无需 Room 迁移。
-- **验证**：API34 AVD 320dp/1.3 字体 34 个仪器测试全通过；分类管理和新增对话框人工查看；`CategorySettingsScreenTest.longCategoryNameDoesNotOverlapSwitchAtCompactWidthAndLargeFont` 验证长名称和开关不重叠。
+- **变化**：移除排序箭头，分类行改成长按拖动；新增 33 个图标键并按用途分组显示。
+- **原因**：按用户实机反馈改善排序操作并扩充图标选择。
+- **兼容性**：Room schema、默认分类 ID、原图标键和备份格式 2 不变；旧版白名单不能读取新增图标键。
+- **验证**：API34 AVD 43 个设备用例通过；`CategoryCatalogTest` 校验 48 个唯一键；新图标的加密备份 round-trip 通过。

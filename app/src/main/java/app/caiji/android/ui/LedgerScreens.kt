@@ -2,15 +2,17 @@ package app.caiji.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -19,21 +21,29 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerEntry
 import app.caiji.android.domain.Category
@@ -43,6 +53,7 @@ import java.math.BigInteger
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 internal fun LedgerHome(
@@ -54,9 +65,14 @@ internal fun LedgerHome(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onEdit: (LedgerEntry) -> Unit,
-    onCreateEntry: () -> Unit
+    onCreateEntry: () -> Unit,
+    onOpenBills: () -> Unit = {},
+    onDelete: (LedgerEntry, (Boolean) -> Unit) -> Unit = { _, complete -> complete(false) }
 ) {
     val balanceFen = incomeFen - expenseFen
+    var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
+    var deleteCandidate by remember { mutableStateOf<LedgerEntry?>(null) }
+    var deleting by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -65,32 +81,15 @@ internal fun LedgerHome(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("财记", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text("本机账本", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-        }
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
-        ) {
-            val compactHeader = maxWidth < 340.dp || LocalDensity.current.fontScale > 1.2f
-            if (compactHeader) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("收支明细", style = MaterialTheme.typography.titleLarge)
-                    Text("按月查看", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-                    MonthSelector(month, onPrevious, onNext, Modifier.fillMaxWidth())
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("收支明细", style = MaterialTheme.typography.titleLarge)
-                        Text("按月查看", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-                    }
-                    MonthSelector(month, onPrevious, onNext)
-                }
+            TextButton(onClick = onOpenBills, modifier = Modifier.testTag("ledger-open-bills")) {
+                CaijiIcon(CaijiIconName.DATE, "账单", Modifier.size(18.dp))
+                Text("账单", Modifier.padding(start = 5.dp), fontWeight = FontWeight.SemiBold)
             }
+            Spacer(Modifier.weight(1f))
+            MonthSelector(month, onPrevious, onNext)
         }
         Surface(
             modifier = Modifier
@@ -158,7 +157,10 @@ internal fun LedgerHome(
                             entry = entry,
                             categoryName = category?.name ?: "已停用分类",
                             iconKey = category?.iconKey ?: "other",
-                            onClick = { onEdit(entry) }
+                            onClick = { onEdit(entry) },
+                            deleteRevealed = openSwipeEntryId == entry.id,
+                            onSwipeChanged = { openSwipeEntryId = if (it) entry.id else null },
+                            onRequestDelete = { deleteCandidate = entry; openSwipeEntryId = null }
                         )
                     }
                     item(key = "divider-$day") {
@@ -172,26 +174,49 @@ internal fun LedgerHome(
             }
         }
     }
+    deleteCandidate?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { if (!deleting) deleteCandidate = null },
+            title = { Text("删除这笔账单？") },
+            text = { Text("删除后会立即从月度汇总中移除。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!deleting) {
+                        deleting = true
+                        onDelete(entry) { _ ->
+                            deleting = false
+                            deleteCandidate = null
+                        }
+                    }
+                }, enabled = !deleting, modifier = Modifier.testTag("ledger-confirm-delete")) {
+                    Text(if (deleting) "删除中" else "删除", color = CaijiPalette.Danger)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleteCandidate = null }, enabled = !deleting) { Text("取消") } }
+        )
+    }
 }
 
 @Composable
-private fun MonthSelector(month: YearMonth, onPrevious: () -> Unit, onNext: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        IconButton(onClick = onPrevious, modifier = Modifier.testTag("month-previous")) {
-            CaijiIcon(CaijiIconName.BACK, contentDescription = "上个月")
+private fun MonthSelector(month: YearMonth, onPrevious: () -> Unit, onNext: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Surface(color = CaijiPalette.SurfaceAlt, shape = CircleShape,
+            modifier = Modifier.size(48.dp).clickable(onClick = onPrevious).testTag("month-previous")) {
+            Box(contentAlignment = Alignment.Center) {
+                CaijiIcon(CaijiIconName.MONTH_PREVIOUS, contentDescription = "上个月", modifier = Modifier.size(18.dp))
+            }
         }
         Text(
             "${month.year}年${month.monthValue}月",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.testTag("home-month")
+            modifier = Modifier.padding(horizontal = 6.dp).testTag("home-month")
         )
-        IconButton(onClick = onNext, modifier = Modifier.testTag("month-next")) {
-            CaijiIcon(
-                CaijiIconName.BACK,
-                contentDescription = "下个月",
-                modifier = Modifier.graphicsLayer(rotationZ = 180f)
-            )
+        Surface(color = CaijiPalette.SurfaceAlt, shape = CircleShape,
+            modifier = Modifier.size(48.dp).clickable(onClick = onNext).testTag("month-next")) {
+            Box(contentAlignment = Alignment.Center) {
+                CaijiIcon(CaijiIconName.MONTH_NEXT, contentDescription = "下个月", modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
@@ -253,53 +278,74 @@ private fun EmptyLedgerState(onCreateEntry: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun EntryRow(entry: LedgerEntry, categoryName: String, iconKey: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .testTag("entry-row-${entry.id}")
-            .padding(horizontal = 18.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp)
-    ) {
+private fun EntryRow(
+    entry: LedgerEntry,
+    categoryName: String,
+    iconKey: String,
+    onClick: () -> Unit,
+    deleteRevealed: Boolean,
+    onSwipeChanged: (Boolean) -> Unit,
+    onRequestDelete: () -> Unit
+) {
+    val actionWidth = 100.dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val actionWidthPx = with(density) { actionWidth.toPx() }
+    var offsetX by remember(entry.id) { mutableFloatStateOf(0f) }
+    LaunchedEffect(deleteRevealed) { offsetX = if (deleteRevealed) -actionWidthPx else 0f }
+    Box(Modifier.fillMaxWidth().clipToBounds().testTag("entry-row-${entry.id}")) {
         Surface(
+            color = CaijiPalette.DangerSoft,
             shape = RoundedCornerShape(12.dp),
-            color = CaijiPalette.SurfaceAlt,
-            modifier = Modifier.size(40.dp)
+            modifier = Modifier.align(Alignment.CenterEnd).size(width = actionWidth, height = 48.dp)
+                .clickable(onClick = onRequestDelete).testTag("ledger-delete-${entry.id}")
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(categoryEmoji(iconKey), style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center) {
+                CaijiIcon(CaijiIconName.DELETE, "删除账单", Modifier.size(18.dp))
+                Text("删除", Modifier.padding(start = 4.dp), color = CaijiPalette.Danger, style = MaterialTheme.typography.labelMedium)
             }
         }
-        Column(Modifier.weight(1f)) {
-            Text(
-                categoryName,
-                modifier = Modifier.testTag("ledger-category-name-${entry.id}"),
-                color = CaijiPalette.Ink,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (!entry.note.isNullOrBlank()) {
-                Text(
-                    entry.note,
-                    color = CaijiPalette.SecondaryText,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth().offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(entry.id, deleteRevealed) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX = (offsetX + dragAmount).coerceIn(-actionWidthPx, 0f)
+                        },
+                        onDragEnd = {
+                            val reveal = offsetX < -actionWidthPx * 0.4f
+                            offsetX = if (reveal) -actionWidthPx else 0f
+                            onSwipeChanged(reveal)
+                        },
+                        onDragCancel = {
+                            offsetX = if (deleteRevealed) -actionWidthPx else 0f
+                            onSwipeChanged(deleteRevealed)
+                        }
+                    )
+                }
+                .clickable(onClick = { if (deleteRevealed) onSwipeChanged(false) else onClick() })
+                .background(CaijiPalette.Background)
+                .testTag("entry-row-content-${entry.id}")
+                .padding(horizontal = 18.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.SurfaceAlt, modifier = Modifier.size(40.dp)) {
+                Box(contentAlignment = Alignment.Center) { Text(categoryEmoji(iconKey), style = MaterialTheme.typography.titleMedium) }
             }
+            Column(Modifier.weight(1f)) {
+                Text(categoryName, modifier = Modifier.testTag("ledger-category-name-${entry.id}"), color = CaijiPalette.Ink,
+                    style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!entry.note.isNullOrBlank()) Text(entry.note, color = CaijiPalette.SecondaryText,
+                    style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("${if (entry.type == EntryType.EXPENSE) "−" else "+"}¥${formatYuan(entry.amountFen)}",
+                modifier = Modifier.widthIn(max = 140.dp).testTag("ledger-amount-${entry.id}"),
+                color = if (entry.type == EntryType.INCOME) CaijiPalette.Income else CaijiPalette.Ink,
+                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(
-            "${if (entry.type == EntryType.EXPENSE) "−" else "+"}¥${formatYuan(entry.amountFen)}",
-            modifier = Modifier.widthIn(max = 140.dp).testTag("ledger-amount-${entry.id}"),
-            color = if (entry.type == EntryType.INCOME) CaijiPalette.Income else CaijiPalette.Ink,
-            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

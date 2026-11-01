@@ -76,7 +76,7 @@ internal fun EntryEditorScreen(
     onDelete: (LedgerEntry) -> Unit,
     onSaveCategory: (EntryType, String?, String, String, (Boolean) -> Unit) -> Unit,
     onSetCategoryActive: (String, Boolean) -> Unit,
-    onReorderCategory: (String, Int) -> Unit,
+    onReorderCategory: (String, Int, (Boolean) -> Unit) -> Unit,
     imeVisible: Boolean? = null,
     categoryErrorMessage: String? = null
 ) {
@@ -88,6 +88,7 @@ internal fun EntryEditorScreen(
     var date by rememberSaveable(existing?.id) { mutableStateOf(existing?.occurredOn ?: LocalDate.now()) }
     var note by rememberSaveable(existing?.id) { mutableStateOf(existing?.note.orEmpty()) }
     var noteFocused by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var keypadExpanded by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var changed by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var saving by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var discardPrompt by rememberSaveable(existing?.id) { mutableStateOf(false) }
@@ -99,6 +100,7 @@ internal fun EntryEditorScreen(
     val calculated = runCatching { Money.evaluate(expression) }.getOrNull()
     val canSave = !saving && calculated != null && selectedCategory != null && !date.isAfter(LocalDate.now())
     val showSoftwareKeyboard = imeVisible ?: noteFocused
+    val showAmountKeypad = keypadExpanded && !showSoftwareKeyboard
     val focusManager = LocalFocusManager.current
 
     fun cancel() {
@@ -106,7 +108,7 @@ internal fun EntryEditorScreen(
     }
 
     fun saveEntry() {
-        val amount = calculated ?: return
+        val amount = runCatching { Money.evaluate(expression) }.getOrNull() ?: return
         val categoryId = selectedCategory ?: return
         if (!canSave) return
         saving = true
@@ -127,8 +129,9 @@ internal fun EntryEditorScreen(
 
     BackHandler(enabled = true) {
         when {
-            noteFocused -> focusManager.clearFocus()
             managingCategories -> managingCategories = false
+            keypadExpanded && !noteFocused -> keypadExpanded = false
+            noteFocused -> focusManager.clearFocus()
             else -> cancel()
         }
     }
@@ -206,6 +209,7 @@ internal fun EntryEditorScreen(
                 if (type != candidate) {
                     type = candidate
                     selectedCategory = null
+                    keypadExpanded = false
                     mustReselectActiveCategory = false
                     changed = true
                 }
@@ -230,7 +234,10 @@ internal fun EntryEditorScreen(
                         calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
                         modifier = Modifier
                             .weight(1f)
-                            .clickable { focusManager.clearFocus() }
+                            .clickable {
+                                focusManager.clearFocus()
+                                if (selectedCategory != null) keypadExpanded = true
+                            }
                             .testTag("amount-display"),
                         textAlign = TextAlign.End,
                         style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
@@ -300,6 +307,7 @@ internal fun EntryEditorScreen(
                                 .clickable(enabled = !saving) {
                                     selectedCategory = category.id
                                     mustReselectActiveCategory = false
+                                    keypadExpanded = true
                                     changed = true
                                 }
                                 .padding(vertical = 4.dp)
@@ -386,12 +394,12 @@ internal fun EntryEditorScreen(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
             )
             }
-            if (!showSoftwareKeyboard) {
+            if (showAmountKeypad) {
                 val keys = listOf(
                     listOf("7", "8", "9", "今天"),
                     listOf("4", "5", "6", "+"),
                     listOf("1", "2", "3", "−"),
-                    listOf(".", "0", "⌫", "完成")
+                    listOf(".", "0", "⌫", "收起")
                 )
                 Column(
                     modifier = Modifier
@@ -407,17 +415,17 @@ internal fun EntryEditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             row.forEach { key ->
-                                val isComplete = key == "完成"
+                                val isDismiss = key == "收起"
                                 Surface(
                                     shape = RoundedCornerShape(9.dp),
-                                    color = if (isComplete) CaijiPalette.PrimarySoft else CaijiPalette.Surface,
+                                    color = if (isDismiss) CaijiPalette.PrimarySoft else CaijiPalette.Surface,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxSize()
                                         .clickable(enabled = !saving) {
                                             when {
                                                 key == "今天" -> { date = LocalDate.now(); changed = true }
-                                                isComplete -> saveEntry()
+                                                isDismiss -> keypadExpanded = false
                                                 key == "⌫" -> { expression = expression.dropLast(1); changed = true }
                                                 key == "+" || key == "−" -> if (expression.isNotEmpty() && expression.last().isDigit()) {
                                                     expression += if (key == "−") "-" else "+"
@@ -433,15 +441,15 @@ internal fun EntryEditorScreen(
                                                 expression.length < 24 -> { expression += key; changed = true }
                                             }
                                         }
-                                        .testTag("entry-key-${if (isComplete) "complete" else key}")
+                                        .testTag("entry-key-${if (isDismiss) "dismiss" else key}")
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
-                                            if (isComplete && saving) "保存中" else key,
+                                            key,
                                             color = CaijiPalette.Ink,
-                                            style = if (rowIndex == 3 && isComplete) MaterialTheme.typography.labelLarge
+                                            style = if (rowIndex == 3 && isDismiss) MaterialTheme.typography.labelLarge
                                             else MaterialTheme.typography.titleMedium,
-                                            fontWeight = if (isComplete) FontWeight.SemiBold else FontWeight.Normal
+                                            fontWeight = if (isDismiss) FontWeight.SemiBold else FontWeight.Normal
                                         )
                                     }
                                 }
