@@ -2,7 +2,6 @@ package app.caiji.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
@@ -29,19 +27,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -54,7 +46,6 @@ import app.caiji.android.domain.Category
 import app.caiji.android.domain.CategoryCatalog
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiPalette
-import kotlinx.coroutines.launch
 
 @Composable
 internal fun CategoryManagerScreen(
@@ -71,13 +62,31 @@ internal fun CategoryManagerScreen(
     var add by remember { mutableStateOf(false) }
     val typeCategories = categories.filter { it.type == selectedType }.sortedBy { it.sortOrder }
     var orderedCategories by remember(selectedType, categories) { mutableStateOf(typeCategories) }
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
-    val edgeThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 64.dp.toPx() }
-    var draggedId by remember { mutableStateOf<String?>(null) }
-    var draggedOffset by remember { mutableFloatStateOf(0f) }
-    var rollbackOrder by remember { mutableStateOf<List<Category>>(emptyList()) }
+    var movingId by remember { mutableStateOf<String?>(null) }
+    var moveError by remember { mutableStateOf<String?>(null) }
+    val operationInProgress = movingId != null
+
+    fun move(category: Category, delta: Int) {
+        if (movingId != null) return
+        val currentIndex = orderedCategories.indexOfFirst { it.id == category.id }
+        val targetIndex = currentIndex + delta
+        if (currentIndex < 0 || targetIndex !in orderedCategories.indices) return
+        movingId = category.id
+        moveError = null
+        onMove(category.id, targetIndex) { saved ->
+            if (saved) {
+                val reordered = orderedCategories.toMutableList()
+                val actualIndex = reordered.indexOfFirst { it.id == category.id }
+                if (actualIndex >= 0 && targetIndex in reordered.indices) {
+                    reordered.add(targetIndex, reordered.removeAt(actualIndex))
+                    orderedCategories = reordered
+                }
+            } else {
+                moveError = "更新分类顺序失败，请重试。"
+            }
+            movingId = null
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         Row(
@@ -94,13 +103,13 @@ internal fun CategoryManagerScreen(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )
-            TextButton(onClick = { add = true; edit = null }, modifier = Modifier.testTag("category-add")) {
+            TextButton(onClick = { add = true; edit = null }, enabled = !operationInProgress, modifier = Modifier.testTag("category-add")) {
                 CaijiIcon(CaijiIconName.ADD, "新增分类", Modifier.size(18.dp))
                 Text("添加", modifier = Modifier.padding(start = 4.dp))
             }
         }
 
-        TypeSelector(selectedType = selectedType, tagPrefix = "category-type") { selectedType = it }
+        TypeSelector(selectedType = selectedType, tagPrefix = "category-type", enabled = !operationInProgress) { selectedType = it }
         Surface(
             color = CaijiPalette.PrimarySoft,
             shape = RoundedCornerShape(14.dp),
@@ -113,6 +122,16 @@ internal fun CategoryManagerScreen(
                 style = MaterialTheme.typography.bodySmall
             )
         }
+        moveError?.let { message ->
+            Surface(
+                color = CaijiPalette.DangerSoft,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                Text(message, Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall)
+            }
+        }
 
         if (typeCategories.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -122,73 +141,18 @@ internal fun CategoryManagerScreen(
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).testTag("category-list"),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                state = listState
             ) {
                 items(orderedCategories, key = { it.id }) { category ->
+                    val index = orderedCategories.indexOfFirst { it.id == category.id }
                     CategoryRow(
                         category = category,
-                        onEdit = { edit = category },
+                        onEdit = { if (!operationInProgress) edit = category },
                         onActive = onActive,
-                        isDragging = draggedId == category.id,
-                        dragOffset = if (draggedId == category.id) draggedOffset else 0f,
-                        onDragStart = {
-                            rollbackOrder = orderedCategories
-                            draggedId = category.id
-                            draggedOffset = 0f
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        },
-                        onDrag = { amount ->
-                            draggedOffset += amount
-                            var index = orderedCategories.indexOfFirst { it.id == category.id }
-                            var keepMoving = true
-                            while (keepMoving) {
-                                val visible = listState.layoutInfo.visibleItemsInfo
-                                val next = visible.firstOrNull { it.index == index + 1 }
-                                val previous = visible.firstOrNull { it.index == index - 1 }
-                                when {
-                                    next != null && draggedOffset > next.size * 0.5f -> {
-                                        val reordered = orderedCategories.toMutableList()
-                                        reordered.add(index + 1, reordered.removeAt(index))
-                                        orderedCategories = reordered
-                                        draggedOffset -= next.size
-                                        index += 1
-                                    }
-                                    previous != null && draggedOffset < -previous.size * 0.5f -> {
-                                        val reordered = orderedCategories.toMutableList()
-                                        reordered.add(index - 1, reordered.removeAt(index))
-                                        orderedCategories = reordered
-                                        draggedOffset += previous.size
-                                        index -= 1
-                                    }
-                                    else -> keepMoving = false
-                                }
-                            }
-                            val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == category.id }
-                            if (itemInfo != null) {
-                                val draggedTop = itemInfo.offset + draggedOffset
-                                when {
-                                    draggedTop < listState.layoutInfo.viewportStartOffset + edgeThresholdPx ->
-                                        scope.launch { listState.scrollToItem((index - 1).coerceAtLeast(0)) }
-                                    draggedTop + itemInfo.size > listState.layoutInfo.viewportEndOffset - edgeThresholdPx ->
-                                        scope.launch { listState.scrollToItem((index + 1).coerceAtMost(orderedCategories.lastIndex)) }
-                                }
-                            }
-                        },
-                        onDragEnd = { cancelled ->
-                            val oldOrder = rollbackOrder
-                            val finalOrder = orderedCategories
-                            draggedId = null
-                            draggedOffset = 0f
-                            if (cancelled) orderedCategories = oldOrder
-                            else {
-                                val targetIndex = finalOrder.indexOfFirst { it.id == category.id }
-                                if (targetIndex != oldOrder.indexOfFirst { it.id == category.id }) {
-                                    onMove(category.id, targetIndex) { saved ->
-                                        if (!saved) orderedCategories = oldOrder
-                                    }
-                                }
-                            }
-                        }
+                        canMoveUp = index > 0 && !operationInProgress,
+                        canMoveDown = index < orderedCategories.lastIndex && !operationInProgress,
+                        enabled = !operationInProgress,
+                        onMoveUp = { move(category, -1) },
+                        onMoveDown = { move(category, 1) }
                     )
                 }
             }
@@ -216,27 +180,16 @@ private fun CategoryRow(
     category: Category,
     onEdit: () -> Unit,
     onActive: (String, Boolean) -> Unit,
-    isDragging: Boolean,
-    dragOffset: Float,
-    onDragStart: () -> Unit,
-    onDrag: (Float) -> Unit,
-    onDragEnd: (Boolean) -> Unit
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    enabled: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
 ) {
     Surface(
         color = CaijiPalette.Surface,
         shape = RoundedCornerShape(15.dp),
         modifier = Modifier.fillMaxWidth()
-            .graphicsLayer(translationY = dragOffset, scaleX = if (isDragging) 1.02f else 1f, scaleY = if (isDragging) 1.02f else 1f)
-            .shadow(if (isDragging) 8.dp else 0.dp, RoundedCornerShape(15.dp))
-            .pointerInput(category.id) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { onDragStart() },
-                    onDrag = { change, amount -> change.consume(); onDrag(amount.y) },
-                    onDragEnd = { onDragEnd(false) },
-                    onDragCancel = { onDragEnd(true) }
-                )
-            }
-            .semantics { contentDescription = "长按并拖动调整分类顺序：${category.name}" }
             .testTag("category-row-${category.id}")
     ) {
         Row(
@@ -250,12 +203,12 @@ private fun CategoryRow(
                 modifier = Modifier.size(42.dp)
             ) {
                 androidx.compose.foundation.layout.Box(
-                    Modifier.fillMaxSize().clickable(onClick = onEdit).testTag("category-edit-${category.id}"),
+                    Modifier.fillMaxSize().clickable(enabled = enabled, onClick = onEdit).testTag("category-edit-${category.id}"),
                     contentAlignment = Alignment.Center
                 ) { Text(categoryEmoji(category.iconKey), style = MaterialTheme.typography.titleMedium) }
             }
             Column(
-                Modifier.weight(1f).clickable(onClick = onEdit),
+                Modifier.weight(1f).clickable(enabled = enabled, onClick = onEdit),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
@@ -268,12 +221,30 @@ private fun CategoryRow(
                 )
                 if (!category.active) Text("已停用", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.labelSmall)
             }
+            ReorderButton("上移分类 ${category.name}", "category-move-up-${category.id}", canMoveUp, onMoveUp)
+            ReorderButton("下移分类 ${category.name}", "category-move-down-${category.id}", canMoveDown, onMoveDown)
             Switch(
                 checked = category.active,
                 onCheckedChange = { onActive(category.id, it) },
+                enabled = enabled,
                 modifier = Modifier.testTag("category-active-name-${category.name}")
                     .semantics { contentDescription = "启用分类 ${category.name}" }
             )
+        }
+    }
+}
+
+@Composable
+private fun ReorderButton(label: String, tag: String, enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = Color.Transparent,
+        modifier = Modifier.size(48.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label }.testTag(tag)
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(if (label.startsWith("上移")) "↑" else "↓",
+                color = if (enabled) CaijiPalette.Ink else CaijiPalette.SecondaryText,
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -375,7 +346,7 @@ private fun IconCatalogPicker(selectedKey: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun TypeSelector(selectedType: EntryType, tagPrefix: String, onSelected: (EntryType) -> Unit) {
+private fun TypeSelector(selectedType: EntryType, tagPrefix: String, enabled: Boolean = true, onSelected: (EntryType) -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp).background(CaijiPalette.SurfaceAlt, RoundedCornerShape(12.dp)).padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -389,6 +360,7 @@ private fun TypeSelector(selectedType: EntryType, tagPrefix: String, onSelected:
                 modifier = Modifier.weight(1f).height(42.dp).selectable(
                     selected = selected,
                     role = Role.Tab,
+                    enabled = enabled,
                     onClick = { onSelected(type) }
                 ).testTag("$tagPrefix-${type.name}")
             ) {

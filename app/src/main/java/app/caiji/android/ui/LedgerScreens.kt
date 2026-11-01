@@ -3,7 +3,6 @@ package app.caiji.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -46,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerEntry
+import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiPalette
@@ -69,7 +67,6 @@ internal fun LedgerHome(
     onOpenBills: () -> Unit = {},
     onDelete: (LedgerEntry, (Boolean) -> Unit) -> Unit = { _, complete -> complete(false) }
 ) {
-    val balanceFen = incomeFen - expenseFen
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     var deleteCandidate by remember { mutableStateOf<LedgerEntry?>(null) }
     var deleting by remember { mutableStateOf(false) }
@@ -91,31 +88,13 @@ internal fun LedgerHome(
             Spacer(Modifier.weight(1f))
             MonthSelector(month, onPrevious, onNext)
         }
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = MaterialTheme.shapes.large,
-            color = CaijiPalette.PrimarySoft
-        ) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 15.dp)) {
-                Text("本月结余", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-                Text(
-                    "${if (balanceFen.signum() < 0) "−" else ""}¥${formatYuan(balanceFen.abs())}",
-                    style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.testTag("monthly-balance")
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(26.dp)
-                ) {
-                    SummaryAmount("本月收入", incomeFen, CaijiPalette.Income, Modifier.weight(1f))
-                    SummaryAmount("本月支出", expenseFen, CaijiPalette.Ink, Modifier.weight(1f))
-                }
-            }
-        }
+        PeriodSummaryCard(
+            title = "本月结余",
+            totals = LedgerPeriodTotals(expenseFen, incomeFen),
+            incomeLabel = "本月收入",
+            expenseLabel = "本月支出",
+            modifier = Modifier.testTag("monthly-balance")
+        )
         if (entries.isEmpty()) {
             EmptyLedgerState(onCreateEntry, Modifier.weight(1f))
         } else {
@@ -132,22 +111,30 @@ internal fun LedgerHome(
                         val dailySummary = buildList {
                             if (expense.signum() > 0) add("支出 ¥${formatYuan(expense)}")
                             if (income.signum() > 0) add("收入 ¥${formatYuan(income)}")
-                        }.joinToString(" · ")
-                        Column(
+                        }.joinToString("\n")
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 20.dp, end = 20.dp, top = 13.dp, bottom = 7.dp)
+                                .padding(start = 20.dp, end = 20.dp, top = 13.dp, bottom = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
                                 day.format(DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA)),
+                                modifier = Modifier.weight(1f).testTag("daily-date-$day"),
                                 color = CaijiPalette.Ink,
-                                style = MaterialTheme.typography.labelMedium
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 dailySummary,
+                                modifier = Modifier.weight(1.25f).testTag("daily-summary-$day"),
                                 color = CaijiPalette.SecondaryText,
                                 style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.testTag("daily-summary-$day")
+                                textAlign = TextAlign.End,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -200,39 +187,14 @@ internal fun LedgerHome(
 @Composable
 private fun MonthSelector(month: YearMonth, onPrevious: () -> Unit, onNext: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        Surface(color = CaijiPalette.SurfaceAlt, shape = CircleShape,
-            modifier = Modifier.size(48.dp).clickable(onClick = onPrevious).testTag("month-previous")) {
-            Box(contentAlignment = Alignment.Center) {
-                CaijiIcon(CaijiIconName.MONTH_PREVIOUS, contentDescription = "上个月", modifier = Modifier.size(18.dp))
-            }
-        }
+        PeriodArrowButton("上个月", "month-previous", isNext = false, onClick = onPrevious)
         Text(
             "${month.year}年${month.monthValue}月",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp).testTag("home-month")
         )
-        Surface(color = CaijiPalette.SurfaceAlt, shape = CircleShape,
-            modifier = Modifier.size(48.dp).clickable(onClick = onNext).testTag("month-next")) {
-            Box(contentAlignment = Alignment.Center) {
-                CaijiIcon(CaijiIconName.MONTH_NEXT, contentDescription = "下个月", modifier = Modifier.size(18.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SummaryAmount(label: String, amountFen: BigInteger, color: Color, modifier: Modifier) {
-    Column(modifier) {
-        Text(label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-        Text(
-            "¥${formatYuan(amountFen)}",
-            color = color,
-            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        PeriodArrowButton("下个月", "month-next", isNext = true, onClick = onNext)
     }
 }
 

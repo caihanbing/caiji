@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,10 +27,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
@@ -68,7 +69,15 @@ internal fun BillReportsScreen(
                 CaijiIcon(CaijiIconName.BACK, "返回")
             }
             Text("账单", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(48.dp))
+            if (mode == BillListMode.MONTH) {
+                val oldestYear = yearReports.minOfOrNull { it.first } ?: Year.now().value
+                PeriodArrowButton("上一年", "bill-previous-year", isNext = false,
+                    enabled = year > oldestYear, onClick = onPreviousYear)
+                Text("${year}年", Modifier.padding(horizontal = 2.dp).testTag("bill-selected-year"),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                PeriodArrowButton("下一年", "bill-next-year", isNext = true,
+                    enabled = year < Year.now().value, onClick = onNextYear)
+            }
         }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
@@ -93,48 +102,36 @@ internal fun BillReportsScreen(
             }
         }
         if (mode == BillListMode.MONTH) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val oldestYear = yearReports.minOfOrNull { it.first } ?: Year.now().value
-                PeriodArrow("上一年", onPreviousYear, "bill-previous-year", enabled = year > oldestYear)
-                Text("${year}年", Modifier.padding(horizontal = 16.dp).testTag("bill-selected-year"),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                PeriodArrow("下一年", onNextYear, "bill-next-year", enabled = year < Year.now().value)
-            }
             val yearTotals = monthReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
                 LedgerPeriodTotals(total.expenseFen + item.totals.expenseFen, total.incomeFen + item.totals.incomeFen)
             }
-            ReportSummaryCard("${year} 年度收支", yearTotals)
+            PeriodSummaryCard("${year}年结余", yearTotals,
+                incomeLabel = "${year}年收入", expenseLabel = "${year}年支出")
         } else {
             val allTime = yearReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
                 LedgerPeriodTotals(total.expenseFen + item.second.expenseFen, total.incomeFen + item.second.incomeFen)
             }
-            ReportSummaryCard("全部账单总结余", allTime)
+            PeriodSummaryCard("全部账单总结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出")
         }
         if (mode == BillListMode.MONTH) {
-            Column(
-                Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
-            ) {
-                ReportTableHeader("月份", "收入", "支出", "结余")
-                monthReports.sortedByDescending { it.month }.forEach { item ->
-                    ReportTableRow("${item.month.monthValue}月", item.totals, "month-row-${item.month.monthValue}") {
-                        onOpenMonth(item.month)
-                    }
+            val rows = monthReports.sortedByDescending { it.month }.map { item ->
+                BillTableRow("${item.month.monthValue}月", item.totals, "month-row-${item.month.monthValue}") {
+                    onOpenMonth(item.month)
                 }
+            }
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                BillPeriodTable("月份", rows)
             }
         } else {
             val byYear = yearReports.associate { it.first to it.second }
             val firstYear = byYear.keys.minOrNull() ?: year
             val rows = (firstYear..Year.now().value).toList().asReversed()
-            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                ReportTableHeader("年份", "收入", "支出", "结余")
-                rows.forEach { yearValue ->
+            val tableRows = rows.map { yearValue ->
                     val totals = byYear[yearValue] ?: LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)
-                    ReportTableRow("${yearValue}年", totals, "year-row-$yearValue") { onOpenYear(yearValue) }
-                }
+                    BillTableRow("${yearValue}年", totals, "year-row-$yearValue") { onOpenYear(yearValue) }
+            }
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                BillPeriodTable("年份", tableRows)
             }
         }
         ReportLoadState(loading, error) {
@@ -169,7 +166,14 @@ internal fun BillPeriodReportScreen(
             )
             Spacer(Modifier.width(48.dp))
         }
-        report?.let { ReportSummaryCard("${year}年${if (monthValue == 0) "度" else "${monthValue}月"}收支", it.totals) }
+        report?.let {
+            PeriodSummaryCard(
+                "${year}年${if (monthValue == 0) "结余" else "${monthValue}月结余"}",
+                it.totals,
+                incomeLabel = if (monthValue == 0) "${year}年收入" else "${monthValue}月收入",
+                expenseLabel = if (monthValue == 0) "${year}年支出" else "${monthValue}月支出"
+            )
+        }
         if (selectedCategoryId == null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
                 .background(CaijiPalette.SurfaceAlt, RoundedCornerShape(12.dp)).padding(3.dp)) {
@@ -236,31 +240,51 @@ internal fun BillPeriodReportScreen(
     }
 }
 
+private data class BillTableRow(val label: String, val totals: LedgerPeriodTotals, val tag: String, val onClick: () -> Unit)
+
 @Composable
-private fun ReportSummaryCard(title: String, totals: LedgerPeriodTotals) {
-    BoxWithConstraints {
-        val compact = maxWidth < 390.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.2f
-        Surface(
-            color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                Text(title, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-                Text("${if (totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(totals.balanceFen.abs())}", Modifier.testTag("report-balance"),
-                    style = if (compact) MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum")
-                    else MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (compact) {
-                    Text("收入 ¥${formatYuan(totals.incomeFen)}", Modifier.fillMaxWidth().padding(top = 6.dp),
-                        color = CaijiPalette.Income, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), maxLines = 2)
-                    Text("支出 ¥${formatYuan(totals.expenseFen)}", Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), maxLines = 2)
-                } else {
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("收入 ¥${formatYuan(totals.incomeFen)}", Modifier.weight(1f), color = CaijiPalette.Income,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("支出 ¥${formatYuan(totals.expenseFen)}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val fontScale = LocalDensity.current.fontScale
+        val maxNumberLength = rows.maxOfOrNull { row ->
+            listOf(
+                "¥${formatYuan(row.totals.incomeFen)}",
+                "¥${formatYuan(row.totals.expenseFen)}",
+                "${if (row.totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(row.totals.balanceFen.abs())}"
+            ).maxOf(String::length)
+        } ?: 8
+        val firstWidth = 112.dp
+        val numericWidth = maxOf(112.dp, (maxNumberLength * 8.3f * fontScale + 20f).dp)
+        val tableWidth = maxOf(maxWidth, firstWidth + numericWidth * 3)
+        Column(Modifier.horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
+            Column(Modifier.width(tableWidth)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(heading, Modifier.width(firstWidth), color = CaijiPalette.SecondaryText,
+                        style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    TableHeaderCell("收入", numericWidth, "bill-table-header-income")
+                    TableHeaderCell("支出", numericWidth, "bill-table-header-expense")
+                    TableHeaderCell("结余", numericWidth, "bill-table-header-balance")
+                }
+                HorizontalDivider(color = CaijiPalette.Divider)
+                rows.forEach { item ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClick = item.onClick).testTag(item.tag)
+                            .padding(horizontal = 6.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(item.label, Modifier.width(firstWidth), style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TableAmount("¥${formatYuan(item.totals.incomeFen)}", numericWidth, CaijiPalette.Ink)
+                        TableAmount("¥${formatYuan(item.totals.expenseFen)}", numericWidth, CaijiPalette.Ink)
+                        TableAmount(
+                            "${if (item.totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(item.totals.balanceFen.abs())}",
+                            numericWidth, CaijiPalette.Ink
+                        )
                     }
+                    HorizontalDivider(color = CaijiPalette.Divider)
                 }
             }
         }
@@ -268,55 +292,16 @@ private fun ReportSummaryCard(title: String, totals: LedgerPeriodTotals) {
 }
 
 @Composable
-private fun PeriodArrow(label: String, onClick: () -> Unit, tag: String, enabled: Boolean) {
-    Surface(color = if (enabled) CaijiPalette.SurfaceAlt else CaijiPalette.Surface,
-        shape = CircleShape, modifier = Modifier.size(48.dp).clickable(enabled = enabled, onClick = onClick).testTag(tag)) {
-        Box(contentAlignment = Alignment.Center) {
-            CaijiIcon(CaijiIconName.BACK, contentDescription = label,
-                modifier = Modifier.size(18.dp).graphicsLayer(rotationZ = if (label == "下一年") 180f else 0f))
-        }
-    }
+private fun TableHeaderCell(label: String, width: androidx.compose.ui.unit.Dp, tag: String) {
+    Text(label, Modifier.width(width).testTag(tag), color = CaijiPalette.SecondaryText,
+        style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, maxLines = 1)
 }
 
 @Composable
-private fun ReportTableHeader(first: String, income: String, expense: String, balance: String) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp)) {
-        listOf(first, income, expense, balance).forEachIndexed { index, text ->
-            Text(text, Modifier.weight(if (index == 0) 0.8f else 1f), color = CaijiPalette.SecondaryText,
-                style = MaterialTheme.typography.labelSmall, maxLines = 1)
-        }
-    }
-    HorizontalDivider(color = CaijiPalette.Divider)
-}
-
-@Composable
-private fun ReportTableRow(label: String, totals: LedgerPeriodTotals, tag: String, onClick: () -> Unit) {
-    BoxWithConstraints {
-        val compact = maxWidth < 390.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.2f
-        Column(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag).padding(horizontal = 6.dp, vertical = 11.dp)) {
-            if (compact) {
-                Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                Text("结余 ${if (totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(totals.balanceFen.abs())}",
-                    Modifier.fillMaxWidth().padding(top = 4.dp), style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                    fontWeight = FontWeight.SemiBold, maxLines = 2)
-                Text("收入 ¥${formatYuan(totals.incomeFen)}",
-                    Modifier.fillMaxWidth().padding(top = 4.dp), color = CaijiPalette.SecondaryText,
-                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), maxLines = 2)
-                Text("支出 ¥${formatYuan(totals.expenseFen)}",
-                    Modifier.fillMaxWidth(), color = CaijiPalette.SecondaryText,
-                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), maxLines = 2)
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, Modifier.weight(0.8f), style = MaterialTheme.typography.bodyMedium)
-                    listOf(totals.incomeFen to false, totals.expenseFen to false, totals.balanceFen to true).forEach { (amount, signed) ->
-                        Text("${if (signed && amount.signum() < 0) "−" else ""}¥${formatYuan(amount.abs())}", Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-        HorizontalDivider(color = CaijiPalette.Divider, modifier = Modifier.align(Alignment.BottomCenter))
-    }
+private fun TableAmount(value: String, width: androidx.compose.ui.unit.Dp, color: androidx.compose.ui.graphics.Color) {
+    Text(value, Modifier.width(width), color = color,
+        style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+        textAlign = TextAlign.End, maxLines = 1, softWrap = false)
 }
 
 @Composable

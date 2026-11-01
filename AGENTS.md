@@ -6,4 +6,4 @@ For every future addition or modification to the app's user-visible interface, f
 
 ## Task delivery
 
-After completing each requested development task, build a new versioned release APK, verify its package, version, signature and SHA-256, commit the completed source and documentation changes, and push the working branch to GitHub. Never include release signing keys or passwords in Git.
+After completing each requested development task, work in the current workspace without creating a new workspace or branch. Build a new versioned release APK, verify its package, version, signature and SHA-256, commit the completed source and documentation changes, and push directly to GitHub `main` without force pushing. Never include release signing keys or passwords in Git.

@@ -1,6 +1,7 @@
 package app.caiji.android.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -26,6 +27,7 @@ import java.math.BigInteger
 import java.time.LocalDate
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -81,9 +83,92 @@ class LedgerScreensTest {
         compose.onNodeWithText("¥8,500.00").assertIsDisplayed()
         compose.onNodeWithText("本月支出").assertIsDisplayed()
         compose.onNodeWithText("¥58.00").assertIsDisplayed()
-        compose.onNodeWithText("支出 ¥58.00 · 收入 ¥8,500.00").assertIsDisplayed()
+        compose.onNodeWithTag("daily-summary-2026-11-01").assertTextContains("支出 ¥58.00", substring = true)
+        compose.onNodeWithTag("daily-summary-2026-11-01").assertTextContains("收入 ¥8,500.00", substring = true)
         compose.onNodeWithText("−¥36.00").assertIsDisplayed()
         compose.onNodeWithText("+¥8,500.00").assertIsDisplayed()
+    }
+
+    @Test
+    fun dailyDateAndTotalsRemainInSeparateHorizontalColumnsOnCompactScreens() {
+        val date = LocalDate.of(2026, 11, 1)
+        val entries = listOf(
+            LedgerEntry("day-expense", EntryType.EXPENSE, 8000, expenseCategory.id, date),
+            LedgerEntry("day-income", EntryType.INCOME, 10000, incomeCategory.id, date)
+        )
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                CaijiTheme {
+                    Box(Modifier.width(320.dp).height(720.dp)) {
+                        LedgerHome(
+                            month = YearMonth.of(2026, 11), expenseFen = BigInteger.valueOf(8000),
+                            incomeFen = BigInteger.valueOf(10000), entries = entries,
+                            categories = listOf(expenseCategory, incomeCategory), onPrevious = {}, onNext = {},
+                            onEdit = {}, onCreateEntry = {}
+                        )
+                    }
+                }
+            }
+        }
+        val dateNode = compose.onNodeWithTag("daily-date-2026-11-01")
+        val totalsNode = compose.onNodeWithTag("daily-summary-2026-11-01")
+        dateNode.assertIsDisplayed()
+        totalsNode.assertIsDisplayed()
+        assertTrue("Daily totals must remain to the right of the date",
+            dateNode.fetchSemanticsNode().boundsInRoot.right <= totalsNode.fetchSemanticsNode().boundsInRoot.left)
+    }
+
+    @Test
+    fun compactDailySummaryKeepsBothLongIncomeAndExpenseValues() {
+        val lineScale = AtomicReference(1f)
+        val date = LocalDate.of(2026, 11, 1)
+        val entries = listOf(
+            LedgerEntry("long-day-expense", EntryType.EXPENSE, Long.MAX_VALUE, expenseCategory.id, date),
+            LedgerEntry("long-day-income", EntryType.INCOME, Long.MAX_VALUE, incomeCategory.id, date)
+        )
+        compose.setContent {
+            val density = LocalDensity.current
+            lineScale.set(density.density * density.fontScale)
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                CaijiTheme {
+                    Box(Modifier.width(320.dp).height(720.dp)) {
+                        LedgerHome(
+                            month = YearMonth.of(2026, 11), expenseFen = BigInteger.valueOf(Long.MAX_VALUE),
+                            incomeFen = BigInteger.valueOf(Long.MAX_VALUE), entries = entries,
+                            categories = listOf(expenseCategory, incomeCategory), onPrevious = {}, onNext = {},
+                            onEdit = {}, onCreateEntry = {}
+                        )
+                    }
+                }
+            }
+        }
+        val summary = compose.onNodeWithTag("daily-summary-2026-11-01")
+        summary.assertIsDisplayed()
+        summary.assertTextContains("支出 ¥92,233,720,368,547,758.07", substring = true)
+        summary.assertTextContains("收入 ¥92,233,720,368,547,758.07", substring = true)
+        assertTrue("Both long daily amounts need enough visible lines",
+            summary.fetchSemanticsNode().boundsInRoot.height >= 4 * 16 * lineScale.get() * 0.9f)
+    }
+
+    @Test
+    fun monthControlsUseTransparentFortyEightDpTargets() {
+        val densityScale = java.util.concurrent.atomic.AtomicReference(1f)
+        compose.setContent {
+            densityScale.set(LocalDensity.current.density)
+            CaijiTheme {
+                LedgerHome(
+                    month = YearMonth.of(2026, 11), expenseFen = BigInteger.ZERO, incomeFen = BigInteger.ZERO,
+                    entries = emptyList(), categories = emptyList(), onPrevious = {}, onNext = {},
+                    onEdit = {}, onCreateEntry = {}
+                )
+            }
+        }
+        val previous = compose.onNodeWithTag("month-previous")
+        previous.assertIsDisplayed()
+        val targetPixels = (48 * densityScale.get()).toInt()
+        assertTrue("Previous month target must be at least 48dp", previous.fetchSemanticsNode().size.width >= targetPixels)
+        assertTrue("Previous month target must be at least 48dp", previous.fetchSemanticsNode().size.height >= targetPixels)
     }
 
     @Test

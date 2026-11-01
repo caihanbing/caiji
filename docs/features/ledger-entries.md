@@ -6,11 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览及汇总收支。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 7e9cc5743f1c; worktree-digest sha256:21fc9ce0fc332f187f08394a6f8e3fc4c4e5ed08104c1fe9fcb206d1fbbc4da1 -->
+<!-- code-basis: HEAD f24b3b149f14; worktree-digest sha256:94a0b5f1a41df92b388f6f7f011a2e1af217ba1263b4769673db1af739eeb427 -->
 
 ## 快速上下文
 
-财记 0.2.0 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页显示月度结余、日分组账单和空账本入口；“账单”页提供月/年总表、期间报告、分类排行和分类明细。记账页支持新增、编辑、两种入口的删除确认，以及选择分类后展开金额键盘。账单仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room。
+财记 0.2.1 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页显示月度结余、日期右侧每日收支、日分组账单和空账本入口；“账单”页提供月/年总表、期间报告、分类排行和分类明细。记账页支持新增、编辑和删除；分类选择后才显示日期/备注/金额键盘，键盘内“保存”为唯一保存入口。账单仍由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入 Room。
 
 金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
@@ -29,6 +29,8 @@
 - 首页可切换月份；空月份提供“开始记账”入口。
 - 月账单显示所选年 12 个月收支，年账单显示最早账单年至当前年的汇总；空月和空年显示零值。
 - 年/月报告展示结余、收入、支出和分类排行；点击分类显示对应期间账单，点击账单可编辑并保留筛选。
+- 明细每日收入/支出位于日期右侧；月账单标题栏可切换年份；窄屏月/年表格与表头使用同一横向滚动区域。
+- 明细、月/年账单及年月报告使用同一结余汇总卡，期间切换箭头为透明 48dp 点击区。
 - 账单行可左滑展开删除，点击后仍需二次确认；同一时间只展开一行。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
@@ -47,16 +49,19 @@
 - `LedgerHome` 显示本月结余、收入、支出和每日分类账单；每条明细显示类别、备注及带正负号的金额。
 - 新增、编辑共享 `EntryEditorScreen`；类型切换后清空原分类，要求选目标类型的启用分类。
 - 在记账页管理分类后返回会保留类型、金额、日期和备注；新分类显示但不会自动选中。
-- 新账单已选分类若在管理期间被停用，返回后清空选择并要求重选；编辑历史账单可以保留其已停用分类。
+- 新账单已选分类若在管理期间被停用，返回后清空选择、折叠输入区并要求重选；编辑历史账单可以保留其已停用分类。
 - 编辑可切换收支类型并更新对应月度汇总；删除需二次确认。
-- 备注输入期间显示系统文字键盘、隐藏自定义数字键盘；表单可滚动，日期和备注可触达，保存按钮固定在底部。输入完成或清除焦点后可继续使用金额键盘。
-- 320dp 或较大字体下，月标题切换为上下布局；金额、分类和表单通过省略或滚动避免互相遮挡。
+- 新建和编辑初入均折叠分类以下输入区；新建选分类、编辑点金额/分类后展开。系统返回先收起输入区，再使用原放弃草稿确认。
+- 键盘日期键打开系统日期选择器；默认显示“今天”，其他日期显示月日，日期不能晚于今天。备注获得焦点时隐藏数字键盘，IME 完成后恢复。
+- 数字键盘右下“保存”为唯一保存动作；保存期间禁用，失败保留草稿。金额仍以整数分精确校验。
+- 320dp/大字体下，每日摘要保持在日期右侧；账单表头和数值列保持对齐并可整体横向滚动；分类、备注与键盘可滚动到达。
 
 ## 架构与代码地图
 
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
 - `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、月度汇总、每日分组、账单行和空状态。
 - `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
+- `app/src/main/java/app/caiji/android/ui/PeriodControls.kt` — 明细和报告共用的期间箭头及结余汇总卡。
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
 - `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求序号门闩，丢弃过期异步结果。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、金额/分类/日期/备注控件、数字键盘和删除/放弃确认。
@@ -117,30 +122,30 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 `0.2.0`、`versionCode=3`；Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；版本 `0.2.1`、`versionCode=4`；Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
 ## 可观测性与运维
 
 - 无遥测、后台任务或服务器日志；读写失败通过统一反馈提示显示。
-- 生产安装包沿用 0.1.1 的签名并支持覆盖升级；更新前建议导出加密备份。含新增分类图标键的备份不能由 0.1.1 恢复。
+- 生产安装包沿用 0.1.1/0.2.0 的签名并支持覆盖升级；更新前建议导出加密备份。0.2.1 与 0.2.0 图标键兼容；0.1.1 不能恢复含新增图标键的备份。
 
 ## 测试与验证
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API34 AVD 最终回归 49 项 instrumentation，包含 320dp/1.3 字体布局。
-- API34 AVD 最终运行 49 项 instrumentation；测试覆盖报告钻取、编辑后筛选刷新和首次报告查询初始化，单测覆盖闰日、空月、跨年、过期请求和超过 Long 的精确汇总。
-- UI 运行时查看了月度空账本、账单明细、记账页和真实 Gboard；系统键盘出现后自定义键盘隐藏，日期、备注和保存操作可见。
-- `./scripts/build-release-macos.sh` — 通过，生成并签名 0.2.0/code 3 版本化 APK，校验签名与 SHA-256。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 0.2.1 源码通过；API34 AVD 57 项 instrumentation 全通过，包含 320dp/1.3 字体布局。
+- API34 AVD 仪器覆盖期间报告钻取与编辑返回、日期按键选择和完整辅助说明、IME 键盘切换、键盘唯一保存、小屏输入区、每日两项长金额及明细/账单点击；`LedgerReportsTest` 继续覆盖闰日、空月、跨年、过期请求和超出 Long 的精确汇总。
+- API34 AVD 使用同签名 0.2.0 release 创建 ¥5 餐饮账单，再覆盖安装 0.2.1 release；启动后仍显示 ¥5.00 支出和原账单。
+- `./scripts/test-build-release-macos.sh` 和 `./scripts/build-release-macos.sh` — 通过；0.2.1/code 4 包名、minSdk26、targetSdk34、zipalign、v2 签名和 SHA-256 核验通过。
 - API34 release 成功导入 0.1.1 导出的格式 2 文件；预览和恢复均核对 1 笔账单、16 个分类、收入 ¥0、支出 ¥1。
 
 ### 未执行
 
-- 未在 Android API 26 设备上运行实际 UI；最低 API 由 manifest/aapt metadata 确认为 26。
+- 未在 Android API 26 设备上运行实际 UI；最低 API 由 APK 元数据确认为 26。
 - 原始 0.1.1 APK 不在工作树；从对应基线源码用相同 release key 重建 0.1.1，恢复旧备份后在 API34 AVD 覆盖升级到 0.2.0，确认账单保留。
-- 用户实体设备上的备份后卸载/安装与常用操作回归仍需用户按 release guide 执行。
+- 用户实体设备上的系统键盘、排序箭头、长金额及版本覆盖升级仍需用户最终回归。
 
 ## 关键决策
 
@@ -158,12 +163,12 @@
 - **取舍**：用户不能保留与新类型不匹配的分类 ID。
 - **证据**：`LedgerRepositoryTest.changingEntryTypeRequiresTheMatchingEnabledCategoryAndMovesMonthlyTotals`、`EverydayLedgerFlowTest.anExistingEntryCanSwitchFromExpenseToIncomeAndBeDeleted`。
 
-### 记账页与小屏输入布局
+### 记账页展开状态和唯一保存
 
-- **决定**：记账页保留现有数字键盘；备注获得焦点时显示系统键盘，隐藏自定义键盘并固定保存按钮；小屏表单可滚动。
-- **原因**：输入备注时仍能到达日期、备注及保存，320dp/大字体也可浏览类别。
-- **取舍**：小屏下分类、日期和备注需要在表单内容区滚动查看。
-- **证据**：API 34 AVD 320dp/1.3 字体交互测试与 `task-6-editor-ime-small-large-text.png` 运行截图。
+- **决定**：新增和编辑初始隐藏分类以下输入；选分类后显示，编辑点金额/分类可展开；日期由键盘“今天”键打开；右下“保存”是唯一保存入口。备注 IME 打开时隐藏数字键盘，IME 完成后恢复。
+- **原因**：记账首屏聚焦金额与分类，保留数字录入、日期、备注和草稿行为。
+- **取舍**：日期选择入口只在展开后的数字键盘中显示；再次进入输入区可继续编辑。
+- **证据**：API34 AVD `EntryEditorScreenTest` 和 `EverydayLedgerFlowTest`，含备注 IME 和金额精确保存。
 
 ## 已知问题与后续工作
 
@@ -174,6 +179,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-01 — 0.2.1 明细、记账与汇总布局调整
+
+- **状态**：已完成
+- **变化**：每日摘要置于日期右侧；统一期间箭头/结余卡及月年表格滚动；新增/编辑折叠输入区，日期按键和键盘保存统一。
+- **原因**：执行用户实机反馈。
+- **兼容性**：Room schema 1、加密备份格式 2、金额与账单 Repository 契约不变；沿用同一正式签名，0.2.0 数据可覆盖保留。
+- **验证**：57 项 API34 instrumentation、26 项 JVM 单测、lint、debug/release 构建通过；签名覆盖 0.2.0 并保留账单。
 
 ### 2026-11-01 — 月/年账单报告和实机反馈优化
 

@@ -4,8 +4,11 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
@@ -60,12 +63,58 @@ class BillReportsScreenTest {
         }
 
         compose.onNodeWithText("月账单").assertIsDisplayed()
+        compose.onNodeWithTag("bill-selected-year").assertIsDisplayed()
         compose.onNodeWithText("10月").assertIsDisplayed().performClick()
         assertEquals("2026-10", opened.get())
         compose.onNodeWithTag("bill-tab-year").performClick()
+        compose.onAllNodesWithTag("bill-selected-year").assertCountEquals(0)
         compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
         compose.onNodeWithText("2025年").assertIsDisplayed().performClick()
         assertEquals("year-2025", opened.get())
+    }
+
+    @Test
+    fun compactBillTableScrollsAsOneAndKeepsRowsClickable() {
+        val opened = AtomicReference<String>()
+        compose.setContent {
+            CaijiTheme {
+                Box(Modifier.width(320.dp).height(700.dp)) {
+                    BillReportsScreen(
+                        mode = BillListMode.MONTH, year = 2026,
+                        monthReports = listOf(
+                            MonthLedgerTotal(YearMonth.of(2026, 10), totals(100, 500)),
+                            MonthLedgerTotal(YearMonth.of(2026, 9), totals(200, 800))
+                        ), yearReports = listOf(2026 to totals(300, 1300)),
+                        loading = false, error = null, onSelectMode = {}, onBack = {}, onPreviousYear = {},
+                        onNextYear = {}, onRetryList = {},
+                        onOpenMonth = { opened.set("month-${it.monthValue}") }, onOpenYear = {}
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("bill-table-scroll").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("bill-table-header-income").assertIsDisplayed()
+        compose.onNodeWithTag("month-row-10").assertIsDisplayed().performClick()
+        assertEquals("month-10", opened.get())
+    }
+
+    @Test
+    fun reportSummaryUsesSharedCardAndPeriodBalanceTitle() {
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 11,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 12, 1),
+                        totals(300, 1000), emptyList(), emptyList()
+                    ),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE, selectedCategoryId = null,
+                    onBack = {}, onRetry = {}, onSelectType = {}, onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("period-summary-card").assertIsDisplayed()
+        compose.onNodeWithText("2026年11月结余").assertIsDisplayed()
     }
 
     @Test fun compactBillListOmitsIrrelevantEmptyDetail() {

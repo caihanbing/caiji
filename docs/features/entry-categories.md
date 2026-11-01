@@ -4,13 +4,13 @@
 <!-- feature-title: 账单分类管理 -->
 <!-- feature-aliases: categories, 分类 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 管理收支类别、48 个内置图标、拖动顺序和启停状态，并保留历史关联。 -->
+<!-- feature-summary: 管理收支类别、48 个内置图标、箭头顺序调整和启停状态，并保留历史关联。 -->
 <!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 7e9cc5743f1c; worktree-digest sha256:21fc9ce0fc332f187f08394a6f8e3fc4c4e5ed08104c1fe9fcb206d1fbbc4da1 -->
+<!-- code-basis: HEAD f24b3b149f14; worktree-digest sha256:94a0b5f1a41df92b388f6f7f011a2e1af217ba1263b4769673db1af739eeb427 -->
 
 ## 快速上下文
 
-财记 0.2.0 的分类管理可从“设置—分类管理”进入，也能在记账页点“管理分类”进入。默认仍有 11 个支出与 5 个收入分类；应用内图标目录扩充为 48 个键。分类持久化在 Room，账单通过稳定 ID 关联。停用只影响新账单选择，不删除历史分类或关联。
+财记 0.2.1 的分类管理可从“设置—分类管理”进入，也能在记账页点“管理分类”进入。默认仍有 11 个支出与 5 个收入分类；应用内图标目录有 48 个键。分类持久化在 Room，账单通过稳定 ID 关联。停用只影响新账单选择，不删除历史分类或关联。
 
 页面使用暖白背景、琥珀主色、分段收支选择和分类卡片。保留现有 `iconKey` 与 emoji 映射。
 
@@ -26,7 +26,7 @@
 - 支出预置：餐饮、购物、交通、住房、日用、娱乐、医疗、学习、通讯、人情、其他。
 - 收入预置：工资、奖金、兼职、理财、其他。
 - 新增分类可选收支类型和 48 个按用途分组的内置图标；编辑时保留分类类型。
-- 同类型分类按 `sortOrder` 排列；长按拖动排序，开关控制启停。
+- 同类型分类按 `sortOrder` 排列；点击同一行的上/下箭头移动一位，开关控制启停。
 
 ### 范围外
 
@@ -42,8 +42,9 @@
 ## 业务行为
 
 - 首次初始化在 Room 事务中写入 16 个默认分类；重复初始化不会重复添加。
-- 分类管理页在支出/收入间切换，分类项显示图标、名称、拖动反馈和启用开关。
-- 拖动范围包含当前类型的停用分类；预览顺序于松手后一次保存，取消或失败会回滚。
+- 分类管理页在支出/收入间切换，分类项显示图标、名称、48dp 横排上/下按钮和启用开关。
+- 箭头只影响当前收支类型，并包含停用分类；首项上移与末项下移禁用。
+- 分类排序写入期间锁定箭头、类型切换、启用开关和新增/编辑入口；成功后调整本地顺序并由 ViewModel 刷新持久化结果，失败时保持旧序并显示错误。
 - 编辑分类只显示固定类型；新建分类才允许选类型。
 - 新增/重名/数据库写入失败时保留输入，并在对话框中显示错误。
 - 记账页入口以当前收支类型打开；从设置打开则默认支出。返回记账页后保留账单草稿。
@@ -109,27 +110,27 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 0.2.0/code 3；Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；版本 0.2.1/code 4；Room schema 1。
 - 依赖 Kotlin、Compose Material 3、Room 和 Coroutines；默认分类不依赖后端配置。
 
 ## 可观测性与运维
 
 - ViewModel 的分类错误在弹窗和页面反馈中显示；无遥测、后台任务或服务器日志。
-- 当前版本沿用 0.1.1 签名，升级保留本机数据库；含新增图标键的新版备份不能由 0.1.1 恢复。
+- 当前版本沿用 0.1.1/0.2.0 签名，升级保留本机数据库；0.1.1 不能恢复含 0.2.0 新增图标键的备份。
 
 ## 测试与验证
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 通过；API34 AVD 最终回归 48 项 instrumentation，含重启后顺序持久化。
-- 分类类型切换、48 个唯一图标、图标选择/重名错误、记账页入口、草稿保留、停用分类处理及拖动取消/失败回滚均有用例。
+- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 0.2.1 源码通过；API34 AVD 57 项 instrumentation 全通过。
+- 分类类型切换、48 个唯一图标、图标选择/重名错误、记账页草稿保留、停用分类重新选择、箭头边界/相邻移动/失败回退及排序期间禁用均有用例。
 - Repository instrumentation 覆盖停用分类仍可持久排序；新图标键可通过格式 2 备份 round-trip。
 - API34 AVD 逐页查看分类列表与新增对话框；长列表可滚动，类型和图标按钮可达。
 
 ### 未执行
 
 - 未在 Android API 26 设备实测系统栏或实际窗口尺寸；manifest 最低 API 为 26。
-- 不同厂商和字体配置下的长按拖动仍需用户实机确认；API34 AVD 上拖动和回滚已通过。
+- 用户真实设备上 320dp 字体和箭头触控仍需最终确认；API34 AVD 上首尾禁用、停用分类排序和失败回退已通过。
 
 ## 关键决策
 
@@ -154,6 +155,13 @@
 - **取舍**：新增分类返回后仍须用户主动选择。
 - **证据**：`EverydayLedgerFlowTest.categoryManagementFromEntryPreservesDraftAndUsesCurrentType`。
 
+### 分类顺序用相邻箭头调整
+
+- **决定**：每个分类项提供上移/下移箭头；一次只移动一位；同类型内停用项也可排序。取消长按拖动。
+- **原因**：用户实机反馈长按拖动不易控制，需要明确可点击的顺序操作。
+- **取舍**：多位移动需要重复点击；数据库仍按单次事务写入目标索引。
+- **证据**：`CategorySettingsScreenTest.categoryManagerMovesOnePositionByArrowAndLongPressDoesNotReorder`、`categoryArrowMoveLocksDuringSaveAndFailurePreservesOrder`。
+
 ## 已知问题与后续工作
 
 ### 用户实体设备排序回归
@@ -171,3 +179,11 @@
 - **原因**：按用户实机反馈改善排序操作并扩充图标选择。
 - **兼容性**：Room schema、默认分类 ID、原图标键和备份格式 2 不变；旧版白名单不能读取新增图标键。
 - **验证**：API34 AVD 43 个设备用例通过；`CategoryCatalogTest` 校验 48 个唯一键；新图标的加密备份 round-trip 通过。
+
+### 2026-11-01 — 分类点击排序
+
+- **状态**：已完成
+- **变化**：用横向排列的上/下箭头替代长按拖动；异步排序期间锁定冲突操作，失败显示错误并保留原序。
+- **原因**：按用户新一轮实机反馈改善分类排序操作。
+- **兼容性**：同一 `reorderCategory` Room 事务和 sortOrder 契约；48 图标、默认分类 ID、schema 1 与备份格式 2 不变。
+- **验证**：API34 分类交互测试、57 项 instrumentation、同帧双击去重、Repository 排序持久化和失败路径通过。

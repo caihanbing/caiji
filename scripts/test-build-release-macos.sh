@@ -44,21 +44,21 @@ mkdir -p "$fake_tools" "$output_dir"
 cat > "$fake_tools/aapt" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$1" == "dump" && "$2" == "badging" ]]; then
-    printf "package: name='app.caiji.android' versionCode='3' versionName='0.2.0'\n"
+    printf "package: name='app.caiji.android' versionCode='4' versionName='0.2.1'\n"
     printf "sdkVersion:'26'\ntargetSdkVersion:'34'\n"
 fi
 EOF
 chmod +x "$fake_tools/aapt"
 printf 'sample release bytes\n' > "$temp_root/input.apk"
 "$package_script" "$fake_tools/aapt" "$temp_root/input.apk" "$output_dir"
-[[ -f "$output_dir/caiji-0.2.0-release.apk" ]]
-[[ -f "$output_dir/caiji-0.2.0-release.apk.sha256" ]]
-(cd "$output_dir" && shasum -a 256 -c caiji-0.2.0-release.apk.sha256 >/dev/null)
+[[ -f "$output_dir/caiji-0.2.1-release.apk" ]]
+[[ -f "$output_dir/caiji-0.2.1-release.apk.sha256" ]]
+(cd "$output_dir" && shasum -a 256 -c caiji-0.2.1-release.apk.sha256 >/dev/null)
 printf 'PASS versioned APK name and checksum\n'
 
 cat > "$fake_tools/wrong-aapt" <<'EOF'
 #!/usr/bin/env bash
-printf "package: name='app.caiji.other' versionCode='3' versionName='0.2.0'\n"
+printf "package: name='app.caiji.other' versionCode='4' versionName='0.2.1'\n"
 EOF
 chmod +x "$fake_tools/wrong-aapt"
 set +e

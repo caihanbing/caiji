@@ -62,7 +62,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         listOf("1", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
-        val dateBefore = compose.onNodeWithTag("entry-date").fetchSemanticsNode().config[SemanticsProperties.Text]
+        val dateBefore = compose.onNodeWithTag("entry-key-date").fetchSemanticsNode().config[SemanticsProperties.Text]
         compose.onNodeWithTag("entry-note").performTextInput(note)
 
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-manage-categories"))
@@ -78,7 +78,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-type-income").assertIsSelected()
         compose.onNodeWithTag("amount-display").assertTextEquals("123.00")
         compose.onNodeWithTag("entry-note").assertTextContains(note)
-        assertEquals(dateBefore, compose.onNodeWithTag("entry-date").fetchSemanticsNode().config[SemanticsProperties.Text])
+        assertEquals(dateBefore, compose.onNodeWithTag("entry-key-date").fetchSemanticsNode().config[SemanticsProperties.Text])
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasText(categoryName))
         compose.onNodeWithText(categoryName).assertIsDisplayed()
@@ -102,6 +102,8 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasText("该分类已停用，请重新选择启用分类"))
         compose.onNodeWithText("该分类已停用，请重新选择启用分类").assertIsDisplayed()
         compose.onNodeWithTag("amount-display").assertTextEquals("123.00")
+        compose.onAllNodesWithTag("entry-note").assertCountEquals(0)
+        compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         compose.onNodeWithTag("entry-note").assertTextContains(note)
     }
 
@@ -116,7 +118,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-note").performTextInput(note)
         compose.onNodeWithTag("entry-note").performImeAction()
         compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
-        compose.onNodeWithTag("entry-save").performClick()
+        compose.onNodeWithTag("entry-key-save").performClick()
         compose.onNodeWithText(note).assertIsDisplayed()
         compose.onNodeWithText(note).performClick()
         compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
@@ -125,12 +127,13 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
-        compose.onNodeWithTag("entry-save").performClick()
+        compose.onNodeWithTag("entry-key-save").performClick()
         compose.onNodeWithText(note).assertTextContains("+¥1.23")
 
         compose.onNodeWithText(note).performClick()
         compose.onNodeWithContentDescription("删除账单").performClick()
         compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithTag("amount-display").performClick()
         compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-note"))
         compose.onNodeWithTag("entry-note").assertTextContains(note)
         compose.onNodeWithContentDescription("删除账单").performClick()
@@ -146,7 +149,7 @@ class EverydayLedgerFlowTest {
         listOf("1", "7").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
         compose.onNodeWithTag("entry-note").performTextInput(note)
         compose.onNodeWithTag("entry-note").performImeAction()
-        compose.onNodeWithTag("entry-save").performClick()
+        compose.onNodeWithTag("entry-key-save").performClick()
         compose.waitUntil(timeoutMillis = 5_000) {
             compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
@@ -172,7 +175,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("amount-display").performClick()
         compose.onNodeWithTag("entry-key-⌫").performClick()
         compose.onNodeWithTag("entry-key-9").performClick()
-        compose.onNodeWithTag("entry-save").performClick()
+        compose.onNodeWithTag("entry-key-save").performClick()
 
         compose.waitUntil(timeoutMillis = 5_000) {
             compose.onAllNodesWithText("−¥19.00").fetchSemanticsNodes().isNotEmpty()

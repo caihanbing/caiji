@@ -26,8 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -49,6 +47,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
@@ -78,7 +78,8 @@ internal fun EntryEditorScreen(
     onSetCategoryActive: (String, Boolean) -> Unit,
     onReorderCategory: (String, Int, (Boolean) -> Unit) -> Unit,
     imeVisible: Boolean? = null,
-    categoryErrorMessage: String? = null
+    categoryErrorMessage: String? = null,
+    datePickerLauncher: ((LocalDate, (LocalDate?) -> Unit) -> Unit)? = null
 ) {
     var type by rememberSaveable(existing?.id) { mutableStateOf(existing?.type ?: initialType) }
     var expression by rememberSaveable(existing?.id) {
@@ -88,7 +89,7 @@ internal fun EntryEditorScreen(
     var date by rememberSaveable(existing?.id) { mutableStateOf(existing?.occurredOn ?: LocalDate.now()) }
     var note by rememberSaveable(existing?.id) { mutableStateOf(existing?.note.orEmpty()) }
     var noteFocused by rememberSaveable(existing?.id) { mutableStateOf(false) }
-    var keypadExpanded by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var inputPanelExpanded by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var changed by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var saving by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var discardPrompt by rememberSaveable(existing?.id) { mutableStateOf(false) }
@@ -100,7 +101,7 @@ internal fun EntryEditorScreen(
     val calculated = runCatching { Money.evaluate(expression) }.getOrNull()
     val canSave = !saving && calculated != null && selectedCategory != null && !date.isAfter(LocalDate.now())
     val showSoftwareKeyboard = imeVisible ?: noteFocused
-    val showAmountKeypad = keypadExpanded && !showSoftwareKeyboard
+    val showAmountKeypad = inputPanelExpanded && !showSoftwareKeyboard
     val focusManager = LocalFocusManager.current
 
     fun cancel() {
@@ -118,10 +119,31 @@ internal fun EntryEditorScreen(
         }
     }
 
+    fun showDatePicker() {
+        val completeSelection: (LocalDate?) -> Unit = { selected ->
+            if (selected != null) {
+                date = selected
+                changed = true
+            }
+        }
+        if (datePickerLauncher != null) {
+            datePickerLauncher.invoke(date, completeSelection)
+        } else {
+            DatePickerDialog(
+                context,
+                { _, year, month, day -> completeSelection(LocalDate.of(year, month + 1, day)) },
+                date.year,
+                date.monthValue - 1,
+                date.dayOfMonth
+            ).apply { datePicker.maxDate = System.currentTimeMillis() }.show()
+        }
+    }
+
     LaunchedEffect(categories, selectedCategory, existing?.id) {
         val selected = categories.firstOrNull { it.id == selectedCategory }
         if (existing == null && selectedCategory != null && selected != null && !selected.active) {
             selectedCategory = null
+            inputPanelExpanded = false
             mustReselectActiveCategory = true
             changed = true
         }
@@ -130,8 +152,8 @@ internal fun EntryEditorScreen(
     BackHandler(enabled = true) {
         when {
             managingCategories -> managingCategories = false
-            keypadExpanded && !noteFocused -> keypadExpanded = false
-            noteFocused -> focusManager.clearFocus()
+            showSoftwareKeyboard || noteFocused -> focusManager.clearFocus()
+            inputPanelExpanded -> { inputPanelExpanded = false; focusManager.clearFocus() }
             else -> cancel()
         }
     }
@@ -209,7 +231,7 @@ internal fun EntryEditorScreen(
                 if (type != candidate) {
                     type = candidate
                     selectedCategory = null
-                    keypadExpanded = false
+                    inputPanelExpanded = false
                     mustReselectActiveCategory = false
                     changed = true
                 }
@@ -236,7 +258,7 @@ internal fun EntryEditorScreen(
                             .weight(1f)
                             .clickable {
                                 focusManager.clearFocus()
-                                if (selectedCategory != null) keypadExpanded = true
+                                if (selectedCategory != null) inputPanelExpanded = true
                             }
                             .testTag("amount-display"),
                         textAlign = TextAlign.End,
@@ -307,7 +329,7 @@ internal fun EntryEditorScreen(
                                 .clickable(enabled = !saving) {
                                     selectedCategory = category.id
                                     mustReselectActiveCategory = false
-                                    keypadExpanded = true
+                                    inputPanelExpanded = true
                                     changed = true
                                 }
                                 .padding(vertical = 4.dp)
@@ -349,57 +371,29 @@ internal fun EntryEditorScreen(
                 )
             }
 
-            HorizontalDivider(color = CaijiPalette.Divider)
-            TextButton(
-                onClick = {
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, day -> date = LocalDate.of(year, month + 1, day); changed = true },
-                        date.year,
-                        date.monthValue - 1,
-                        date.dayOfMonth
-                    ).apply { datePicker.maxDate = System.currentTimeMillis() }.show()
-                },
-                enabled = !saving,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .testTag("entry-date")
-                    .padding(horizontal = 16.dp)
-            ) {
-                CaijiIcon(CaijiIconName.DATE, contentDescription = "日期")
-                Text(
-                    "日期 · ${date.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))}",
-                    modifier = Modifier.padding(start = 8.dp),
-                    color = CaijiPalette.Ink
-                )
-                Spacer(Modifier.weight(1f))
-                CaijiIcon(
-                    CaijiIconName.BACK,
-                    contentDescription = null,
-                    modifier = Modifier.graphicsLayer(rotationZ = 180f)
+            if (inputPanelExpanded) {
+                HorizontalDivider(color = CaijiPalette.Divider)
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(20_000); changed = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .onFocusChanged { noteFocused = it.isFocused }
+                        .testTag("entry-note"),
+                    label = { Text("备注（选填）") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
             }
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it.take(20_000); changed = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .onFocusChanged { noteFocused = it.isFocused }
-                    .testTag("entry-note"),
-                label = { Text("备注（选填）") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-            )
             }
             if (showAmountKeypad) {
                 val keys = listOf(
-                    listOf("7", "8", "9", "今天"),
+                    listOf("7", "8", "9", "日期"),
                     listOf("4", "5", "6", "+"),
                     listOf("1", "2", "3", "−"),
-                    listOf(".", "0", "⌫", "收起")
+                    listOf(".", "0", "⌫", "保存")
                 )
                 Column(
                     modifier = Modifier
@@ -415,17 +409,20 @@ internal fun EntryEditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             row.forEach { key ->
-                                val isDismiss = key == "收起"
+                                val isDate = key == "日期"
+                                val isSave = key == "保存"
+                                val dateLabel = if (date == LocalDate.now()) "今天" else date.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
+                                val fullDate = date.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))
                                 Surface(
                                     shape = RoundedCornerShape(9.dp),
-                                    color = if (isDismiss) CaijiPalette.PrimarySoft else CaijiPalette.Surface,
+                                    color = if (isSave) CaijiPalette.Primary else if (isDate) CaijiPalette.PrimarySoft else CaijiPalette.Surface,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxSize()
-                                        .clickable(enabled = !saving) {
+                                        .clickable(enabled = !saving && (!isSave || canSave)) {
                                             when {
-                                                key == "今天" -> { date = LocalDate.now(); changed = true }
-                                                isDismiss -> keypadExpanded = false
+                                                isDate -> showDatePicker()
+                                                isSave -> saveEntry()
                                                 key == "⌫" -> { expression = expression.dropLast(1); changed = true }
                                                 key == "+" || key == "−" -> if (expression.isNotEmpty() && expression.last().isDigit()) {
                                                     expression += if (key == "−") "-" else "+"
@@ -441,15 +438,22 @@ internal fun EntryEditorScreen(
                                                 expression.length < 24 -> { expression += key; changed = true }
                                             }
                                         }
-                                        .testTag("entry-key-${if (isDismiss) "dismiss" else key}")
+                                        .semantics { if (isDate) contentDescription = "日期，$dateLabel，$fullDate" }
+                                        .testTag(if (isSave) "entry-key-save" else "entry-key-${if (isDate) "date" else key}")
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
-                                            key,
+                                            if (isDate) {
+                                                dateLabel
+                                            } else if (isSave && saving) "保存中" else key,
+                                            modifier = if (isDate) Modifier.testTag("entry-key-date-label") else Modifier,
                                             color = CaijiPalette.Ink,
-                                            style = if (rowIndex == 3 && isDismiss) MaterialTheme.typography.labelLarge
+                                            style = if (rowIndex == 3 && isSave || isDate) MaterialTheme.typography.labelLarge
                                             else MaterialTheme.typography.titleMedium,
-                                            fontWeight = if (isDismiss) FontWeight.SemiBold else FontWeight.Normal
+                                            fontWeight = if (isSave || isDate) FontWeight.SemiBold else FontWeight.Normal,
+                                            textAlign = TextAlign.Center,
+                                            maxLines = if (isDate) 2 else 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -457,23 +461,6 @@ internal fun EntryEditorScreen(
                         }
                     }
                 }
-            }
-            Button(
-                onClick = ::saveEntry,
-                enabled = canSave,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 5.dp)
-                    .testTag("entry-save"),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CaijiPalette.Primary,
-                    contentColor = CaijiPalette.OnPrimary,
-                    disabledContainerColor = CaijiPalette.SurfaceAlt,
-                    disabledContentColor = CaijiPalette.SecondaryText
-                )
-            ) {
-                Text(if (saving) "保存中" else "保存账单", fontWeight = FontWeight.SemiBold)
             }
         }
     }

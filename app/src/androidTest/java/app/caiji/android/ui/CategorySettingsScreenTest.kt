@@ -3,6 +3,8 @@ package app.caiji.android.ui
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -14,10 +16,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.performClick
@@ -36,13 +38,16 @@ import org.junit.runner.RunWith
 class CategorySettingsScreenTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun categoryManagerSwitchesTypeAndRetainsSortAndActivationControls() {
+    @Test fun categoryManagerMovesOnePositionByArrowAndLongPressDoesNotReorder() {
         val moved = mutableListOf<Pair<String, Int>>()
         val active = mutableListOf<Pair<String, Boolean>>()
+        val categories = CategoryCatalog.defaults().map {
+            if (it.id == "seed-expense-0") it.copy(active = false) else it
+        }
         compose.setContent {
             CaijiTheme {
                 CategoryManagerScreen(
-                    categories = CategoryCatalog.defaults(),
+                    categories = categories,
                     onBack = {},
                     onSave = { _, _, _, _, done -> done(false) },
                     onActive = { id, enabled -> active += id to enabled },
@@ -53,20 +58,22 @@ class CategorySettingsScreenTest {
         }
 
         compose.onNodeWithTag("category-type-EXPENSE").assertIsSelected()
-        compose.onAllNodesWithTag("category-move-down-seed-expense-0").assertCountEquals(0)
+        compose.onNodeWithTag("category-move-up-seed-expense-0").assertIsNotEnabled()
+        compose.onNodeWithTag("category-move-down-seed-expense-0").assertIsEnabled().performClick()
+        assertEquals(listOf("seed-expense-0" to 1), moved)
         compose.onNodeWithTag("category-row-seed-expense-0").performTouchInput {
             down(center)
             advanceEventTime(800)
-            moveBy(Offset(0f, 140f))
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 140f))
             up()
         }
-        compose.onNodeWithTag("category-active-name-餐饮").performClick()
+        assertEquals(listOf("seed-expense-0" to 1), moved)
+        compose.onNodeWithTag("category-active-name-日用").performClick()
         compose.onNodeWithTag("category-type-INCOME").performClick()
         compose.onNodeWithTag("category-type-INCOME").assertIsSelected()
         compose.onNodeWithText("工资").assertIsDisplayed()
         compose.onAllNodesWithText("餐饮").assertCountEquals(0)
-        assertEquals(listOf("seed-expense-0" to 1), moved)
-        assertEquals(listOf("seed-expense-0" to false), active)
+        assertEquals(listOf(categories.first { it.name == "日用" }.id to false), active)
     }
 
     @Test fun categoryEditorKeepsTypeFixedOnEditAndShowsAllBuiltInIconsOnCreate() {
@@ -97,30 +104,35 @@ class CategorySettingsScreenTest {
         compose.onNodeWithTag("category-editor-type-INCOME").assertIsSelected()
     }
 
-    @Test fun failedDropRestoresTheOriginalCategoryOrder() {
+    @Test fun categoryArrowMoveLocksDuringSaveAndFailurePreservesOrder() {
+        val categories = CategoryCatalog.defaults()
+        var complete: ((Boolean) -> Unit)? = null
+        var moveCalls = 0
         compose.setContent {
             CaijiTheme {
                 CategoryManagerScreen(
-                    categories = CategoryCatalog.defaults(), onBack = {},
+                    categories = categories, onBack = {},
                     onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
-                    onMove = { _, _, done -> done(false) }
+                    onMove = { _, _, done -> moveCalls += 1; complete = done }
                 )
             }
         }
-        val first = compose.onNodeWithTag("category-name-seed-expense-0", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
-        val second = compose.onNodeWithTag("category-name-seed-expense-1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
-        compose.onNodeWithTag("category-row-seed-expense-0").performTouchInput {
-            down(center)
-            advanceEventTime(800)
-            moveBy(Offset(0f, 140f))
-            up()
-        }
+        val first = compose.onNodeWithTag("category-row-seed-expense-0").fetchSemanticsNode().boundsInRoot.top
+        val second = compose.onNodeWithTag("category-row-seed-expense-1").fetchSemanticsNode().boundsInRoot.top
+        val clickArrow = compose.onNodeWithTag("category-move-down-seed-expense-0")
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action ?: error("Arrow click action is missing")
+        compose.runOnIdle { clickArrow(); clickArrow() }
+        assertEquals("Two taps in one frame must start one reorder request", 1, moveCalls)
+        compose.onNodeWithTag("category-move-down-seed-expense-1").assertIsNotEnabled()
+        compose.onNodeWithTag("category-active-name-购物").assertIsNotEnabled()
+        compose.runOnIdle { complete?.invoke(false) }
         compose.waitForIdle()
-        compose.onNodeWithTag("category-list").performScrollToNode(hasText("餐饮"))
-        val firstAfter = compose.onNodeWithTag("category-name-seed-expense-0", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
-        val secondAfter = compose.onNodeWithTag("category-name-seed-expense-1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        val firstAfter = compose.onNodeWithTag("category-row-seed-expense-0").fetchSemanticsNode().boundsInRoot.top
+        val secondAfter = compose.onNodeWithTag("category-row-seed-expense-1").fetchSemanticsNode().boundsInRoot.top
         assertEquals(true, first < second)
         assertEquals(true, firstAfter < secondAfter)
+        compose.onNodeWithTag("category-move-down-seed-expense-0").assertIsEnabled()
+        compose.onNodeWithText("更新分类顺序失败，请重试。").assertIsDisplayed()
     }
 
     @Test fun settingsExposesCategoryAndEncryptedBackupActions() {
