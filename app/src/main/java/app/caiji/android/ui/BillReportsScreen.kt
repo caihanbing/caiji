@@ -254,12 +254,15 @@ private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
             ).maxOf(String::length)
         } ?: 8
         val firstWidth = 48.dp
-        val numericWidth = maxOf(74.dp, (maxNumberLength * 6.3f * fontScale + 12f).dp)
-        val tableWidth = maxOf(maxWidth, firstWidth + numericWidth * 3)
+        val minimumNumericWidth = maxOf(74.dp, (maxNumberLength * 6.3f * fontScale + 12f).dp)
+        val rowStartPadding = 6.dp
+        val rowEndPadding = 2.dp
+        val tableWidth = maxOf(maxWidth, firstWidth + rowStartPadding + rowEndPadding + minimumNumericWidth * 3)
+        val numericWidth = (tableWidth - firstWidth - rowStartPadding - rowEndPadding) / 3
         Column(Modifier.horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
             Column(Modifier.width(tableWidth)) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().padding(start = rowStartPadding, end = rowEndPadding, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(heading, Modifier.width(firstWidth), color = CaijiPalette.SecondaryText,
@@ -272,7 +275,7 @@ private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
                 rows.forEach { item ->
                     Row(
                         Modifier.fillMaxWidth().clickable(onClick = item.onClick).testTag(item.tag)
-                            .padding(horizontal = 6.dp, vertical = 12.dp),
+                            .padding(start = rowStartPadding, end = rowEndPadding, top = 12.dp, bottom = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(item.label, Modifier.width(firstWidth), style = MaterialTheme.typography.bodyMedium,
@@ -299,9 +302,11 @@ private fun TableHeaderCell(label: String, width: androidx.compose.ui.unit.Dp, t
 
 @Composable
 private fun TableAmount(value: String, width: androidx.compose.ui.unit.Dp, color: androidx.compose.ui.graphics.Color) {
-    Text(value, Modifier.width(width), color = color,
-        style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
-        textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+    Box(Modifier.width(width), contentAlignment = Alignment.CenterEnd) {
+        Text(value, color = color,
+            style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+            maxLines = 1, softWrap = false)
+    }
 }
 
 @Composable

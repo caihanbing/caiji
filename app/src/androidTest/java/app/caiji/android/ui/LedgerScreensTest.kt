@@ -10,11 +10,13 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.onRoot
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
@@ -156,6 +158,51 @@ class LedgerScreensTest {
         val expenseBounds = compose.onNodeWithText("支出 ¥92,233,720,368,547,758.07", useUnmergedTree = true)
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertEquals(incomeBounds.center.y, expenseBounds.center.y, 1f)
+    }
+
+    @Test fun dailySummaryRightAlignsIncomeOnlyToTheEighteenDpContentEdge() {
+        assertDailySummaryRightEdge(
+            listOf(LedgerEntry("right-income", EntryType.INCOME, 66600, incomeCategory.id, LocalDate.of(2026, 11, 1))),
+            "收入 ¥666.00"
+        )
+    }
+
+    @Test fun dailySummaryRightAlignsExpenseOnlyToTheEighteenDpContentEdge() {
+        assertDailySummaryRightEdge(
+            listOf(LedgerEntry("right-expense", EntryType.EXPENSE, 13800, expenseCategory.id, LocalDate.of(2026, 11, 1))),
+            "支出 ¥138.00"
+        )
+    }
+
+    @Test fun dailySummaryRightAlignsTheTrailingExpenseWhenBothTypesExist() {
+        assertDailySummaryRightEdge(
+            listOf(
+                LedgerEntry("right-both-income", EntryType.INCOME, 66600, incomeCategory.id, LocalDate.of(2026, 11, 1)),
+                LedgerEntry("right-both-expense", EntryType.EXPENSE, 13800, expenseCategory.id, LocalDate.of(2026, 11, 1))
+            ),
+            "支出 ¥138.00"
+        )
+    }
+
+    private fun assertDailySummaryRightEdge(entries: List<LedgerEntry>, summaryText: String) {
+        val density = AtomicReference(1f)
+        compose.setContent {
+            val currentDensity = LocalDensity.current
+            density.set(currentDensity.density)
+            CaijiTheme {
+                Box(Modifier.width(393.dp).height(820.dp).testTag("daily-alignment-viewport")) {
+                    LedgerHome(
+                        month = YearMonth.of(2026, 11), expenseFen = BigInteger.ZERO, incomeFen = BigInteger.ZERO,
+                        entries = entries, categories = listOf(expenseCategory, incomeCategory),
+                        onPrevious = {}, onNext = {}, onEdit = {}, onCreateEntry = {}
+                    )
+                }
+            }
+        }
+        val viewportRight = compose.onNodeWithTag("daily-alignment-viewport").fetchSemanticsNode().boundsInRoot.right
+        val textRight = compose.onNodeWithText(summaryText, useUnmergedTree = true).assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot.right
+        assertEquals(viewportRight - 18f * density.get(), textRight, 2f)
     }
 
     @Test

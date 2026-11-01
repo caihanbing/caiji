@@ -115,7 +115,7 @@ internal fun LedgerHome(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 20.dp, end = 20.dp, top = 13.dp, bottom = 7.dp),
+                                .padding(start = 20.dp, end = 18.dp, top = 13.dp, bottom = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -127,16 +127,21 @@ internal fun LedgerHome(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            if (hasSummary) Row(
-                                modifier = Modifier.weight(1.1f).horizontalScroll(rememberScrollState())
-                                    .testTag("daily-summary-$day").semantics(mergeDescendants = true) {},
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            if (hasSummary) Box(
+                                modifier = Modifier.weight(1.1f),
+                                contentAlignment = Alignment.CenterEnd
                             ) {
-                                if (income.signum() > 0) Text("收入 ¥${formatYuan(income)}", color = CaijiPalette.SecondaryText,
-                                    style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
-                                if (expense.signum() > 0) Text("支出 ¥${formatYuan(expense)}", color = CaijiPalette.SecondaryText,
-                                    style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                        .testTag("daily-summary-$day").semantics(mergeDescendants = true) {},
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (income.signum() > 0) Text("收入 ¥${formatYuan(income)}", color = CaijiPalette.SecondaryText,
+                                        style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                                    if (expense.signum() > 0) Text("支出 ¥${formatYuan(expense)}", color = CaijiPalette.SecondaryText,
+                                        style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                                }
                             }
                         }
                     }
