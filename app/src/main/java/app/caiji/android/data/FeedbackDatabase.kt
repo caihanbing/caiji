@@ -167,5 +167,14 @@ class FeedbackRepository(private val context: Context, private val database: Fee
 
     fun resolveScreenshot(relativePath: String): File = File(context.filesDir, relativePath)
 
+    internal fun resolveEditorImage(draftId: String, reference: String): File {
+        if (!reference.startsWith("pending:")) return resolveScreenshot(reference)
+        val prefix = "pending:$draftId/"
+        require(reference.startsWith(prefix)) { "截图草稿不匹配" }
+        val filename = reference.removePrefix(prefix)
+        require(filename.isNotBlank() && '/' !in filename && '\\' !in filename) { "截图路径无效" }
+        return File(draftRoot, "$draftId/$filename")
+    }
+
     companion object { const val MAX_SCREENSHOTS = 5 }
 }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -82,11 +83,10 @@ internal fun FeedbackListScreen(
     onBack: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, modifier = Modifier.testTag("feedback-list-back")) { Text("‹ 返回") }
-            Text("问题反馈", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = onNew, modifier = Modifier.testTag("feedback-new")) { Text("＋ 新建", color = CaijiPalette.Primary) }
-        }
+        CaijiPageTopBar(
+            title = "问题反馈", onBack = onBack, backTag = "feedback-list-back", actionTag = "feedback-new",
+            action = { TextButton(onClick = onNew) { Text("＋ 新建", color = CaijiPalette.Primary) } }
+        )
         Text("只保存在本机，可分享给开发者。", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = CaijiPalette.SecondaryText,
             style = MaterialTheme.typography.bodySmall)
         if (records.isEmpty()) {
@@ -143,7 +143,8 @@ internal fun FeedbackEditorScreen(
     var deleteImagePath by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    BackHandler(enabled = true, onBack = onCancel)
+    BackHandler(enabled = saving) { }
+    BackHandler(enabled = !saving, onBack = onCancel)
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(FeedbackRepository.MAX_SCREENSHOTS)) { uris ->
         if (uris.isNotEmpty()) scope.launch {
@@ -158,21 +159,25 @@ internal fun FeedbackEditorScreen(
         dismissButton = { TextButton(onClick = { deleteImagePath = null }) { Text("取消") } }
     ) }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onCancel, enabled = !saving, modifier = Modifier.testTag("feedback-editor-cancel")) { Text("‹ 返回") }
-            Text(if (existing == null) "新建反馈" else "编辑反馈", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = {
+        CaijiPageTopBar(
+            title = if (existing == null) "新建反馈" else "编辑反馈",
+            onBack = onCancel,
+            backTag = "feedback-editor-cancel",
+            actionTag = "feedback-save-slot",
+            backEnabled = !saving,
+            action = {
+                TextButton(onClick = {
                 if (title.isBlank() || description.isBlank()) { error = "请填写标题和问题描述"; return@TextButton }
                 saving = true
                 onSave(title.trim(), description.trim(), imageRefs) { saved, message ->
                     saving = false
                     error = if (saved) null else message ?: "保存失败，请重试"
                 }
-            }, enabled = !saving && title.isNotBlank() && description.isNotBlank(), modifier = Modifier.testTag("feedback-save")) {
-                Text(if (saving) "保存中" else "保存", color = CaijiPalette.Primary)
+                }, enabled = !saving && title.isNotBlank() && description.isNotBlank(), modifier = Modifier.testTag("feedback-save")) {
+                    Text(if (saving) "保存中" else "保存", color = CaijiPalette.Primary)
+                }
             }
-        }
+        )
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(title, { title = it; error = null }, Modifier.fillMaxWidth().testTag("feedback-title"),
@@ -183,18 +188,21 @@ internal fun FeedbackEditorScreen(
                 Text("截图（选填）", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = CaijiPalette.Ink)
                 Text("${imageRefs.size}/${FeedbackRepository.MAX_SCREENSHOTS}", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.labelSmall)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                imageRefs.forEach { ref ->
-                    val file = if (ref.startsWith("pending:")) File(File(context.cacheDir, "feedback-drafts/$draftId"), ref.removePrefix("pending:"))
-                        else repository.resolveScreenshot(ref)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("feedback-image-strip"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                imageRefs.forEachIndexed { index, ref ->
+                    val file = runCatching { repository.resolveEditorImage(draftId, ref) }
+                        .getOrElse { File(context.cacheDir, "missing-feedback-image") }
                     Box {
-                        FeedbackThumbnail(file, Modifier.size(92.dp, 72.dp))
-                        Text("×", Modifier.align(Alignment.TopEnd).clickable { deleteImagePath = ref }
+                        FeedbackThumbnail(file, Modifier.size(92.dp, 72.dp).testTag("feedback-preview-$index"))
+                        Text("×", Modifier.align(Alignment.TopEnd).clickable(enabled = !saving) { deleteImagePath = ref }
                             .background(CaijiPalette.Surface, RoundedCornerShape(20.dp)).padding(horizontal = 6.dp), color = CaijiPalette.Danger)
                     }
                 }
                 if (imageRefs.size < FeedbackRepository.MAX_SCREENSHOTS) {
-                    Surface(Modifier.size(92.dp, 72.dp).clickable {
+                    Surface(Modifier.size(92.dp, 72.dp).clickable(enabled = !saving) {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }.testTag("feedback-add-image"), color = CaijiPalette.SurfaceAlt, shape = RoundedCornerShape(10.dp)) {
                         Box(contentAlignment = Alignment.Center) { Text("＋\n添加截图", color = CaijiPalette.SecondaryText, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
@@ -211,10 +219,7 @@ internal fun FeedbackEditorScreen(
 @Composable
 internal fun ThemePickerScreen(selected: CaijiThemeId, onSelect: (CaijiThemeId) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, modifier = Modifier.testTag("theme-back")) { Text("‹ 返回") }
-            Text("换肤", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        }
+        CaijiPageTopBar(title = "换肤", onBack = onBack, backTag = "theme-back", actionTag = "theme-no-action")
         PeriodSummaryCard("本月结余", app.caiji.android.data.LedgerPeriodTotals(java.math.BigInteger.valueOf(13_800), java.math.BigInteger.valueOf(66_600)))
         Text("选择后立即应用", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = CaijiPalette.SecondaryText,
             style = MaterialTheme.typography.bodySmall)

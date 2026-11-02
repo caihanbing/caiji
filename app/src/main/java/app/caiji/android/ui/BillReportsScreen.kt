@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,12 +18,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,10 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.geometry.Offset
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
 import app.caiji.android.data.PeriodLedgerReport
@@ -98,28 +91,13 @@ internal fun BillReportsScreen(
                     enabled = year < Year.now().value, onClick = onNextYear)
             }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
-                .background(CaijiPalette.SurfaceAlt, RoundedCornerShape(12.dp)).padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            BillListMode.entries.forEach { candidate ->
-                val label = if (candidate == BillListMode.MONTH) "月账单" else "年账单"
-                val selected = candidate == mode
-                Surface(
-                    color = if (selected) CaijiPalette.Primary else CaijiPalette.Surface,
-                    contentColor = if (selected) CaijiPalette.OnPrimary else CaijiPalette.SecondaryText,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f).height(42.dp).clickable {
-                        if (candidate.ordinal != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(candidate.ordinal) }
-                    }.testTag(if (candidate == BillListMode.MONTH) "bill-tab-month" else "bill-tab-year")
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                    }
-                }
-            }
-        }
+        PagerSegmentedTabs(
+            state = pagerState,
+            labels = listOf("月账单", "年账单"),
+            tags = listOf("bill-tab-month", "bill-tab-year"),
+            containerTag = "bill-tabs",
+            onSelectPage = { page -> if (page != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(page) } }
+        )
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().testTag("bill-mode-pager")) { pageIndex ->
             when (BillListMode.entries[pageIndex]) {
                 BillListMode.MONTH -> {
@@ -213,26 +191,23 @@ internal fun BillPeriodReportScreen(
             )
         }
         if (selectedCategoryId == null) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
-                .background(CaijiPalette.SurfaceAlt, RoundedCornerShape(12.dp)).padding(3.dp)) {
-                listOf(EntryType.EXPENSE to "支出排行", EntryType.INCOME to "收入排行").forEach { (type, label) ->
-                    val selected = type == selectedType
-                    Surface(
-                        color = if (selected) CaijiPalette.Primary else CaijiPalette.Surface,
-                        contentColor = if (selected) CaijiPalette.OnPrimary else CaijiPalette.SecondaryText,
-                        shape = RoundedCornerShape(9.dp), modifier = Modifier.weight(1f).height(42.dp)
-                            .clickable {
-                                val page = if (type == EntryType.EXPENSE) 0 else 1
-                                if (page != rankingPager.currentPage) rankingPagerScope.launch { rankingPager.animateScrollToPage(page) }
-                            }.testTag("report-type-${type.name}")
-                    ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(label) } }
+            PagerSegmentedTabs(
+                state = rankingPager,
+                labels = listOf("支出排行", "收入排行"),
+                tags = listOf("report-type-EXPENSE", "report-type-INCOME"),
+                containerTag = "report-type-tabs",
+                onSelectPage = { page ->
+                    if (page != rankingPager.currentPage) rankingPagerScope.launch { rankingPager.animateScrollToPage(page) }
                 }
-            }
-            HorizontalPager(state = rankingPager, modifier = Modifier.weight(1f).fillMaxWidth().testTag("report-ranking-pager")) { _ ->
+            )
+            HorizontalPager(state = rankingPager, modifier = Modifier.weight(1f).fillMaxWidth().testTag("report-ranking-pager")) { pageIndex ->
+                val pageType = if (pageIndex == 0) EntryType.EXPENSE else EntryType.INCOME
+                val rankingCategories = if (loading || pageType != selectedType) emptyList()
+                    else report?.categories.orEmpty().filter { it.category.type == pageType }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                     Text("分类排行", Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    report?.categories.orEmpty().forEach { total ->
+                    rankingCategories.forEach { total ->
                         Row(
                             Modifier.fillMaxWidth().clickable { onSelectCategory(total.category.id) }
                                 .testTag("report-category-${total.category.id}")
@@ -246,7 +221,7 @@ internal fun BillPeriodReportScreen(
                         }
                         HorizontalDivider(color = CaijiPalette.Divider)
                     }
-                    if (!loading && error == null && report?.categories.isNullOrEmpty()) {
+                    if (!loading && error == null && rankingCategories.isEmpty()) {
                         Text("此期间暂无${if (selectedType == EntryType.EXPENSE) "支出" else "收入"}",
                             Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)
                     }
@@ -302,11 +277,7 @@ private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
         val rowEndPadding = 2.dp
         val tableWidth = maxOf(maxWidth, firstWidth + rowStartPadding + rowEndPadding + minimumNumericWidth * 3)
         val numericWidth = (tableWidth - firstWidth - rowStartPadding - rowEndPadding) / 3
-        val tableScroll = remember { object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                Offset(x = available.x, y = 0f)
-        } }
-        Column(Modifier.nestedScroll(tableScroll).horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
+        Column(Modifier.horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
             Column(Modifier.width(tableWidth)) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = rowStartPadding, end = rowEndPadding, top = 10.dp, bottom = 10.dp),

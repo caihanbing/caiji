@@ -70,6 +70,23 @@ class BillReportsScreenTest {
         compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
     }
 
+    @Test fun shortBillRowPassesHorizontalSwipeToMonthYearPager() {
+        compose.setContent {
+            CaijiTheme {
+                var mode by remember { mutableStateOf(BillListMode.MONTH) }
+                BillReportsScreen(
+                    mode = mode, year = 2026,
+                    monthReports = listOf(MonthLedgerTotal(YearMonth.of(2026, 10), totals(100, 500))),
+                    yearReports = emptyList(), loading = false, error = null,
+                    onBack = {}, onPreviousYear = {}, onNextYear = {}, onRetryList = {},
+                    onSelectMode = { mode = it }, onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("month-row-10").performTouchInput { swipeLeft() }
+        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+    }
+
     @Test fun expenseAndIncomeRankingsCanSwitchByHorizontalSwipe() {
         compose.setContent {
             CaijiTheme {
@@ -85,6 +102,51 @@ class BillReportsScreenTest {
         }
         compose.onNodeWithTag("report-ranking-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithText("此期间暂无收入").assertIsDisplayed()
+    }
+
+    @Test fun reportDoesNotShowThePreviousTypeRankingsWhileTheNewTypeLoadsOrFails() {
+        val expenseCategory = app.caiji.android.domain.CategoryCatalog.defaults().first { it.type == EntryType.EXPENSE }
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(100, 0),
+                        listOf(CategoryPeriodTotal(expenseCategory, BigInteger.valueOf(100))), emptyList()
+                    ),
+                    loading = false, error = "收入报告暂不可用", selectedType = EntryType.INCOME,
+                    selectedCategoryId = null, onBack = {}, onRetry = {}, onSelectType = {},
+                    onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onAllNodesWithTag("report-category-${expenseCategory.id}").assertCountEquals(0)
+    }
+
+    @Test fun reportIncomingPageDoesNotDuplicateExpenseRankingsDuringTheSwipe() {
+        val expenseCategory = app.caiji.android.domain.CategoryCatalog.defaults().first { it.type == EntryType.EXPENSE }
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CaijiTheme {
+                var type by remember { mutableStateOf(EntryType.EXPENSE) }
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1),
+                        totals(100, 0), listOf(CategoryPeriodTotal(expenseCategory, BigInteger.valueOf(100))), emptyList()),
+                    loading = false, error = null, selectedType = type, selectedCategoryId = null,
+                    onBack = {}, onRetry = {}, onSelectType = { type = it }, onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("report-ranking-pager").performTouchInput {
+            val start = center
+            down(start)
+            moveTo(start.copy(x = start.x - width * 0.7f))
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("report-type-INCOME").assertIsSelected()
+        compose.onAllNodesWithTag("report-category-${expenseCategory.id}").assertCountEquals(1)
+        compose.mainClock.autoAdvance = true
     }
 
     @Test fun monthAndYearListsUseReferenceTitlesAndOpenTheSelectedPeriod() {
@@ -120,14 +182,15 @@ class BillReportsScreenTest {
     @Test
     fun compactBillTableScrollsAsOneAndKeepsRowsClickable() {
         val opened = AtomicReference<String>()
+        val longAmount = BigInteger("10000000000")
         compose.setContent {
             CaijiTheme {
-                Box(Modifier.width(320.dp).height(700.dp)) {
+                Box(Modifier.width(320.dp).height(900.dp)) {
                     BillReportsScreen(
                         mode = BillListMode.MONTH, year = 2026,
                         monthReports = listOf(
-                            MonthLedgerTotal(YearMonth.of(2026, 10), totals(100, 500)),
-                            MonthLedgerTotal(YearMonth.of(2026, 9), totals(200, 800))
+                            MonthLedgerTotal(YearMonth.of(2026, 10), LedgerPeriodTotals(longAmount, longAmount)),
+                            MonthLedgerTotal(YearMonth.of(2026, 9), LedgerPeriodTotals(longAmount, longAmount))
                         ), yearReports = listOf(2026 to totals(300, 1300)),
                         loading = false, error = null, onSelectMode = {}, onBack = {}, onPreviousYear = {},
                         onNextYear = {}, onRetryList = {},
@@ -136,11 +199,30 @@ class BillReportsScreenTest {
                 }
             }
         }
-        compose.onNodeWithTag("bill-table-header-balance").assertIsDisplayed()
-        compose.onNodeWithTag("bill-table-scroll").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("month-row-10").assertIsDisplayed()
+        val initialIncomeHeader = compose.onNodeWithTag("bill-table-header-income").fetchSemanticsNode().boundsInRoot.left
+        compose.onNodeWithTag("bill-table-scroll").performTouchInput {
+            val start = center
+            down(start)
+            advanceEventTime(80)
+            moveTo(start.copy(x = start.x - width * 0.2f))
+            up()
+        }
+        compose.onNodeWithTag("bill-selected-year").assertIsDisplayed()
         compose.onNodeWithTag("bill-table-header-income").assertIsDisplayed()
+        val scrolledIncomeHeader = compose.onNodeWithTag("bill-table-header-income").fetchSemanticsNode().boundsInRoot.left
+        assertTrue(scrolledIncomeHeader < initialIncomeHeader)
+        compose.onNodeWithTag("bill-table-scroll").performTouchInput {
+            val start = center
+            down(start)
+            advanceEventTime(80)
+            moveTo(start.copy(x = start.x + width * 0.2f))
+            up()
+        }
         compose.onNodeWithTag("month-row-10").assertIsDisplayed().performClick()
         assertEquals("month-10", opened.get())
+        compose.onNodeWithTag("bill-table-scroll").performTouchInput { swipeLeft() }
+        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
     }
 
     @Test fun monthlyBalanceTextEndsAtTheEighteenDpContentEdge() {

@@ -3,6 +3,7 @@ package app.caiji.android.ui
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -31,6 +32,7 @@ import app.caiji.android.domain.CategoryCatalog
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiTheme
 import org.junit.Assert.assertEquals
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,6 +54,59 @@ class CategorySettingsScreenTest {
         compose.onNodeWithTag("category-type-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("category-type-INCOME").assertIsSelected()
         compose.onNodeWithTag("category-row-seed-income-0").assertIsDisplayed()
+    }
+
+    @Test fun categoryTypeSelectionTracksSwipeBeforeThePageSettles() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CaijiTheme {
+                CategoryManagerScreen(
+                    categories = CategoryCatalog.defaults(), onBack = {},
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onMove = { _, _, done -> done(true) }
+                )
+            }
+        }
+        val pager = compose.onNodeWithTag("category-type-pager")
+        pager.performTouchInput {
+            val start = center
+            down(start)
+            moveTo(start.copy(x = start.x - width * 0.7f))
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("category-type-INCOME").assertIsSelected()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun categoryManagerTitleIsCenteredAcrossUnequalHeaderActions() {
+        compose.setContent {
+            CaijiTheme {
+                CategoryManagerScreen(
+                    categories = CategoryCatalog.defaults(), onBack = {},
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onMove = { _, _, done -> done(true) }
+                )
+            }
+        }
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithText("分类管理").fetchSemanticsNode().boundsInRoot
+        assertEquals(root.center.x, title.center.x, 1f)
+    }
+
+    @Test fun categoryTypeTabCannotChangeWhileOrderWriteIsPending() {
+        val pending = AtomicReference<((Boolean) -> Unit)?>(null)
+        compose.setContent {
+            CaijiTheme {
+                CategoryManagerScreen(
+                    categories = CategoryCatalog.defaults(), onBack = {},
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onMove = { _, _, done -> pending.set(done) }
+                )
+            }
+        }
+        compose.onNodeWithTag("category-move-down-seed-expense-0").performClick()
+        compose.onNodeWithTag("category-type-INCOME").assertIsNotEnabled()
+        pending.get()?.invoke(true)
     }
 
     @Test fun categoryManagerMovesOnePositionByArrowAndLongPressDoesNotReorder() {

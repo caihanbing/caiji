@@ -108,30 +108,26 @@ internal fun CategoryManagerScreen(
     }
 
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack, modifier = Modifier.testTag("category-back")) {
-                CaijiIcon(CaijiIconName.BACK, "返回")
+        CaijiPageTopBar(
+            title = "分类管理", onBack = onBack, backTag = "category-back", actionTag = "category-add",
+            action = {
+                TextButton(onClick = { add = true; edit = null }, enabled = !operationInProgress) {
+                    CaijiIcon(CaijiIconName.ADD, "新增分类", Modifier.size(18.dp))
+                    Text("添加", modifier = Modifier.padding(start = 4.dp))
+                }
             }
-            Text(
-                "分类管理",
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            TextButton(onClick = { add = true; edit = null }, enabled = !operationInProgress, modifier = Modifier.testTag("category-add")) {
-                CaijiIcon(CaijiIconName.ADD, "新增分类", Modifier.size(18.dp))
-                Text("添加", modifier = Modifier.padding(start = 4.dp))
-            }
-        }
+        )
 
-        TypeSelector(selectedType = selectedType, tagPrefix = "category-type", enabled = !operationInProgress) {
-            val page = if (it == EntryType.EXPENSE) 0 else 1
-            if (page != typePager.currentPage) pagerScope.launch { typePager.animateScrollToPage(page) }
-        }
+        PagerSegmentedTabs(
+            state = typePager,
+            labels = listOf("支出", "收入"),
+            tags = listOf("category-type-EXPENSE", "category-type-INCOME"),
+            containerTag = "category-type-tabs",
+            enabled = !operationInProgress,
+            onSelectPage = { page ->
+                if (page != typePager.currentPage) pagerScope.launch { typePager.animateScrollToPage(page) }
+            }
+        )
         Surface(
             color = CaijiPalette.PrimarySoft,
             shape = RoundedCornerShape(14.dp),

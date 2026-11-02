@@ -6,11 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在设置页选择五套配色，并跨重启应用到全部账本页面和系统栏。 -->
 <!-- last-verified: 2026-11-02 -->
-<!-- code-basis: HEAD f2632d92f4e2; worktree-digest sha256:55d11b871728665a2370d46e0b72486ffa14e98cf052e1c89b179099f588a37b -->
+<!-- code-basis: HEAD 8d2f173e8547; worktree-digest sha256:1d2ebaf4cfee15e5d383de512046acad66b3261b4b1bac58dd54648e97b305be -->
 
 ## 快速上下文
 
-设置 → 换肤提供琥珀暖白、青竹、海盐蓝、雾紫和石墨深色五套配色，点击后立即生效。主题 key 只保存在应用私有 SharedPreferences；默认 amber 沿用旧版配色。换肤只改变外观，不修改账本或加密账本备份。
+设置 → 换肤提供琥珀暖白、青竹、海盐蓝、雾紫和石墨深色五套配色，点击后立即生效。主题 key 只保存在应用私有 SharedPreferences；默认 amber 沿用旧版配色。换肤页使用跨页面一致的 56dp 居中标题栏。
 
 主题色由 `CaijiPalette` 按当前主题选择，Material 3 色彩方案和 Activity 系统栏随选择更新。日期选择器按主题 key 使用相应的 Android dialog 样式。
 
@@ -92,7 +92,7 @@
 ## 配置与依赖
 
 - 使用现有 Compose Material 3 和 Android SharedPreferences；Pager/视觉外观不新增主题库。
-- Android `minSdk=26`、`targetSdk=34`；对应 0.3.0/versionCode 7 发布。
+- Android `minSdk=26`、`targetSdk=34`；对应 0.3.1/versionCode 8 发布。
 
 ## 可观测性与运维
 
@@ -104,7 +104,7 @@
 ### 已执行
 
 - `CaijiThemeTest.fiveThemesHaveDistinctStableIdsAndChangingSelectionUpdatesPalette` 验证五个 key 对应不同主色，逐项选择即时替换 palette 并恢复默认。
-- API34 `FeedbackAndThemeScreenTest.selectingAnyOfFiveThemesAppliesItsPaletteImmediately` 验证主题选择页点按行为；`MainActivityAppearanceTest.selectedThemeIsRestoredWhenActivityIsRecreated` 验证 Activity 重建后恢复偏好；全量回归 79 项及 release 证据记于 Work Item。
+- API34 `FeedbackAndThemeScreenTest.selectingAnyOfFiveThemesAppliesItsPaletteImmediately` 验证主题选择页点按行为；`MainActivityAppearanceTest.selectedThemeIsRestoredWhenActivityIsRecreated` 验证 Activity 重建后恢复偏好；`feedbackListEditorAndThemeTitlesShareTheCenteredHeader` 验证换肤标题与反馈页共用屏幕中心。90 项全量回归及 release 证据记于 Work Item。
 
 ### 未执行
 
@@ -125,7 +125,7 @@
 
 - **影响**：Android API 26 实际日期选择器样式未由当前模拟器验证。
 - **当前处理**：API34 dark/light 样式渲染测试通过，资源使用原生 Android Dialog theme。
-- **后续动作**：安装 0.3.0 后在用户 Android 8.0 设备核对系统对话框和状态栏对比度。
+- **后续动作**：安装 0.3.1 后在用户 Android 8.0 设备核对系统对话框和状态栏对比度。
 
 ## 变更记录
 
@@ -136,3 +136,12 @@
 - **原因**：按用户批准的高保真主题选择页增加外观自定义。
 - **兼容性**：不修改 ledger Room schema 1 或账本备份格式 2。
 - **验证**：79 项 API34、JVM、lint、APK metadata/v2 签名/zipalign/SHA-256 和 code6→7 覆盖升级通过；API26 日期 Dialog 未实跑。
+
+
+### 2026-11-02 — 0.3.1 换肤顶部栏对齐
+
+- **状态**：已完成
+- **变化**：换肤页使用共用 56dp 居中标题栏。
+- **原因**：按已确认高保真稿统一设置内功能页顶部样式。
+- **兼容性**：主题 ID/SharedPreferences 与账本备份范围不变。
+- **验证**：API34 测量换肤、反馈列表和编辑标题中心坐标；90 项仪器、JVM、lint 和 release 构建通过；0.3.0→0.3.1 覆盖升级保留青竹偏好。

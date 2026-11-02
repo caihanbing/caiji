@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
@@ -47,7 +46,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -55,7 +53,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -263,87 +260,34 @@ internal fun EntryEditorScreen(
                 }
             }
 
-            EntryTypeToggle(type) { candidate ->
-                val targetPage = if (candidate == EntryType.EXPENSE) 0 else 1
-                if (targetPage != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(targetPage) }
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .testTag("entry-editor-scroll")
-            ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-            ) {
-                Text("金额", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("¥", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                focusManager.clearFocus()
-                                inputPanelExpanded = true
-                            }
-                            .testTag("amount-display"),
-                        textAlign = TextAlign.End,
-                        style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+            PagerSegmentedTabs(
+                state = pagerState,
+                labels = listOf("支出", "收入"),
+                tags = listOf("entry-type-expense", "entry-type-income"),
+                containerTag = "entry-type-tabs",
+                enabled = !saving && !categoryDragActive,
+                onSelectPage = { page ->
+                    if (page != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(page) }
                 }
-                if (expression.isNotEmpty() && calculated == null) {
-                    Text(
-                        "金额格式无效或结果不能为零及负数",
-                        color = CaijiPalette.Danger,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("选择分类", color = CaijiPalette.Ink, style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.weight(1f))
-                TextButton(
-                    onClick = { focusManager.clearFocus(); managingCategories = true },
-                    enabled = !saving,
-                    modifier = Modifier.testTag("entry-manage-categories")
-                ) {
-                    CaijiIcon(CaijiIconName.CATEGORY, contentDescription = "管理分类", modifier = Modifier.size(18.dp))
-                    Text("管理分类", modifier = Modifier.padding(start = 5.dp))
-                }
-            }
+            )
 
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = !saving && !managingCategories && !showSoftwareKeyboard && !categoryDragActive,
-                modifier = Modifier.fillMaxWidth().height(210.dp).testTag("entry-category-pager")
+                modifier = Modifier.weight(1f).fillMaxWidth().testTag("entry-content-pager")
             ) { pageIndex ->
-                val pageType = if (pageIndex == 0) EntryType.EXPENSE else EntryType.INCOME
-                val pageCategories = categories.filter { it.type == pageType && (it.active || it.id == selectedCategory) }
-                if (pageCategories.isEmpty()) {
-                    Box(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
-                        Text("暂无可用分类，请先新增或启用分类", color = CaijiPalette.SecondaryText,
-                            textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-                    }
-                } else CategoryDragGrid(
-                    visibleCategories = pageCategories,
-                    allTypeCategories = categories.filter { it.type == pageType }.sortedBy { it.sortOrder },
+                EntryEditorPageContent(
+                    pageType = if (pageIndex == 0) EntryType.EXPENSE else EntryType.INCOME,
+                    currentType = type,
+                    categories = categories,
                     selectedCategory = selectedCategory,
-                    enabled = !saving && pageType == type,
-                    onSelect = { category ->
+                    amount = calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
+                    invalidAmount = expression.isNotEmpty() && calculated == null,
+                    saving = saving,
+                    mustReselectActiveCategory = mustReselectActiveCategory,
+                    onAmountClick = { focusManager.clearFocus(); inputPanelExpanded = true },
+                    onManageCategories = { focusManager.clearFocus(); managingCategories = true },
+                    onSelectCategory = { category ->
                         selectedCategory = category.id
                         mustReselectActiveCategory = false
                         inputPanelExpanded = true
@@ -354,19 +298,6 @@ internal fun EntryEditorScreen(
                 )
             }
 
-            if (selectedCategory == null && mustReselectActiveCategory) {
-                Text(
-                    "该分类已停用，请重新选择启用分类",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 3.dp),
-                    textAlign = TextAlign.End,
-                    color = if (mustReselectActiveCategory) CaijiPalette.Danger else CaijiPalette.SecondaryText,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-
-            }
             if (inputPanelExpanded) {
                 Column(Modifier.fillMaxWidth().testTag("entry-input-dock")) {
                     HorizontalDivider(color = CaijiPalette.Divider)
@@ -459,6 +390,79 @@ internal fun EntryEditorScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EntryEditorPageContent(
+    pageType: EntryType,
+    currentType: EntryType,
+    categories: List<Category>,
+    selectedCategory: String?,
+    amount: String,
+    invalidAmount: Boolean,
+    saving: Boolean,
+    mustReselectActiveCategory: Boolean,
+    onAmountClick: () -> Unit,
+    onManageCategories: () -> Unit,
+    onSelectCategory: (Category) -> Unit,
+    onDragActive: (Boolean) -> Unit,
+    onMove: (String, Int, (Boolean) -> Unit) -> Unit
+) {
+    val pageCategories = categories.filter { it.type == pageType && (it.active || it.id == selectedCategory) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("entry-editor-scroll")) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Text("金额", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("¥", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    amount,
+                    Modifier.weight(1f).clickable(onClick = onAmountClick).testTag("amount-display"),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (invalidAmount) {
+                Text("金额格式无效或结果不能为零及负数", color = CaijiPalette.Danger,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("选择分类", color = CaijiPalette.Ink, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onManageCategories, enabled = !saving, modifier = Modifier.testTag("entry-manage-categories")) {
+                CaijiIcon(CaijiIconName.CATEGORY, contentDescription = "管理分类", modifier = Modifier.size(18.dp))
+                Text("管理分类", modifier = Modifier.padding(start = 5.dp))
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(210.dp), contentAlignment = Alignment.Center) {
+            if (pageCategories.isEmpty()) {
+                Text("暂无可用分类，请先新增或启用分类", Modifier.padding(horizontal = 20.dp),
+                    color = CaijiPalette.SecondaryText, textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium)
+            } else CategoryDragGrid(
+                visibleCategories = pageCategories,
+                allTypeCategories = categories.filter { it.type == pageType }.sortedBy { it.sortOrder },
+                selectedCategory = selectedCategory,
+                enabled = !saving && pageType == currentType,
+                onSelect = onSelectCategory,
+                onDragActive = onDragActive,
+                onMove = onMove
+            )
+        }
+        if (selectedCategory == null && mustReselectActiveCategory && pageType == currentType) {
+            Text("该分类已停用，请重新选择启用分类",
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 3.dp),
+                textAlign = TextAlign.End, color = CaijiPalette.Danger,
+                style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -594,44 +598,6 @@ private fun CategoryDragGrid(
                 Text(category.name, color = if (category.id == selectedCategory) CaijiPalette.Ink else CaijiPalette.SecondaryText,
                     style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 2,
                     overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
-private fun EntryTypeToggle(type: EntryType, onTypeSelected: (EntryType) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .background(CaijiPalette.SurfaceAlt, RoundedCornerShape(11.dp))
-            .padding(3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        listOf(EntryType.EXPENSE to "支出", EntryType.INCOME to "收入").forEach { (candidate, label) ->
-            val selected = candidate == type
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (selected) CaijiPalette.PrimarySoft else Color.Transparent,
-                modifier = Modifier
-                    .weight(1f)
-                    .selectable(
-                        selected = selected,
-                        role = Role.Tab,
-                        onClick = { onTypeSelected(candidate) }
-                    )
-                    .testTag("entry-type-${candidate.name.lowercase()}")
-                    .height(38.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        label,
-                        color = if (selected) CaijiPalette.Ink else CaijiPalette.SecondaryText,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                    )
-                }
             }
         }
     }

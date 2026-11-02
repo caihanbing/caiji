@@ -6,11 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览、手势切换并汇总收支。 -->
 <!-- last-verified: 2026-11-02 -->
-<!-- code-basis: HEAD f2632d92f4e2; worktree-digest sha256:55d11b871728665a2370d46e0b72486ffa14e98cf052e1c89b179099f588a37b -->
+<!-- code-basis: HEAD 8d2f173e8547; worktree-digest sha256:1d2ebaf4cfee15e5d383de512046acad66b3261b4b1bac58dd54648e97b305be -->
 
 ## 快速上下文
 
-财记 0.3.0 通过底部“明细、记账、设置”导航记录本地人民币账单。明细页每日收支右对齐；账单页含月/年总表、期间报告和分类排行，支持横滑。记账页点金额或选分类可展开输入区，分类可长按拖动排序；分类管理、月/年账单和报告排行也支持滑动切换。主题和问题反馈保存在账本之外；账单继续由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入原账本数据库。
+财记 0.3.1 通过底部“明细、记账、设置”导航记录本地人民币账单。记账 Pager 覆盖金额与分类内容；账单短表格可直接切换，宽表格优先滚动并在边界把剩余手势交给 Pager。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。账单继续由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入原账本数据库。
 
 金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
@@ -33,9 +33,10 @@
 - 前台剪贴板仅识别“账户变动提醒/代发工资”和“交易成功提醒/网上快捷支付”。交易类型、交易金额、交易时间字段须唯一且通过格式校验；分类留空，不自动保存。当前草稿或备份恢复期间暂存最新匹配通知。
 - 相同剪贴板文本按 SHA-256 指纹持久去重，仅存指纹、不存通知原文；保存或取消后均不再次自动打开。
 - 明细、月/年账单及年月报告使用同一结余汇总卡，期间切换箭头为透明 48dp 点击区。
-- 记账页支出/收入可点击分段或在分类区域横向切换；切换保留金额、日期、备注，清空分类并收起输入区。
+- 记账页支出/收入可点击分段或在金额、分类内容区域横向切换；切换保留金额、日期、备注，清空分类并收起输入区。
 - 月/年账单分段支持横滑切换，Pager 与分段值同步；报告排行同样支持支出/收入横滑，分类明细钻取时不启用排行切页。
-- 账单表格横向滚动消费手势，滚动冲突时优先表格；单标签垂直滚动位置由 Pager 页面独立保存。
+- 账单表格优先消费实际可滚动的横向位移；无可滚动内容或到达边界后，剩余位移交给月/年 Pager。每页垂直滚动位置独立保存。
+- 分段选中背景与文字颜色跟随 `PagerState.currentPageOffsetFraction` 连续变化；类型副作用及报表查询仍在 `settledPage` 更新。
 - 账单行可左滑展开删除，点击后仍需二次确认；同一时间只展开一行。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
@@ -69,7 +70,8 @@
 - `app/src/main/java/app/caiji/android/ui/PeriodControls.kt` — 明细和报告共用的期间箭头及结余汇总卡。
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
 - `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求序号门闩，丢弃过期异步结果。
-- `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、金额/分类/日期/备注控件、数字键盘和删除/放弃确认。
+- `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、两页金额/分类内容、分类拖动、数字键盘和确认。
+- `app/src/main/java/app/caiji/android/ui/CommonNavigationComponents.kt` — Pager 连续分段、统一选中语义。
 - `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
 - `app/src/main/java/app/caiji/android/domain/ClipboardTransactionParser.kt` — 两种银行通知模板、交易金额字段和日期年份推断。
 - `app/src/main/java/app/caiji/android/ui/theme/CaijiTheme.kt`、`CaijiIcons.kt` — 共用暖白/琥珀主题、图标和系统栏视觉。
@@ -134,7 +136,7 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 `0.3.0`、`versionCode=7`；账本 Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；版本 `0.3.1`、`versionCode=8`；账本 Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
@@ -147,10 +149,10 @@
 
 ### 已执行
 
-- `./gradlew --max-workers=2 :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug` — JVM、lint 和 API34 AVD 79 项仪器测试全部通过；覆盖问题反馈、五主题和四组手势。
+- `:app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug` — JVM、lint 和 API34 AVD 90 项仪器测试全部通过；包含金额起点切页、短/长表格优先级与边界交接、分段中程跟随、报告旧类型隔离和反馈图片预览。
 - API34 仪器覆盖两种通知格式、字段唯一性、余额不串入金额、跨年和闰日；每日收支同一行、年份上下界、类别提示移除、金额展开、键盘邻接、分类箭头均通过。
 - API34 AVD 以同签名 versionCode 6 包新增 ¥1.23 支出，再覆盖安装 0.3.0/code 7；启动后仍显示原 ¥1.23 账单。
-- `bash scripts/test-build-release-macos.sh` 与 `./scripts/build-release-macos.sh` 通过；0.3.0/code 7、包名、minSdk26、targetSdk34、zipalign、v2 证书 SHA-256 `692d2387ba18f63ed43548d153af2a611384d8bffe1c603c3314df56ef006e1a` 和 APK SHA-256 `fcc3ceb42f570bba0319cfa07e2b78a94f36f0f383aba17f0f090c4b30bb92e9` 已核验。
+- `bash scripts/test-build-release-macos.sh` 与 `./scripts/build-release-macos.sh` 通过；0.3.1/code 8 的包名、minSdk26、targetSdk34、签名、zipalign 和 SHA-256 见本轮 Work Item。
 - API34 release 成功导入 0.1.1 导出的格式 2 文件；预览和恢复均核对 1 笔账单、16 个分类、收入 ¥0、支出 ¥1。
 
 ### 未执行
@@ -206,6 +208,14 @@
 - **原因**：根据用户实机验证减少重复点按。
 - **兼容性**：账本表及 Room schema 1、加密备份格式 2 不变。
 - **验证**：79 项 API34 全量仪器测试、JVM 测试和 lint 通过；详细验证记录见对应 Work Item。
+
+### 2026-11-02 — 0.3.1 手势响应修复
+
+- **状态**：已完成
+- **变化**：记账切页扩大到金额/分类内容区；短账单表格把横滑交给 Pager，长表格先横滚且边界余量切页；标签持续跟随拖动。
+- **原因**：依据 0.3.0 实机回归修复无响应及分段选中状态滞后的问题。
+- **兼容性**：只改 UI 手势；账本 schema 1 与备份格式 2 不变。
+- **验证**：API34 90 项仪器、JVM、lint 与正式构建通过，覆盖短/长表格、手势边界和中途反向拖动。
 
 ### 2026-11-01 — 0.2.3 每日摘要和账单结余右对齐
 

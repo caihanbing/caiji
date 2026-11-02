@@ -140,10 +140,29 @@ class EntryEditorScreenTest {
         }
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-key-1").performClick()
-        compose.onNodeWithTag("entry-category-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("entry-content-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("entry-type-income").assertIsSelected()
         compose.onNodeWithTag("amount-display").assertTextContains("1.00")
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
+        compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
+    }
+
+    @Test fun swipingFromAmountAreaSwitchesTypeAndKeepsAmountDraft() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-key-1").performClick()
+        compose.onNodeWithTag("amount-display").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("entry-type-income").assertIsSelected()
+        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
         compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
     }
 
@@ -170,6 +189,24 @@ class EntryEditorScreenTest {
         assertEquals("seed-expense-0", moved.get()?.first)
         assertEquals(1, moved.get()?.second)
         compose.onNodeWithTag("amount-display").assertTextEquals("0.00")
+    }
+
+    @Test fun savingLocksEntryTypeCategorySelectionAndCategoryManagement() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, _ -> }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-key-1").performClick()
+        compose.onNodeWithTag("entry-key-save").performClick()
+        compose.onNodeWithTag("entry-type-income").assertIsNotEnabled()
+        compose.onNodeWithTag("entry-manage-categories").assertIsNotEnabled()
     }
 
     @Test

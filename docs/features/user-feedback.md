@@ -6,11 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机记录体验问题及最多 5 张截图，按用户选择通过 Android 分享面板外发。 -->
 <!-- last-verified: 2026-11-02 -->
-<!-- code-basis: HEAD f2632d92f4e2; worktree-digest sha256:55d11b871728665a2370d46e0b72486ffa14e98cf052e1c89b179099f588a37b -->
+<!-- code-basis: HEAD 8d2f173e8547; worktree-digest sha256:1d2ebaf4cfee15e5d383de512046acad66b3261b4b1bac58dd54648e97b305be -->
 
 ## 快速上下文
 
-设置 → 问题反馈是本机的问题清单。问题由标题、描述及最多 5 张选填截图组成，可新建、编辑、分享和确认删除。内容保存在独立的 `caiji-feedback.db` 和应用私有 `files/feedback` 目录。
+设置 → 问题反馈是本机的问题清单。问题由标题、描述及最多 5 张选填截图组成，可新建、编辑、分享和确认删除。内容保存在独立的 `caiji-feedback.db` 和应用私有 `files/feedback` 目录。0.3.1 修复草稿图片引用解析，并使五张缩略图可横向浏览。
 
 问题记录与主题偏好均独立于账本数据库和加密账本备份；恢复账本不覆盖反馈。用户点分享后，应用只将当前问题的文字和截图交给系统分享面板，不自动上传。
 
@@ -54,6 +54,7 @@
 
 - `app/src/main/java/app/caiji/android/data/FeedbackDatabase.kt` — 独立 Room schema 1、反馈与截图 DAO、私有文件导入/删除仓库。
 - `app/src/main/java/app/caiji/android/ui/FeedbackScreens.kt` — 反馈列表/编辑、截图缩略图、主题选择页和 FileProvider 分享 Intent。
+- `app/src/main/java/app/caiji/android/ui/CommonNavigationComponents.kt` — 反馈列表/编辑和主题页共用的居中标题栏。
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiApplication.feedbackRepository`、反馈页面路由、选择器回调、删除确认及剪贴板草稿保护。
 - `app/src/main/AndroidManifest.xml` 与 `res/xml/feedback_file_paths.xml` — 非导出 FileProvider 和反馈目录窄路径授权。
 
@@ -63,6 +64,11 @@
 
 - 输入系统选图 URI 列表；只接受图片媒体类型并复制到 `cache/feedback-drafts/<draftId>`；返回按原顺序排列的待存路径 reference。
 - URI 失效、IO 错误或超过 5 张时抛错，不向 Room 写入记录；调用者保留标题/描述草稿。
+
+### `FeedbackRepository.resolveEditorImage(draftId, reference)`
+
+- 暂存 reference 必须以 `pending:<draftId>/` 开头；返回 `cache/feedback-drafts/<draftId>/<filename>`，草稿 ID 只加入一次。
+- 非 pending reference 解析到应用私有 `files/feedback/`；草稿不匹配或文件名含路径分隔符时失败并显示不可用缩略图。
 
 ### `FeedbackRepository.save(item, imageRefs, draftId)` / `delete(id, screenshots)`
 
@@ -80,12 +86,13 @@
 - `feedback_items` 主键 UUID，保存标题、描述、创建/更新时间。
 - `feedback_screenshots` 以 `(feedbackId, position)` 为主键，保存应用私有目录相对路径；外键 `ON DELETE CASCADE`。
 - 图片原文件保存在 `files/feedback/`，临时编辑副本位于 `cache/feedback-drafts/<draftId>`；原数据库不保存图片字节。
+- 暂存引用必须匹配当前草稿 ID，仅使用引用中的文件名组成一次缓存路径。
 - 反馈和截图不进入现有加密账本备份格式 2。卸载应用会清除反馈和截图。
 
 ## 核心流程
 
 1. 设置入口打开本机列表；新建时生成 draft ID，编辑时装载 Room 记录及图片路径。
-2. 系统 Photo Picker 返回 URI；仓库在 IO 线程验证媒体类型并复制到 draft cache，UI 增加可见缩略图。
+2. 系统 Photo Picker 返回 URI；仓库在 IO 线程验证媒体类型并复制到 `cache/feedback-drafts/<draftId>/<filename>`；`pending:<draftId>/<filename>` 引用解析一次后用于后台缩略图解码。
 3. 保存先将 pending 图片复制到最终私有目录，再用 Room 事务更新反馈行和截图顺序；成功后删除草稿目录和已移除旧图。
 4. 列表分享构建仅含当前记录文本及图片 URI 的系统 chooser；不自动发送。
 5. 删除确认后移除数据库行和本记录图片；取消编辑删除暂存目录但不动已保存记录。
@@ -115,7 +122,7 @@
 
 - 使用现有 Room、AndroidX Activity Result Photo Picker fallback、AndroidX Core FileProvider；无新增后端。
 - `MainActivity` 将反馈编辑器加入剪贴板待处理保护列表。
-- 应用版本 0.3.0/versionCode 7；账本 schema/备份不变，反馈 schema 单独版本 1。
+- 应用版本 0.3.1/versionCode 8；账本 schema/备份不变，反馈 schema 单独版本 1。
 
 ## 可观测性与运维
 
@@ -169,3 +176,11 @@
 - **原因**：按用户确认的高保真反馈页记录体验问题。
 - **兼容性**：反馈数据库 version 1 独立于账本 schema 1；账本备份格式 2 不含反馈。
 - **验证**：反馈 DB/图片生命周期、79 项 API34、JVM、lint 和正式 APK 校验通过；Photo Picker API26 fallback 未能在本机镜像测试。
+
+### 2026-11-02 — 0.3.1 草稿图片预览与反馈顶部栏
+
+- **状态**：已完成
+- **变化**：修复暂存文件路径重复拼接，反馈截图横向展示最多五张，反馈列表/编辑使用统一居中标题栏。
+- **原因**：修复实机新增图片显示“图片不可用”及反馈页顶部样式不一致。
+- **兼容性**：Room schema 1 和分享 URI 合约不变。
+- **验证**：真实 PNG 五图暂存编辑仪器测试验证缩略图解码、第五图横滚和反馈标题中心；0.3.0→0.3.1 AVD 覆盖后记录及截图保留；90 项全量测试通过。
