@@ -2,6 +2,7 @@ package app.caiji.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,9 +31,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +56,9 @@ import app.caiji.android.domain.Category
 import app.caiji.android.domain.CategoryCatalog
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiPalette
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun CategoryManagerScreen(
     categories: List<Category>,
@@ -63,6 +70,8 @@ internal fun CategoryManagerScreen(
     errorMessage: String? = null
 ) {
     var selectedType by remember(initialType) { mutableStateOf(initialType) }
+    val typePager = rememberPagerState(initialPage = if (initialType == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
+    val pagerScope = rememberCoroutineScope()
     var edit by remember { mutableStateOf<Category?>(null) }
     var add by remember { mutableStateOf(false) }
     val typeCategories = categories.filter { it.type == selectedType }.sortedBy { it.sortOrder }
@@ -70,6 +79,11 @@ internal fun CategoryManagerScreen(
     var movingId by remember { mutableStateOf<String?>(null) }
     var moveError by remember { mutableStateOf<String?>(null) }
     val operationInProgress = movingId != null
+
+    LaunchedEffect(typePager.settledPage) {
+        selectedType = if (typePager.settledPage == 0) EntryType.EXPENSE else EntryType.INCOME
+        moveError = null
+    }
 
     fun move(category: Category, delta: Int) {
         if (movingId != null) return
@@ -114,7 +128,10 @@ internal fun CategoryManagerScreen(
             }
         }
 
-        TypeSelector(selectedType = selectedType, tagPrefix = "category-type", enabled = !operationInProgress) { selectedType = it }
+        TypeSelector(selectedType = selectedType, tagPrefix = "category-type", enabled = !operationInProgress) {
+            val page = if (it == EntryType.EXPENSE) 0 else 1
+            if (page != typePager.currentPage) pagerScope.launch { typePager.animateScrollToPage(page) }
+        }
         Surface(
             color = CaijiPalette.PrimarySoft,
             shape = RoundedCornerShape(14.dp),
@@ -138,30 +155,34 @@ internal fun CategoryManagerScreen(
             }
         }
 
-        if (typeCategories.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("还没有分类，点击右上角添加", color = CaijiPalette.SecondaryText)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).testTag("category-list"),
+        HorizontalPager(state = typePager, userScrollEnabled = !operationInProgress,
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("category-type-pager")) { pageIndex ->
+            val pageType = if (pageIndex == 0) EntryType.EXPENSE else EntryType.INCOME
+            val pageCategories = categories.filter { it.type == pageType }.sortedBy { it.sortOrder }
+            if (pageCategories.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("还没有分类，点击右上角添加", color = CaijiPalette.SecondaryText)
+                }
+            } else LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("category-list"),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(orderedCategories, key = { it.id }) { category ->
+                items(pageCategories, key = { it.id }) { category ->
                     val index = orderedCategories.indexOfFirst { it.id == category.id }
                     CategoryRow(
                         category = category,
-                        onEdit = { if (!operationInProgress) edit = category },
-                        onActive = onActive,
-                        canMoveUp = index > 0 && !operationInProgress,
-                        canMoveDown = index < orderedCategories.lastIndex && !operationInProgress,
-                        enabled = !operationInProgress,
+                        onEdit = { if (!operationInProgress && pageType == selectedType) edit = category },
+                        onActive = { id, active -> if (pageType == selectedType) onActive(id, active) },
+                        canMoveUp = index > 0 && !operationInProgress && pageType == selectedType,
+                        canMoveDown = index < orderedCategories.lastIndex && !operationInProgress && pageType == selectedType,
+                        enabled = !operationInProgress && pageType == selectedType,
                         onMoveUp = { move(category, -1) },
                         onMoveDown = { move(category, 1) }
                     )
-                }
             }
         }
+    }
+
     }
 
     if (add || edit != null) {

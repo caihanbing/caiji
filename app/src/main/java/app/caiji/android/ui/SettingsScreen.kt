@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Canvas
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -28,17 +30,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.caiji.android.BuildConfig
 import app.caiji.android.ui.theme.CaijiPalette
+import app.caiji.android.ui.theme.CaijiThemeId
 
 @Composable
 internal fun SettingsScreen(
     onCategories: () -> Unit,
     onExport: (String) -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onTheme: () -> Unit = {},
+    onFeedback: () -> Unit = {}
 ) {
     var exportPrompt by remember { mutableStateOf(false) }
     if (exportPrompt) BackupPasswordDialog(
@@ -55,7 +61,7 @@ internal fun SettingsScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = CaijiPalette.Ink)
-            Text("管理分类与数据备份", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
+            Text("管理账本与使用偏好", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
         }
         Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -89,6 +95,42 @@ internal fun SettingsScreen(
             }
         }
 
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("使用偏好", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Card(
+                onClick = onTheme,
+                modifier = Modifier.fillMaxWidth().testTag("settings-theme"),
+                colors = CardDefaults.cardColors(containerColor = CaijiPalette.Surface)
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(11.dp)) {
+                        ThemePaletteGlyph(Modifier.padding(9.dp))
+                    }
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("换肤", fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
+                        Text(CaijiPalette.selected.label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            Card(
+                onClick = onFeedback,
+                modifier = Modifier.fillMaxWidth().testTag("settings-feedback"),
+                colors = CardDefaults.cardColors(containerColor = CaijiPalette.Surface)
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(11.dp)) {
+                        Text("✎", Modifier.padding(horizontal = 12.dp, vertical = 9.dp), color = CaijiPalette.Primary)
+                    }
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("问题反馈", fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
+                        Text("记录体验中的问题", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("备份与恢复", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Button(
@@ -115,5 +157,21 @@ internal fun SettingsScreen(
             Text("关于财记", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text("财记 ${BuildConfig.VERSION_NAME} · Android 8.0 及以上", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+@Composable
+private fun ThemePaletteGlyph(modifier: Modifier = Modifier) {
+    val dots = CaijiPalette.preview(CaijiThemeId.AMBER)
+    Canvas(modifier.size(24.dp)) {
+        val radius = size.minDimension * .16f
+        val centers = listOf(
+            Offset(size.width * .35f, size.height * .35f),
+            Offset(size.width * .68f, size.height * .4f),
+            Offset(size.width * .38f, size.height * .68f),
+            Offset(size.width * .68f, size.height * .7f)
+        )
+        centers.forEachIndexed { index, center -> drawCircle(dots[index], radius, center) }
+        drawCircle(CaijiPalette.Primary, size.minDimension * .46f, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.6.dp.toPx()))
     }
 }

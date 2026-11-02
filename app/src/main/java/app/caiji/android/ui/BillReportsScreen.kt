@@ -1,6 +1,7 @@
 package app.caiji.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +28,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -33,6 +39,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
 import app.caiji.android.data.PeriodLedgerReport
@@ -41,11 +51,13 @@ import app.caiji.android.ui.theme.CaijiPalette
 import java.math.BigInteger
 import java.time.Year
 import java.time.YearMonth
+import kotlinx.coroutines.launch
 
 internal enum class BillListMode { MONTH, YEAR }
 private const val FIRST_BILL_YEAR = 1900
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun BillReportsScreen(
     mode: BillListMode,
     year: Int,
@@ -61,6 +73,13 @@ internal fun BillReportsScreen(
     onOpenMonth: (YearMonth) -> Unit,
     onOpenYear: (Int) -> Unit
 ) {
+    val pagerState = rememberPagerState(initialPage = mode.ordinal, pageCount = { BillListMode.entries.size })
+    val pagerScope = rememberCoroutineScope()
+    LaunchedEffect(mode) { if (pagerState.currentPage != mode.ordinal) pagerState.animateScrollToPage(mode.ordinal) }
+    LaunchedEffect(pagerState.settledPage) {
+        val settled = BillListMode.entries[pagerState.settledPage]
+        if (settled != mode) onSelectMode(settled)
+    }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -92,7 +111,7 @@ internal fun BillReportsScreen(
                     contentColor = if (selected) CaijiPalette.OnPrimary else CaijiPalette.SecondaryText,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.weight(1f).height(42.dp).clickable {
-                        onSelectMode(candidate)
+                        if (candidate.ordinal != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(candidate.ordinal) }
                     }.testTag(if (candidate == BillListMode.MONTH) "bill-tab-month" else "bill-tab-year")
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -101,37 +120,43 @@ internal fun BillReportsScreen(
                 }
             }
         }
-        if (mode == BillListMode.MONTH) {
-            val yearTotals = monthReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
-                LedgerPeriodTotals(total.expenseFen + item.totals.expenseFen, total.incomeFen + item.totals.incomeFen)
-            }
-            PeriodSummaryCard("${year}年结余", yearTotals,
-                incomeLabel = "${year}年收入", expenseLabel = "${year}年支出")
-        } else {
-            val allTime = yearReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
-                LedgerPeriodTotals(total.expenseFen + item.second.expenseFen, total.incomeFen + item.second.incomeFen)
-            }
-            PeriodSummaryCard("全部账单总结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出")
-        }
-        if (mode == BillListMode.MONTH) {
-            val rows = monthReports.sortedByDescending { it.month }.map { item ->
-                BillTableRow("${item.month.monthValue}月", item.totals, "month-row-${item.month.monthValue}") {
-                    onOpenMonth(item.month)
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().testTag("bill-mode-pager")) { pageIndex ->
+            when (BillListMode.entries[pageIndex]) {
+                BillListMode.MONTH -> {
+                    val yearTotals = monthReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
+                        LedgerPeriodTotals(total.expenseFen + item.totals.expenseFen, total.incomeFen + item.totals.incomeFen)
+                    }
+                    Column(Modifier.fillMaxSize()) {
+                        PeriodSummaryCard("${year}年结余", yearTotals,
+                            incomeLabel = "${year}年收入", expenseLabel = "${year}年支出")
+                        val rows = monthReports.sortedByDescending { it.month }.map { item ->
+                            BillTableRow("${item.month.monthValue}月", item.totals, "month-row-${item.month.monthValue}") {
+                                onOpenMonth(item.month)
+                            }
+                        }
+                        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                            BillPeriodTable("月份", rows)
+                        }
+                    }
                 }
-            }
-            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                BillPeriodTable("月份", rows)
-            }
-        } else {
-            val byYear = yearReports.associate { it.first to it.second }
-            val firstYear = byYear.keys.minOrNull() ?: year
-            val rows = (firstYear..Year.now().value).toList().asReversed()
-            val tableRows = rows.map { yearValue ->
+                BillListMode.YEAR -> {
+                    val allTime = yearReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
+                        LedgerPeriodTotals(total.expenseFen + item.second.expenseFen, total.incomeFen + item.second.incomeFen)
+                    }
+                    val byYear = yearReports.associate { it.first to it.second }
+                    val firstYear = byYear.keys.minOrNull() ?: year
+                    val rows = (firstYear..Year.now().value).toList().asReversed()
+                    val tableRows = rows.map { yearValue ->
                     val totals = byYear[yearValue] ?: LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)
                     BillTableRow("${yearValue}年", totals, "year-row-$yearValue") { onOpenYear(yearValue) }
-            }
-            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                BillPeriodTable("年份", tableRows)
+                    }
+                    Column(Modifier.fillMaxSize()) {
+                        PeriodSummaryCard("全部账单总结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出")
+                        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                            BillPeriodTable("年份", tableRows)
+                        }
+                    }
+                }
             }
         }
         ReportLoadState(loading, error) {
@@ -141,6 +166,7 @@ internal fun BillReportsScreen(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun BillPeriodReportScreen(
     year: Int,
     monthValue: Int,
@@ -155,6 +181,18 @@ internal fun BillPeriodReportScreen(
     onSelectCategory: (String?) -> Unit,
     onEditEntry: (app.caiji.android.data.LedgerEntry) -> Unit
 ) {
+    val rankingPager = rememberPagerState(initialPage = if (selectedType == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
+    val rankingPagerScope = rememberCoroutineScope()
+    LaunchedEffect(selectedType) {
+        val page = if (selectedType == EntryType.EXPENSE) 0 else 1
+        if (rankingPager.currentPage != page) rankingPager.animateScrollToPage(page)
+    }
+    LaunchedEffect(rankingPager.settledPage, selectedCategoryId) {
+        if (selectedCategoryId == null) {
+            val type = if (rankingPager.settledPage == 0) EntryType.EXPENSE else EntryType.INCOME
+            if (type != selectedType) onSelectType(type)
+        }
+    }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { if (selectedCategoryId != null) onSelectCategory(null) else onBack() }, modifier = Modifier.testTag("period-report-back")) {
@@ -183,30 +221,35 @@ internal fun BillPeriodReportScreen(
                         color = if (selected) CaijiPalette.Primary else CaijiPalette.Surface,
                         contentColor = if (selected) CaijiPalette.OnPrimary else CaijiPalette.SecondaryText,
                         shape = RoundedCornerShape(9.dp), modifier = Modifier.weight(1f).height(42.dp)
-                            .clickable { onSelectType(type) }.testTag("report-type-${type.name}")
+                            .clickable {
+                                val page = if (type == EntryType.EXPENSE) 0 else 1
+                                if (page != rankingPager.currentPage) rankingPagerScope.launch { rankingPager.animateScrollToPage(page) }
+                            }.testTag("report-type-${type.name}")
                     ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(label) } }
                 }
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                Text("分类排行", Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                report?.categories.orEmpty().forEach { total ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onSelectCategory(total.category.id) }
-                            .testTag("report-category-${total.category.id}")
-                            .padding(horizontal = 8.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(categoryEmoji(total.category.iconKey), Modifier.padding(end = 10.dp), style = MaterialTheme.typography.titleMedium)
-                        Text(total.category.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("¥${formatYuan(total.amountFen)}", color = CaijiPalette.Ink,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+            HorizontalPager(state = rankingPager, modifier = Modifier.weight(1f).fillMaxWidth().testTag("report-ranking-pager")) { _ ->
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    Text("分类排行", Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    report?.categories.orEmpty().forEach { total ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onSelectCategory(total.category.id) }
+                                .testTag("report-category-${total.category.id}")
+                                .padding(horizontal = 8.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(categoryEmoji(total.category.iconKey), Modifier.padding(end = 10.dp), style = MaterialTheme.typography.titleMedium)
+                            Text(total.category.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("¥${formatYuan(total.amountFen)}", color = CaijiPalette.Ink,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+                        }
+                        HorizontalDivider(color = CaijiPalette.Divider)
                     }
-                    HorizontalDivider(color = CaijiPalette.Divider)
-                }
-                if (!loading && error == null && report?.categories.isNullOrEmpty()) {
-                    Text("此期间暂无${if (selectedType == EntryType.EXPENSE) "支出" else "收入"}",
-                        Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)
+                    if (!loading && error == null && report?.categories.isNullOrEmpty()) {
+                        Text("此期间暂无${if (selectedType == EntryType.EXPENSE) "支出" else "收入"}",
+                            Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)
+                    }
                 }
             }
         } else {
@@ -259,7 +302,11 @@ private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
         val rowEndPadding = 2.dp
         val tableWidth = maxOf(maxWidth, firstWidth + rowStartPadding + rowEndPadding + minimumNumericWidth * 3)
         val numericWidth = (tableWidth - firstWidth - rowStartPadding - rowEndPadding) / 3
-        Column(Modifier.horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
+        val tableScroll = remember { object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+                Offset(x = available.x, y = 0f)
+        } }
+        Column(Modifier.nestedScroll(tableScroll).horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
             Column(Modifier.width(tableWidth)) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = rowStartPadding, end = rowEndPadding, top = 10.dp, bottom = 10.dp),

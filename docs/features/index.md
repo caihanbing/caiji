@@ -5,7 +5,9 @@
 <!-- manage-feature-docs:index:start -->
 | 功能 ID | 标题 | 别名 | 状态 | 简述 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| [`entry-categories`](entry-categories.md) | 账单分类管理 | categories, 分类 | active | 管理收支类别、48 个内置图标、折线箭头顺序调整和启停状态，并保留历史关联。 | 2026-11-01 |
-| [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分人民币账单，按日、月、年浏览及汇总收支。 | 2026-11-01 |
-| [`local-backup`](local-backup.md) | 本地加密备份与恢复 | backup, 恢复, 加密备份 | active | 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 | 2026-11-01 |
+| [`app-appearance`](app-appearance.md) | 应用主题外观 | themes, 换肤 | active | 在设置页选择五套配色，并跨重启应用到全部账本页面和系统栏。 | 2026-11-02 |
+| [`entry-categories`](entry-categories.md) | 账单分类管理 | categories, 分类 | active | 管理收支类别、48 个内置图标、折线箭头顺序调整和启停状态，并保留历史关联。 | 2026-11-02 |
+| [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分人民币账单，按日、月、年浏览、手势切换并汇总收支。 | 2026-11-02 |
+| [`local-backup`](local-backup.md) | 本地加密备份与恢复 | backup, 恢复, 加密备份 | active | 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 | 2026-11-02 |
+| [`user-feedback`](user-feedback.md) | 本机问题反馈 | feedback, 问题反馈, 截图分享 | active | 在本机记录体验问题及最多 5 张截图，按用户选择通过 Android 分享面板外发。 | 2026-11-02 |
 <!-- manage-feature-docs:index:end -->

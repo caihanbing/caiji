@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +47,8 @@ import app.caiji.android.backup.BackupCodec
 import app.caiji.android.backup.BackupException
 import app.caiji.android.backup.BackupSummary
 import app.caiji.android.data.LedgerEntry
+import app.caiji.android.data.FeedbackItemRow
+import app.caiji.android.data.FeedbackItemWithScreenshots
 import app.caiji.android.domain.EntryType
 import app.caiji.android.domain.ClipboardTransaction
 import app.caiji.android.domain.ClipboardTransactionParser
@@ -64,6 +67,11 @@ import app.caiji.android.ui.LedgerHome
 import app.caiji.android.ui.LedgerViewModel
 import app.caiji.android.ui.RestoreSummaryDialog
 import app.caiji.android.ui.SettingsScreen
+import app.caiji.android.ui.FeedbackEditorScreen
+import app.caiji.android.ui.FeedbackListScreen
+import app.caiji.android.ui.ThemePickerScreen
+import app.caiji.android.ui.shareFeedback
+import app.caiji.android.ui.theme.CaijiThemeId
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiTheme
 import java.time.LocalDate
@@ -109,22 +117,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = getColor(app.caiji.android.R.color.caiji_page_background)
-        window.navigationBarColor = getColor(app.caiji.android.R.color.caiji_page_background)
+        val themeKey = getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("theme", CaijiThemeId.AMBER.key)
+        CaijiPalette.select(CaijiThemeId.entries.firstOrNull { it.key == themeKey } ?: CaijiThemeId.AMBER)
+        window.statusBarColor = CaijiPalette.Background.toArgb()
+        window.navigationBarColor = CaijiPalette.Background.toArgb()
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
+            isAppearanceLightStatusBars = !CaijiPalette.isDark
+            isAppearanceLightNavigationBars = !CaijiPalette.isDark
         }
         setContent { CaijiTheme { CaijiRoot() } }
     }
 }
 
-private enum class Page { LEDGER, BILLS, PERIOD_REPORT, EDITOR, SETTINGS, CATEGORIES }
+private enum class Page { LEDGER, BILLS, PERIOD_REPORT, EDITOR, SETTINGS, CATEGORIES, THEMES, FEEDBACK_LIST, FEEDBACK_EDITOR }
 private enum class RestoreFlow { IDLE, PREVIEW, PREPARING, BACKUP_PASSWORD, SELECTING_BACKUP, PREPARING_BACKUP, WRITING_BACKUP, APPLYING }
 
 @Composable
 private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     val context = LocalContext.current
+    val feedbackRepository = remember { (context.applicationContext as CaijiApplication).feedbackRepository }
     val scope = rememberCoroutineScope()
     val month by model.month.collectAsState()
     val entries by model.entries.collectAsState()
@@ -145,12 +156,24 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var reportCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
     var editEntryId by rememberSaveable { mutableStateOf<String?>(null) }
     var editEntry by remember { mutableStateOf<LedgerEntry?>(null) }
+    var feedbackRecords by remember { mutableStateOf<List<FeedbackItemWithScreenshots>>(emptyList()) }
+    var feedbackEditId by remember { mutableStateOf<String?>(null) }
+    var feedbackDraftId by remember { mutableStateOf<String?>(null) }
+    var feedbackDeleteCandidate by remember { mutableStateOf<FeedbackItemWithScreenshots?>(null) }
+    var selectedTheme by remember {
+        val key = (context as? MainActivity)?.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+            ?.getString("theme", CaijiThemeId.AMBER.key)
+        mutableStateOf(CaijiThemeId.entries.firstOrNull { it.key == key } ?: CaijiThemeId.AMBER)
+    }
     var clipboardPrefill by remember { mutableStateOf<ClipboardTransaction?>(null) }
     var clipboardPrefillId by remember { mutableStateOf<String?>(null) }
     var pendingClipboard by remember { mutableStateOf<Pair<String, ClipboardTransaction>?>(null) }
 
     LaunchedEffect(editEntryId) {
         editEntry = editEntryId?.let { model.entryById(it) }
+    }
+    LaunchedEffect(feedbackRepository) {
+        feedbackRepository.observeAll().collect { feedbackRecords = it }
     }
     var initialEditorType by remember { mutableStateOf(EntryType.EXPENSE) }
     var exportPassword by remember { mutableStateOf<String?>(null) }
@@ -176,7 +199,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     }
     LaunchedEffect(page, restoreFlow, restoreSessionActive, pendingClipboard, editEntryId) {
         val pending = pendingClipboard ?: return@LaunchedEffect
-        if (page == Page.EDITOR || restoreFlow != RestoreFlow.IDLE || restoreSessionActive || editEntryId != null) return@LaunchedEffect
+        if (page == Page.EDITOR || page == Page.FEEDBACK_EDITOR || restoreFlow != RestoreFlow.IDLE || restoreSessionActive || editEntryId != null) return@LaunchedEffect
         val activity = context as? MainActivity ?: return@LaunchedEffect
         val preferences = activity.getSharedPreferences("clipboard_transaction_imports", Context.MODE_PRIVATE)
         val seen = preferences.getStringSet("fingerprints", emptySet()).orEmpty().toMutableSet()
@@ -382,6 +405,20 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
         BackupProcessingDialog(message)
     }
 
+    feedbackDeleteCandidate?.let { item ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { feedbackDeleteCandidate = null },
+            title = { Text("删除这条问题记录？") },
+            text = { Text("删除后无法恢复，关联截图也会从本机移除。") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                val candidate = feedbackDeleteCandidate ?: return@TextButton
+                feedbackDeleteCandidate = null
+                scope.launch(Dispatchers.IO) { feedbackRepository.delete(candidate.item.id, candidate.screenshots) }
+            }) { Text("删除", color = CaijiPalette.Danger) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { feedbackDeleteCandidate = null }) { Text("取消") } }
+        )
+    }
+
     Scaffold(bottomBar = {
         if (page == Page.LEDGER || page == Page.SETTINGS) NavigationBar(containerColor = CaijiPalette.Surface) {
             val navigationColors = NavigationBarItemDefaults.colors(
@@ -489,12 +526,58 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.SETTINGS -> SettingsScreen({ page = Page.CATEGORIES }, { password ->
                     exportPassword = password
                     exportPicker.launch("财记-完整备份-${LocalDate.now()}.cjbackup")
-                }, { importPicker.launch(arrayOf("application/octet-stream", "application/*", "*/*")) })
+                }, { importPicker.launch(arrayOf("application/octet-stream", "application/*", "*/*")) },
+                    onTheme = { page = Page.THEMES }, onFeedback = { page = Page.FEEDBACK_LIST })
                 Page.CATEGORIES -> CategoryManagerScreen(categories, { page = Page.SETTINGS },
                     { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },
                     model::setCategoryActive, model::reorderCategory, initialType = EntryType.EXPENSE,
                     errorMessage = modelError)
+                Page.THEMES -> ThemePickerScreen(selectedTheme, onSelect = { theme ->
+                    selectedTheme = theme
+                    CaijiPalette.select(theme)
+                    (context as? MainActivity)?.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+                        ?.edit()?.putString("theme", theme.key)?.apply()
+                }, onBack = { page = Page.SETTINGS })
+                Page.FEEDBACK_LIST -> FeedbackListScreen(feedbackRecords, onNew = {
+                    feedbackEditId = null
+                    feedbackDraftId = feedbackRepository.newDraftId()
+                    page = Page.FEEDBACK_EDITOR
+                }, onEdit = { record ->
+                    feedbackEditId = record.item.id
+                    feedbackDraftId = feedbackRepository.newDraftId()
+                    page = Page.FEEDBACK_EDITOR
+                }, onShare = { record -> runCatching { shareFeedback(context, record, feedbackRepository) }
+                    .onFailure { pickerError = "分享失败：${it.message ?: "请重试"}" } },
+                    onDelete = { feedbackDeleteCandidate = it }, repository = feedbackRepository,
+                    onBack = { page = Page.SETTINGS })
+                Page.FEEDBACK_EDITOR -> {
+                    val currentRecord = feedbackEditId?.let { id -> feedbackRecords.firstOrNull { it.item.id == id } }
+                    if (feedbackEditId != null && currentRecord == null) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("正在加载问题…") }
+                    } else FeedbackEditorScreen(
+                        repository = feedbackRepository, existing = currentRecord,
+                        draftId = feedbackDraftId ?: "new-feedback-draft",
+                        onCancel = {
+                            feedbackDraftId?.let { draft -> scope.launch(Dispatchers.IO) { feedbackRepository.discardDraft(draft) } }
+                            feedbackDraftId = null
+                            feedbackEditId = null
+                            page = Page.FEEDBACK_LIST
+                        },
+                        onSave = { title, description, imageRefs, done ->
+                            val existingRow = currentRecord?.item
+                            val now = System.currentTimeMillis()
+                            val row = FeedbackItemRow(existingRow?.id ?: UUID.randomUUID().toString(), title, description,
+                                existingRow?.createdAtMillis ?: now, now)
+                            scope.launch {
+                                val draftId = feedbackDraftId ?: "new-feedback-draft"
+                                runCatching { withContext(Dispatchers.IO) { feedbackRepository.save(row, imageRefs, draftId) } }
+                                    .onSuccess { feedbackDraftId = null; feedbackEditId = null; page = Page.FEEDBACK_LIST; done(true, null) }
+                                    .onFailure { done(false, it.message) }
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -503,4 +586,6 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     BackHandler(enabled = page == Page.PERIOD_REPORT) {
         if (reportCategoryId != null) reportCategoryId = null else page = Page.BILLS
     }
+    BackHandler(enabled = page == Page.THEMES) { page = Page.SETTINGS }
+    BackHandler(enabled = page == Page.FEEDBACK_LIST) { page = Page.SETTINGS }
 }

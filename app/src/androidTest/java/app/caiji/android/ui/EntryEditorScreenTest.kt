@@ -15,14 +15,17 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.Density
@@ -122,6 +125,51 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
         compose.onNodeWithTag("entry-type-income").performClick()
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
+    }
+
+    @Test fun swipingCategoryAreaSwitchesTypeAndKeepsAmountDraft() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-key-1").performClick()
+        compose.onNodeWithTag("entry-category-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("entry-type-income").assertIsSelected()
+        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
+        compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
+    }
+
+    @Test fun longPressDraggingCategoryPersistsItsNewPositionWithoutSelectingIt() {
+        val moved = AtomicReference<Pair<String, Int>>()
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { id, index, done -> moved.set(id to index); done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performTouchInput {
+            val start = center
+            down(start)
+            advanceEventTime(650)
+            moveTo(Offset(start.x + width + 12f, start.y))
+            up()
+        }
+        compose.waitForIdle()
+        assertEquals("seed-expense-0", moved.get()?.first)
+        assertEquals(1, moved.get()?.second)
+        compose.onNodeWithTag("amount-display").assertTextEquals("0.00")
     }
 
     @Test

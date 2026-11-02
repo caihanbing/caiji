@@ -6,4 +6,22 @@
         <item name="android:statusBarColor">@color/caiji_page_background</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
+    <style name="Theme.Caiji.DatePicker.Amber" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#C4821C</item>
+    </style>
+    <style name="Theme.Caiji.DatePicker.Bamboo" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#357961</item>
+    </style>
+    <style name="Theme.Caiji.DatePicker.Sea" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#3977B7</item>
+    </style>
+    <style name="Theme.Caiji.DatePicker.Mist" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#8063A8</item>
+    </style>
+    <style name="Theme.Caiji.DatePicker.Graphite" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">#90AFFF</item>
+        <item name="android:colorBackground">#242A33</item>
+        <item name="android:textColorPrimary">#EEF2F7</item>
+        <item name="android:windowBackground">#242A33</item>
+    </style>
 </resources>

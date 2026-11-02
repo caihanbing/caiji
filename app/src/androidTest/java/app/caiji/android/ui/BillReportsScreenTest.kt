@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasParent
 import androidx.compose.ui.test.hasTestTag
@@ -53,6 +54,38 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class BillReportsScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun monthlyAndYearlyBillsCanSwitchByHorizontalSwipe() {
+        compose.setContent {
+            CaijiTheme {
+                var mode by remember { mutableStateOf(BillListMode.MONTH) }
+                BillReportsScreen(
+                    mode = mode, year = 2026, monthReports = emptyList(), yearReports = emptyList(),
+                    loading = false, error = null, onBack = {}, onPreviousYear = {}, onNextYear = {},
+                    onRetryList = {}, onSelectMode = { mode = it }, onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+    }
+
+    @Test fun expenseAndIncomeRankingsCanSwitchByHorizontalSwipe() {
+        compose.setContent {
+            CaijiTheme {
+                var type by remember { mutableStateOf(EntryType.EXPENSE) }
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1),
+                        totals(100, 0), emptyList(), emptyList()),
+                    loading = false, error = null, selectedType = type, selectedCategoryId = null,
+                    onBack = {}, onRetry = {}, onSelectType = { type = it }, onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("report-ranking-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithText("此期间暂无收入").assertIsDisplayed()
+    }
 
     @Test fun monthAndYearListsUseReferenceTitlesAndOpenTheSelectedPeriod() {
         val opened = AtomicReference<String>()

@@ -5,12 +5,12 @@
 <!-- feature-aliases: backup, 恢复, 加密备份 -->
 <!-- feature-status: active -->
 <!-- feature-summary: 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 -->
-<!-- last-verified: 2026-11-01 -->
-<!-- code-basis: HEAD 7e9cc5743f1c; worktree-digest sha256:21fc9ce0fc332f187f08394a6f8e3fc4c4e5ed08104c1fe9fcb206d1fbbc4da1 -->
+<!-- last-verified: 2026-11-02 -->
+<!-- code-basis: HEAD f2632d92f4e2; worktree-digest sha256:55d11b871728665a2370d46e0b72486ffa14e98cf052e1c89b179099f588a37b -->
 
 ## 快速上下文
 
-财记 0.2.0 的“设置”提供加密导出和恢复。通过 Android Storage Access Framework 由用户选择 `.cjbackup` 文件和位置；不申请联网或广泛存储权限。导出从 Room 一致快照流式写出，恢复按批次在单个 Room 事务内替换数据库。
+“设置”提供账本加密导出和恢复。通过 Android Storage Access Framework 由用户选择 `.cjbackup` 文件和位置；不申请联网或广泛存储权限。导出从账本 Room 一致快照流式写出，恢复按批次在单个 Room 事务内替换账单和分类。0.3.0 的问题反馈/截图与主题偏好独立保存在本机，不纳入账本备份，也不因账本恢复而替换。
 
 备份格式当前为版本 2：`PBKDF2-HMAC-SHA256` 派生 AES-256 密钥，使用 `AES-GCM` 认证加密，每份文件使用新的随机盐和 nonce。密码仅在页面内存使用；忘记密码无法解密。
 
@@ -162,6 +162,14 @@
 - **后续动作**：用户按 release guide 在自有 Android 8.0+ 设备核对账单和分类。
 
 ## 变更记录
+
+### 2026-11-02 — 0.3.0 本机问题与主题备份范围
+
+- **状态**：已完成
+- **变化**：文档明确问题反馈/截图和主题偏好与账本加密备份分离，账本恢复不覆盖它们。
+- **原因**：执行用户确认的数据独立保存选择。
+- **兼容性**：账本备份 version 2 和 Room schema 1 不变。
+- **验证**：反馈使用独立 Room 数据库，主题存储使用 SharedPreferences；两者不由 `BackupCodec` 读写。
 
 ### 2026-11-01 — 新增分类图标的备份兼容
 

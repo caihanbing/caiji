@@ -2,9 +2,24 @@ package app.caiji.android.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CaijiThemeTest {
+    @Test fun fiveThemesHaveDistinctStableIdsAndChangingSelectionUpdatesPalette() {
+        try {
+            assertEquals(5, CaijiPalette.options.size)
+            assertEquals(5, CaijiPalette.options.map { CaijiPalette.preview(it).first() }.toSet().size)
+            CaijiPalette.options.forEach { id ->
+                CaijiPalette.select(id)
+                assertEquals(id, CaijiPalette.selected)
+                assertEquals(CaijiPalette.preview(id).first(), CaijiPalette.Primary)
+            }
+        } finally {
+            CaijiPalette.select(CaijiThemeId.AMBER)
+        }
+    }
+
     @Test
     fun primaryActionForegroundMeetsAmberContrast() {
         val contrast = contrastRatio(CaijiPalette.OnPrimary, CaijiPalette.Primary)

@@ -4,6 +4,8 @@ import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
@@ -16,11 +18,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,15 +41,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -56,6 +65,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerEntry
+import app.caiji.android.R
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.ClipboardTransaction
 import app.caiji.android.domain.EntryType
@@ -65,9 +75,11 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberUpdatedState
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 internal fun EntryEditorScreen(
     categories: List<Category>,
     existing: LedgerEntry?,
@@ -100,13 +112,26 @@ internal fun EntryEditorScreen(
     var deletePrompt by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var managingCategories by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var mustReselectActiveCategory by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var categoryDragActive by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val activeCategories = categories.filter { it.type == type && (it.active || it.id == selectedCategory) }
+    val pagerState = rememberPagerState(initialPage = if (type == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
+    val pagerScope = rememberCoroutineScope()
     val calculated = runCatching { Money.evaluate(expression) }.getOrNull()
     val canSave = !saving && calculated != null && selectedCategory != null && !date.isAfter(LocalDate.now())
     val showSoftwareKeyboard = imeVisible ?: noteFocused
     val showAmountKeypad = inputPanelExpanded && !showSoftwareKeyboard
     val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(pagerState.settledPage) {
+        val settledType = if (pagerState.settledPage == 0) EntryType.EXPENSE else EntryType.INCOME
+        if (type != settledType) {
+            type = settledType
+            selectedCategory = null
+            inputPanelExpanded = false
+            mustReselectActiveCategory = false
+            changed = true
+        }
+    }
 
     fun cancel() {
         if (changed) discardPrompt = true else onCancel()
@@ -135,6 +160,13 @@ internal fun EntryEditorScreen(
         } else {
             DatePickerDialog(
                 context,
+                when (CaijiPalette.selected) {
+                    app.caiji.android.ui.theme.CaijiThemeId.AMBER -> R.style.Theme_Caiji_DatePicker_Amber
+                    app.caiji.android.ui.theme.CaijiThemeId.BAMBOO -> R.style.Theme_Caiji_DatePicker_Bamboo
+                    app.caiji.android.ui.theme.CaijiThemeId.SEA -> R.style.Theme_Caiji_DatePicker_Sea
+                    app.caiji.android.ui.theme.CaijiThemeId.MIST -> R.style.Theme_Caiji_DatePicker_Mist
+                    app.caiji.android.ui.theme.CaijiThemeId.GRAPHITE -> R.style.Theme_Caiji_DatePicker_Graphite
+                },
                 { _, year, month, day -> completeSelection(LocalDate.of(year, month + 1, day)) },
                 date.year,
                 date.monthValue - 1,
@@ -232,13 +264,8 @@ internal fun EntryEditorScreen(
             }
 
             EntryTypeToggle(type) { candidate ->
-                if (type != candidate) {
-                    type = candidate
-                    selectedCategory = null
-                    inputPanelExpanded = false
-                    mustReselectActiveCategory = false
-                    changed = true
-                }
+                val targetPage = if (candidate == EntryType.EXPENSE) 0 else 1
+                if (targetPage != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(targetPage) }
             }
 
             Column(
@@ -299,68 +326,32 @@ internal fun EntryEditorScreen(
                 }
             }
 
-            if (activeCategories.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(210.dp)
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "暂无可用分类，请先新增或启用分类",
-                        color = CaijiPalette.SecondaryText,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(210.dp)
-                        .padding(horizontal = 12.dp)
-                        .testTag("entry-category-grid"),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    items(activeCategories, key = { it.id }) { category ->
-                        val selected = selectedCategory == category.id
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !saving) {
-                                    selectedCategory = category.id
-                                    mustReselectActiveCategory = false
-                                    inputPanelExpanded = true
-                                    changed = true
-                                }
-                                .padding(vertical = 4.dp)
-                                .testTag("entry-category-${category.id}"),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(13.dp),
-                                color = if (selected) CaijiPalette.PrimarySoft else CaijiPalette.SurfaceAlt,
-                                modifier = Modifier.size(43.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(categoryEmoji(category.iconKey), style = MaterialTheme.typography.titleMedium)
-                                }
-                            }
-                            Text(
-                                category.name,
-                                color = if (selected) CaijiPalette.Ink else CaijiPalette.SecondaryText,
-                                style = MaterialTheme.typography.labelSmall,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = !saving && !managingCategories && !showSoftwareKeyboard && !categoryDragActive,
+                modifier = Modifier.fillMaxWidth().height(210.dp).testTag("entry-category-pager")
+            ) { pageIndex ->
+                val pageType = if (pageIndex == 0) EntryType.EXPENSE else EntryType.INCOME
+                val pageCategories = categories.filter { it.type == pageType && (it.active || it.id == selectedCategory) }
+                if (pageCategories.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
+                        Text("暂无可用分类，请先新增或启用分类", color = CaijiPalette.SecondaryText,
+                            textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
                     }
-                }
+                } else CategoryDragGrid(
+                    visibleCategories = pageCategories,
+                    allTypeCategories = categories.filter { it.type == pageType }.sortedBy { it.sortOrder },
+                    selectedCategory = selectedCategory,
+                    enabled = !saving && pageType == type,
+                    onSelect = { category ->
+                        selectedCategory = category.id
+                        mustReselectActiveCategory = false
+                        inputPanelExpanded = true
+                        changed = true
+                    },
+                    onDragActive = { categoryDragActive = it },
+                    onMove = onReorderCategory
+                )
             }
 
             if (selectedCategory == null && mustReselectActiveCategory) {
@@ -467,6 +458,142 @@ internal fun EntryEditorScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CategoryDragGrid(
+    visibleCategories: List<Category>,
+    allTypeCategories: List<Category>,
+    selectedCategory: String?,
+    enabled: Boolean,
+    onSelect: (Category) -> Unit,
+    onDragActive: (Boolean) -> Unit,
+    onMove: (String, Int, (Boolean) -> Unit) -> Unit
+) {
+    var order by remember(visibleCategories) { mutableStateOf(visibleCategories) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    var dragStart by remember { mutableStateOf(Offset.Zero) }
+    var dragDelta by remember { mutableStateOf(Offset.Zero) }
+    var originalOrder by remember { mutableStateOf<List<Category>>(emptyList()) }
+    var savingOrder by remember { mutableStateOf(false) }
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(4),
+        state = gridState,
+        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp).testTag("entry-category-grid")
+            .pointerInput(allTypeCategories, enabled) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { start ->
+                        val item = gridState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                            start.x >= info.offset.x && start.x <= info.offset.x + info.size.width &&
+                                start.y >= info.offset.y && start.y <= info.offset.y + info.size.height
+                        }
+                        val id = item?.key as? String
+                        if (enabled && !savingOrder && id != null && order.any { it.id == id }) {
+                            draggedId = id
+                            dragStart = start
+                            dragDelta = Offset.Zero
+                            originalOrder = order
+                            onDragActive(true)
+                        }
+                    },
+                    onDrag = { change, delta ->
+                        if (draggedId != null) {
+                            change.consume()
+                            dragDelta += delta
+                            val pointer = dragStart + dragDelta
+                            val nearest = gridState.layoutInfo.visibleItemsInfo.minByOrNull { info ->
+                                val centerX = info.offset.x + info.size.width / 2f
+                                val centerY = info.offset.y + info.size.height / 2f
+                                (centerX - pointer.x) * (centerX - pointer.x) + (centerY - pointer.y) * (centerY - pointer.y)
+                            }
+                            val sourceIndex = order.indexOfFirst { it.id == draggedId }
+                            val targetIndex = order.indexOfFirst { it.id == nearest?.key }
+                            if (sourceIndex >= 0 && targetIndex >= 0 && targetIndex != sourceIndex) {
+                                val moved = order.toMutableList()
+                                moved.add(targetIndex, moved.removeAt(sourceIndex))
+                                order = moved
+                            }
+                            val info = gridState.layoutInfo
+                            val firstVisibleIndex = info.visibleItemsInfo.firstOrNull()?.index ?: 0
+                            val lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            if (pointer.y < 28 && firstVisibleIndex > 0) {
+                                scope.launch { gridState.animateScrollToItem((info.visibleItemsInfo.first().index - 1).coerceAtLeast(0)) }
+                            } else if (pointer.y > info.viewportEndOffset - 28 && lastVisibleIndex + 1 < info.totalItemsCount) {
+                                scope.launch { gridState.animateScrollToItem((lastVisibleIndex + 1).coerceAtMost(info.totalItemsCount - 1)) }
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        val id = draggedId
+                        val reordered = order
+                        if (id == null || reordered == originalOrder) {
+                            draggedId = null
+                            dragDelta = Offset.Zero
+                            onDragActive(false)
+                        } else {
+                            val visibleIds = reordered.map { it.id }.toSet()
+                            val visibleIterator = reordered.iterator()
+                            val completeOrder = allTypeCategories.map { category -> if (category.id in visibleIds) visibleIterator.next() else category }
+                            val target = completeOrder.indexOfFirst { it.id == id }
+                            savingOrder = true
+                            onMove(id, target) { saved ->
+                                if (!saved) order = originalOrder
+                                savingOrder = false
+                                draggedId = null
+                                dragDelta = Offset.Zero
+                                onDragActive(false)
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        order = originalOrder
+                        draggedId = null
+                        dragDelta = Offset.Zero
+                        onDragActive(false)
+                    }
+                )
+            },
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        items(order, key = { it.id }) { category ->
+            val isDragged = category.id == draggedId
+            val itemInfo = gridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == category.id }
+            val dragTranslationX = if (isDragged && itemInfo != null) dragStart.x + dragDelta.x - (itemInfo.offset.x + itemInfo.size.width / 2f) else 0f
+            val dragTranslationY = if (isDragged && itemInfo != null) dragStart.y + dragDelta.y - (itemInfo.offset.y + itemInfo.size.height / 2f) else 0f
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .graphicsLayer {
+                        if (isDragged) {
+                            translationX = dragTranslationX
+                            translationY = dragTranslationY
+                            scaleX = 1.06f
+                            scaleY = 1.06f
+                            shadowElevation = 8.dp.toPx()
+                        }
+                    }
+                    .clickable(enabled = enabled && draggedId == null && !savingOrder) { onSelect(category) }
+                    .padding(vertical = 4.dp).testTag("entry-category-${category.id}"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(13.dp),
+                    color = if (category.id == selectedCategory || isDragged) CaijiPalette.PrimarySoft else CaijiPalette.SurfaceAlt,
+                    modifier = Modifier.size(43.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Text(categoryEmoji(category.iconKey), style = MaterialTheme.typography.titleMedium) }
+                }
+                Text(category.name, color = if (category.id == selectedCategory) CaijiPalette.Ink else CaijiPalette.SecondaryText,
+                    style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis)
             }
         }
     }

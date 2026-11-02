@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
@@ -37,6 +38,21 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CategorySettingsScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun categoryTypeCanSwitchByHorizontalSwipe() {
+        compose.setContent {
+            CaijiTheme {
+                CategoryManagerScreen(
+                    categories = CategoryCatalog.defaults(), onBack = {},
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onMove = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("category-type-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("category-type-INCOME").assertIsSelected()
+        compose.onNodeWithTag("category-row-seed-income-0").assertIsDisplayed()
+    }
 
     @Test fun categoryManagerMovesOnePositionByArrowAndLongPressDoesNotReorder() {
         val moved = mutableListOf<Pair<String, Int>>()
@@ -147,6 +163,8 @@ class CategorySettingsScreenTest {
             }
         }
 
+        compose.onNodeWithTag("settings-theme").assertIsDisplayed()
+        compose.onNodeWithTag("settings-feedback").assertIsDisplayed()
         compose.onNodeWithTag("settings-categories").assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings-export").assertIsDisplayed().performClick()
         compose.onNodeWithText("至少 8 个字符的密码").assertIsDisplayed()
