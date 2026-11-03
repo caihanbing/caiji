@@ -75,6 +75,7 @@ class CategorySettingsScreenTest {
         }
         compose.mainClock.advanceTimeByFrame()
         compose.onNodeWithTag("category-type-INCOME").assertIsSelected()
+        compose.onNodeWithTag("category-active-name-工资").assertIsEnabled()
         compose.mainClock.autoAdvance = true
     }
 

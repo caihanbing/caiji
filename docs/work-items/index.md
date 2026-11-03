@@ -11,4 +11,5 @@
 | [`WORK-20261101-005`](WORK-20261101-005.md) | 财记 0.2.3 实机反馈右对齐优化 | change | high | handoff-ready | ledger-entries | 2026-11-01 |
 | [`WORK-20261102-001`](WORK-20261102-001.md) | 财记 0.3.0 问题反馈、主题与手势操作 | feature | high | handoff-ready | ledger-entries, entry-categories, local-backup, app-appearance, user-feedback | 2026-11-02 |
 | [`WORK-20261102-002`](WORK-20261102-002.md) | 财记 0.3.1 实机回归修复 | bugfix | high | handoff-ready | ledger-entries, entry-categories, app-appearance, user-feedback | 2026-11-02 |
+| [`WORK-20261103-001`](WORK-20261103-001.md) | 财记 0.3.2 切页响应与报告展示优化 | bugfix | high | handoff-ready | ledger-entries, entry-categories | 2026-11-03 |
 <!-- manage-dev-work:index:end -->

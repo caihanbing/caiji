@@ -5,12 +5,12 @@
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览、手势切换并汇总收支。 -->
-<!-- last-verified: 2026-11-02 -->
-<!-- code-basis: HEAD 8d2f173e8547; worktree-digest sha256:1d2ebaf4cfee15e5d383de512046acad66b3261b4b1bac58dd54648e97b305be -->
+<!-- last-verified: 2026-11-03 -->
+<!-- code-basis: HEAD 9634544ae876; worktree-digest sha256:96607ed174dacea7ca05aee00cac25eeca05112b7560a0bbf41cfb04a2cb7eb0 -->
 
 ## 快速上下文
 
-财记 0.3.1 通过底部“明细、记账、设置”导航记录本地人民币账单。记账 Pager 覆盖金额与分类内容；账单短表格可直接切换，宽表格优先滚动并在边界把剩余手势交给 Pager。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。账单继续由 `LedgerViewModel` 和 `RoomLedgerRepository` 写入原账本数据库。
+财记 0.3.2 通过底部“明细、记账、设置”导航记录本地人民币账单。记账 Pager 覆盖金额与分类内容；未溢出的账单金额/表格关闭子滚动手势，超宽表格优先滚动并在边界把剩余手势交给 Pager。年月报告一次读取同一期间汇总和支出/收入双排行，切页直接使用已加载数据；期间变化及账单/分类写入会失效旧快照。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。
 
 金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
@@ -37,12 +37,13 @@
 - 月/年账单分段支持横滑切换，Pager 与分段值同步；报告排行同样支持支出/收入横滑，分类明细钻取时不启用排行切页。
 - 账单表格优先消费实际可滚动的横向位移；无可滚动内容或到达边界后，剩余位移交给月/年 Pager。每页垂直滚动位置独立保存。
 - 分段选中背景与文字颜色跟随 `PagerState.currentPageOffsetFraction` 连续变化；类型副作用及报表查询仍在 `settledPage` 更新。
+- 月/年报告在同一期间缓存汇总和收支双排行；类型切换不触发新查询、不清空汇总。期间变化不显示旧数据，账单/分类成功写入与恢复账本后清除快照。
 - 账单行可左滑展开删除，点击后仍需二次确认；同一时间只展开一行。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
 ### 范围外
 
-- 多账本、转账、多币种、云同步、登录、报表、预算和资产管理。
+- 多账本、转账、多币种、云同步、登录、预算和资产管理。
 
 ### 不变量
 
@@ -69,7 +70,8 @@
 - `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
 - `app/src/main/java/app/caiji/android/ui/PeriodControls.kt` — 明细和报告共用的期间箭头及结余汇总卡。
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
-- `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求序号门闩，丢弃过期异步结果。
+- `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `PeriodRankingSnapshot` 双排行聚合的同一 Room 只读事务读取。
+- `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求门闩；`PeriodRankingRequestGate` 按 `ReportPeriod` 完整起止日期标记/撤销在途查询。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、两页金额/分类内容、分类拖动、数字键盘和确认。
 - `app/src/main/java/app/caiji/android/ui/CommonNavigationComponents.kt` — Pager 连续分段、统一选中语义。
 - `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
@@ -99,7 +101,8 @@
 
 - 在 Room 只读快照内读取账单，再由 Kotlin 以 `BigInteger` 聚合月份、年份和分类金额，避免 SQLite `SUM(Long)` 溢出。
 - 报告查询前初始化默认分类目录，确保首启空数据库可提供完整分类榜单。
-- `LedgerViewModel` 通过 `LatestRequestGate` 阻止较早月份/年份查询覆盖当前报告；`LedgerReportsTest.newerPeriodRequestPreventsOlderQueryFromUpdatingTheScreen` 覆盖顺序规则。
+- `LedgerViewModel.loadPeriodRankingSnapshot` 按期间范围缓存汇总与两类排行榜，使用独立请求序号；成功刷新账单/分类和恢复账本时立即使旧快照失效。
+- `LedgerViewModel` 通过请求门闩阻止旧月份/年份及报告期间查询覆盖新结果；请求键使用 `ReportPeriod` 完整起止日期，因此年度和当年一月独立寻址。返回已缓存期间会撤销其他期间的在途查询并清除其错误状态。报告双排行来自同一 `PeriodRankingSnapshot`，切页不请求数据库。
 
 ## 数据模型与迁移
 
@@ -136,8 +139,8 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；版本 `0.3.1`、`versionCode=8`；账本 Room schema 1。
-- 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room，无业务后端。
+- Android `minSdk=26`、`targetSdk=34`；版本 `0.3.2`、`versionCode=9`；账本 Room schema 1。
+- 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room；期间双排行同一快照读取，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
 ## 可观测性与运维
@@ -149,7 +152,9 @@
 
 ### 已执行
 
-- `:app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug` — JVM、lint 和 API34 AVD 90 项仪器测试全部通过；包含金额起点切页、短/长表格优先级与边界交接、分段中程跟随、报告旧类型隔离和反馈图片预览。
+- `:app:testDebugUnitTest :app:connectedDebugAndroidTest` — JVM 和 API34 AVD 94 项仪器测试通过；覆盖分类切页开关状态、非溢出账单摘要横滑、短/长表格边界交接、双排行中途显示/摘要稳定及期间隔离。
+- `./scripts/build-release-macos.sh` — Lint、JVM 和正式构建通过；0.3.2/code9 包身份、正式签名、zipalign 与 SHA-256 见 `WORK-20261103-001`。
+- API34 AVD 用 0.3.1 正式包写入 ¥12.34 支出、调换分类顺序、选择青竹主题并保存带截图反馈；覆盖安装 0.3.2 并重启后四项均保留。
 - API34 仪器覆盖两种通知格式、字段唯一性、余额不串入金额、跨年和闰日；每日收支同一行、年份上下界、类别提示移除、金额展开、键盘邻接、分类箭头均通过。
 - API34 AVD 以同签名 versionCode 6 包新增 ¥1.23 支出，再覆盖安装 0.3.0/code 7；启动后仍显示原 ¥1.23 账单。
 - `bash scripts/test-build-release-macos.sh` 与 `./scripts/build-release-macos.sh` 通过；0.3.1/code 8 的包名、minSdk26、targetSdk34、签名、zipalign 和 SHA-256 见本轮 Work Item。
@@ -200,6 +205,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-03 — 0.3.2 账单手势与双排行快照
+
+- **状态**：已完成
+- **变化**：未溢出的账单摘要/表格不再启用子横滚；年月报告一次读取期间汇总及支出/收入双排行并按日期范围隔离快照。
+- **原因**：修复实机账单切页距离偏长、报告切换后排行延迟和汇总闪动。
+- **兼容性**：账本 Room schema 1、备份格式 2 不变；仅增加 ViewModel 期间内存快照。
+- **验证**：JVM、94 项 API34 仪器、Lint、正式签名构建及 0.3.1 覆盖升级均通过。
 
 ### 2026-11-02 — 0.3.0 报表和记账水平手势
 

@@ -20,7 +20,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
@@ -86,7 +86,8 @@ internal fun CategoryManagerScreen(
     }
 
     fun move(category: Category, delta: Int) {
-        if (movingId != null) return
+        val page = if (category.type == EntryType.EXPENSE) 0 else 1
+        if (movingId != null || typePager.isScrollInProgress || typePager.currentPage != page) return
         val currentIndex = orderedCategories.indexOfFirst { it.id == category.id }
         val targetIndex = currentIndex + delta
         if (currentIndex < 0 || targetIndex !in orderedCategories.indices) return
@@ -163,15 +164,16 @@ internal fun CategoryManagerScreen(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("category-list"),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(pageCategories, key = { it.id }) { category ->
-                    val index = orderedCategories.indexOfFirst { it.id == category.id }
+                itemsIndexed(pageCategories, key = { _, category -> category.id }) { index, category ->
                     CategoryRow(
                         category = category,
-                        onEdit = { if (!operationInProgress && pageType == selectedType) edit = category },
-                        onActive = { id, active -> if (pageType == selectedType) onActive(id, active) },
-                        canMoveUp = index > 0 && !operationInProgress && pageType == selectedType,
-                        canMoveDown = index < orderedCategories.lastIndex && !operationInProgress && pageType == selectedType,
-                        enabled = !operationInProgress && pageType == selectedType,
+                        onEdit = { if (!operationInProgress && !typePager.isScrollInProgress && typePager.currentPage == pageIndex) edit = category },
+                        onActive = { id, active ->
+                            if (!operationInProgress && !typePager.isScrollInProgress && typePager.currentPage == pageIndex) onActive(id, active)
+                        },
+                        canMoveUp = index > 0 && !operationInProgress,
+                        canMoveDown = index < pageCategories.lastIndex && !operationInProgress,
+                        enabled = !operationInProgress,
                         onMoveUp = { move(category, -1) },
                         onMoveDown = { move(category, 1) }
                     )

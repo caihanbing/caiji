@@ -147,6 +147,9 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     val reportLoading by model.reportLoading.collectAsState()
     val reportError by model.reportError.collectAsState()
     val periodReport by model.periodReport.collectAsState()
+    val periodRankingSnapshot by model.periodRankingSnapshot.collectAsState()
+    val periodRankingLoading by model.periodRankingLoading.collectAsState()
+    val periodRankingError by model.periodRankingError.collectAsState()
     var page by rememberSaveable { mutableStateOf(Page.LEDGER) }
     var editorReturnPage by rememberSaveable { mutableStateOf(Page.LEDGER.name) }
     var billListMode by rememberSaveable { mutableStateOf(BillListMode.MONTH.name) }
@@ -217,10 +220,11 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
         pendingClipboard = null
     }
 
-    LaunchedEffect(page, billListMode, reportYear, reportMonthValue, reportTypeName, reportCategoryId) {
+    LaunchedEffect(page, billListMode, reportYear, reportMonthValue, reportCategoryId) {
         when (page) {
             Page.BILLS -> if (billListMode == BillListMode.MONTH.name) model.loadBillLists(reportYear) else model.loadYearlyReports()
-            Page.PERIOD_REPORT -> model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
+            Page.PERIOD_REPORT -> if (reportCategoryId == null) model.loadPeriodRankingSnapshot(reportYear, reportMonthValue)
+                else model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
             else -> Unit
         }
     }
@@ -487,9 +491,13 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 )
                 Page.PERIOD_REPORT -> BillPeriodReportScreen(
                     year = reportYear, monthValue = reportMonthValue, report = periodReport,
-                    loading = reportLoading, error = reportError, selectedType = EntryType.valueOf(reportTypeName),
+                    rankingSnapshot = periodRankingSnapshot,
+                    loading = if (reportCategoryId == null) periodRankingLoading else reportLoading,
+                    error = if (reportCategoryId == null) periodRankingError else reportError,
+                    selectedType = EntryType.valueOf(reportTypeName),
                     selectedCategoryId = reportCategoryId, onBack = { page = Page.BILLS }, onRetry = {
-                        model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
+                        if (reportCategoryId == null) model.loadPeriodRankingSnapshot(reportYear, reportMonthValue, force = true)
+                        else model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
                     }, onSelectType = { reportTypeName = it.name; reportCategoryId = null },
                     onSelectCategory = { reportCategoryId = it }, onEditEntry = { entry ->
                         editEntry = entry; editEntryId = entry.id; editorReturnPage = Page.PERIOD_REPORT.name; page = Page.EDITOR

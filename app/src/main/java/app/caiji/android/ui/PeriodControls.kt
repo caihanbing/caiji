@@ -62,6 +62,7 @@ internal fun PeriodSummaryCard(
     expenseLabel: String = "支出",
     modifier: Modifier = Modifier
 ) {
+    val balanceScroll = rememberScrollState()
     Surface(
         color = CaijiPalette.PrimarySoft,
         shape = RoundedCornerShape(18.dp),
@@ -72,7 +73,8 @@ internal fun PeriodSummaryCard(
     ) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Text(title, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-            Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().horizontalScroll(balanceScroll, enabled = balanceScroll.maxValue > 0)
+                .testTag("summary-balance-scroll-area")) {
                 Text(
                     "${if (totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(totals.balanceFen.abs())}",
                     Modifier.testTag("report-balance"),
@@ -93,9 +95,10 @@ internal fun PeriodSummaryCard(
 
 @Composable
 private fun SummaryMetric(label: String, amountFen: java.math.BigInteger, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    val amountScroll = rememberScrollState()
     Column(modifier) {
         Text(label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxWidth().horizontalScroll(amountScroll, enabled = amountScroll.maxValue > 0)) {
             Text(
                 "¥${formatYuan(amountFen)}",
                 color = color,

@@ -74,6 +74,19 @@ class LedgerRepositoryTest {
         assertEquals(BigInteger.valueOf(1700), categories.single().amountFen)
     }
 
+    @Test fun periodRankingSnapshotLoadsBothTypesAndTotalsTogether() = runBlocking {
+        val food = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "餐饮" }
+        val salary = repository.categories().first { it.type == EntryType.INCOME && it.name == "工资" }
+        repository.addEntry(EntryType.EXPENSE, 1200, food.id, LocalDate.of(2024, 2, 29), null)
+        repository.addEntry(EntryType.INCOME, 9000, salary.id, LocalDate.of(2024, 2, 2), null)
+
+        val snapshot = repository.periodRankingSnapshot(LocalDate.of(2024, 2, 1), LocalDate.of(2024, 3, 1))
+
+        assertEquals(LedgerPeriodTotals(BigInteger.valueOf(1200), BigInteger.valueOf(9000)), snapshot.totals)
+        assertEquals(listOf(food.id), snapshot.categories.filter { it.category.type == EntryType.EXPENSE }.map { it.category.id })
+        assertEquals(listOf(salary.id), snapshot.categories.filter { it.category.type == EntryType.INCOME }.map { it.category.id })
+    }
+
     @Test fun reportQueriesInitializeTheDefaultCategoryCatalogOnFirstLaunch() = runBlocking {
         assertTrue(repository.yearlyReports().isEmpty())
         assertEquals(16, database.ledgerDao().categories().size)

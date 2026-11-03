@@ -60,6 +60,24 @@ class LedgerReportsTest {
         assertEquals(BigInteger.valueOf(100), categories[1].amountFen)
     }
 
+    @Test fun periodRankingSnapshotContainsExpenseAndIncomeFromOnePeriod() {
+        val entries = listOf(
+            entry("food", EntryType.EXPENSE, 1200, "food", LocalDate.of(2024, 2, 29)),
+            entry("home", EntryType.EXPENSE, 300, "home", LocalDate.of(2024, 2, 1)),
+            entry("salary", EntryType.INCOME, 9000, "salary", LocalDate.of(2024, 2, 2)),
+            entry("outside", EntryType.INCOME, 5000, "salary", LocalDate.of(2024, 3, 1))
+        )
+
+        val snapshot = LedgerReports.periodRankingSnapshot(
+            entries, listOf(food, home, salary), LocalDate.of(2024, 2, 1), LocalDate.of(2024, 3, 1)
+        )
+
+        assertEquals(LedgerPeriodTotals(BigInteger.valueOf(1500), BigInteger.valueOf(9000)), snapshot.totals)
+        assertEquals(listOf("food", "home"), snapshot.categories.filter { it.category.type == EntryType.EXPENSE }.map { it.category.id })
+        assertEquals(listOf("salary"), snapshot.categories.filter { it.category.type == EntryType.INCOME }.map { it.category.id })
+        assertEquals(BigInteger.valueOf(9000), snapshot.categories.single { it.category.type == EntryType.INCOME }.amountFen)
+    }
+
     @Test fun newerPeriodRequestPreventsOlderQueryFromUpdatingTheScreen() {
         val gate = LatestRequestGate()
         val oldMonth = gate.begin()

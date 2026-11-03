@@ -246,6 +246,19 @@ class RoomLedgerRepository(private val database: LedgerDatabase) {
         }
     }
 
+    internal suspend fun periodRankingSnapshot(
+        startInclusive: LocalDate,
+        endExclusive: LocalDate
+    ): PeriodRankingSnapshot {
+        initialize()
+        return database.withTransaction {
+            require(endExclusive.isAfter(startInclusive)) { "账单期间无效" }
+            val entries = dao.entriesBetween(startInclusive.toString(), endExclusive.toString()).map(EntryRow::toDomain)
+            val storedCategories = dao.categories().map(CategoryRow::toDomain)
+            LedgerReports.periodRankingSnapshot(entries, storedCategories, startInclusive, endExclusive)
+        }
+    }
+
     suspend fun allEntries(): List<LedgerEntry> {
         initialize()
         return dao.allEntries().map(EntryRow::toDomain)

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
 import app.caiji.android.data.PeriodLedgerReport
+import app.caiji.android.data.PeriodRankingSnapshot
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiPalette
 import java.math.BigInteger
@@ -157,8 +158,14 @@ internal fun BillPeriodReportScreen(
     onRetry: () -> Unit,
     onSelectType: (EntryType) -> Unit,
     onSelectCategory: (String?) -> Unit,
-    onEditEntry: (app.caiji.android.data.LedgerEntry) -> Unit
+    onEditEntry: (app.caiji.android.data.LedgerEntry) -> Unit,
+    rankingSnapshot: PeriodRankingSnapshot? = null
 ) {
+    val startInclusive = if (monthValue == 0) java.time.LocalDate.of(year, 1, 1) else YearMonth.of(year, monthValue).atDay(1)
+    val endExclusive = if (monthValue == 0) java.time.LocalDate.of(year + 1, 1, 1) else YearMonth.of(year, monthValue).plusMonths(1).atDay(1)
+    val visibleSnapshot = rankingSnapshot?.takeIf { it.startInclusive == startInclusive && it.endExclusive == endExclusive }
+    val visibleReport = report?.takeIf { it.startInclusive == startInclusive && it.endExclusive == endExclusive }
+    val summaryTotals = visibleSnapshot?.totals ?: visibleReport?.totals
     val rankingPager = rememberPagerState(initialPage = if (selectedType == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
     val rankingPagerScope = rememberCoroutineScope()
     LaunchedEffect(selectedType) {
@@ -182,10 +189,10 @@ internal fun BillPeriodReportScreen(
             )
             Spacer(Modifier.width(48.dp))
         }
-        report?.let {
+        summaryTotals?.let {
             PeriodSummaryCard(
                 "${year}年${if (monthValue == 0) "结余" else "${monthValue}月结余"}",
-                it.totals,
+                it,
                 incomeLabel = if (monthValue == 0) "${year}年收入" else "${monthValue}月收入",
                 expenseLabel = if (monthValue == 0) "${year}年支出" else "${monthValue}月支出"
             )
@@ -202,8 +209,10 @@ internal fun BillPeriodReportScreen(
             )
             HorizontalPager(state = rankingPager, modifier = Modifier.weight(1f).fillMaxWidth().testTag("report-ranking-pager")) { pageIndex ->
                 val pageType = if (pageIndex == 0) EntryType.EXPENSE else EntryType.INCOME
-                val rankingCategories = if (loading || pageType != selectedType) emptyList()
-                    else report?.categories.orEmpty().filter { it.category.type == pageType }
+                val rankingCategories = visibleSnapshot?.categories?.filter { it.category.type == pageType }
+                    ?: if (pageType == selectedType) visibleReport?.categories.orEmpty().filter { it.category.type == pageType }
+                    else emptyList()
+                val rankingDataReady = visibleSnapshot != null || (pageType == selectedType && visibleReport != null)
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                     Text("分类排行", Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -221,18 +230,18 @@ internal fun BillPeriodReportScreen(
                         }
                         HorizontalDivider(color = CaijiPalette.Divider)
                     }
-                    if (!loading && error == null && rankingCategories.isEmpty()) {
-                        Text("此期间暂无${if (selectedType == EntryType.EXPENSE) "支出" else "收入"}",
+                    if (rankingDataReady && !loading && error == null && rankingCategories.isEmpty()) {
+                        Text("此期间暂无${if (pageType == EntryType.EXPENSE) "支出" else "收入"}",
                             Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)
                     }
                 }
             }
         } else {
-            val selectedCategory = report?.categories?.firstOrNull { it.category.id == selectedCategoryId }?.category
+            val selectedCategory = visibleReport?.categories?.firstOrNull { it.category.id == selectedCategoryId }?.category
             Text(selectedCategory?.name.orEmpty(), Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-                report?.entries.orEmpty().forEach { entry ->
+                visibleReport?.entries.orEmpty().forEach { entry ->
                     val category = selectedCategory
                     Row(
                         Modifier.fillMaxWidth().clickable { onEditEntry(entry) }
@@ -249,7 +258,7 @@ internal fun BillPeriodReportScreen(
                     }
                     HorizontalDivider(color = CaijiPalette.Divider)
                 }
-                if (!loading && error == null && report?.entries.isNullOrEmpty()) {
+                if (!loading && error == null && visibleReport?.entries.isNullOrEmpty()) {
                     Text("该分类暂无账单", Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)
                 }
             }
@@ -277,7 +286,8 @@ private fun BillPeriodTable(heading: String, rows: List<BillTableRow>) {
         val rowEndPadding = 2.dp
         val tableWidth = maxOf(maxWidth, firstWidth + rowStartPadding + rowEndPadding + minimumNumericWidth * 3)
         val numericWidth = (tableWidth - firstWidth - rowStartPadding - rowEndPadding) / 3
-        Column(Modifier.horizontalScroll(rememberScrollState()).testTag("bill-table-scroll")) {
+        val tableScroll = rememberScrollState()
+        Column(Modifier.horizontalScroll(tableScroll, enabled = tableScroll.maxValue > 0).testTag("bill-table-scroll")) {
             Column(Modifier.width(tableWidth)) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = rowStartPadding, end = rowEndPadding, top = 10.dp, bottom = 10.dp),

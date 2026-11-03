@@ -38,6 +38,7 @@ import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
 import app.caiji.android.data.CategoryPeriodTotal
 import app.caiji.android.data.PeriodLedgerReport
+import app.caiji.android.data.PeriodRankingSnapshot
 import app.caiji.android.data.LedgerEntry
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.EntryType
@@ -85,6 +86,29 @@ class BillReportsScreenTest {
         }
         compose.onNodeWithTag("month-row-10").performTouchInput { swipeLeft() }
         compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+    }
+
+    @Test fun summaryCardSwipeBeyondThePagerThresholdPassesThroughItsNonOverflowingAmounts() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CaijiTheme {
+                var mode by remember { mutableStateOf(BillListMode.MONTH) }
+                BillReportsScreen(
+                    mode = mode, year = 2026, monthReports = emptyList(), yearReports = emptyList(),
+                    loading = false, error = null, onBack = {}, onPreviousYear = {}, onNextYear = {},
+                    onRetryList = {}, onSelectMode = { mode = it }, onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("summary-balance-scroll-area").performTouchInput {
+            val start = center
+            down(start)
+            moveTo(start.copy(x = start.x - width * .65f), delayMillis = 35)
+            up()
+        }
+        compose.mainClock.advanceTimeBy(800)
+        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.mainClock.autoAdvance = true
     }
 
     @Test fun expenseAndIncomeRankingsCanSwitchByHorizontalSwipe() {
@@ -147,6 +171,63 @@ class BillReportsScreenTest {
         compose.onNodeWithTag("report-type-INCOME").assertIsSelected()
         compose.onAllNodesWithTag("report-category-${expenseCategory.id}").assertCountEquals(1)
         compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun reportShowsBothPreloadedRankingsAndStableSummaryDuringSwipe() {
+        val expense = Category("food", EntryType.EXPENSE, "餐饮", "restaurant")
+        val income = Category("salary", EntryType.INCOME, "工资", "salary")
+        val snapshot = PeriodRankingSnapshot(
+            java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(100, 900),
+            listOf(
+                CategoryPeriodTotal(expense, BigInteger.valueOf(100)),
+                CategoryPeriodTotal(income, BigInteger.valueOf(900))
+            )
+        )
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CaijiTheme {
+                var type by remember { mutableStateOf(EntryType.EXPENSE) }
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0, report = null, rankingSnapshot = snapshot,
+                    loading = false, error = null, selectedType = type, selectedCategoryId = null,
+                    onBack = {}, onRetry = {}, onSelectType = { type = it }, onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("report-ranking-pager").performTouchInput {
+            val start = center
+            down(start)
+            moveTo(start.copy(x = start.x - width * .65f))
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("report-type-INCOME").assertIsSelected()
+        compose.onAllNodesWithTag("report-category-salary").assertCountEquals(1)
+        compose.onNodeWithTag("period-summary-card").assertIsDisplayed()
+        compose.onNodeWithText("2026年结余").assertIsDisplayed()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun reportDoesNotRenderSnapshotOrSummaryFromAnotherPeriod() {
+        val oldCategory = Category("old-food", EntryType.EXPENSE, "旧期间分类", "restaurant")
+        val oldSnapshot = PeriodRankingSnapshot(
+            java.time.LocalDate.of(2025, 1, 1), java.time.LocalDate.of(2026, 1, 1), totals(100, 0),
+            listOf(CategoryPeriodTotal(oldCategory, BigInteger.valueOf(100)))
+        )
+        val oldReport = PeriodLedgerReport(
+            java.time.LocalDate.of(2025, 1, 1), java.time.LocalDate.of(2026, 1, 1), totals(100, 0),
+            listOf(CategoryPeriodTotal(oldCategory, BigInteger.valueOf(100))), emptyList()
+        )
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0, report = oldReport, rankingSnapshot = oldSnapshot,
+                    loading = true, error = null, selectedType = EntryType.EXPENSE, selectedCategoryId = null,
+                    onBack = {}, onRetry = {}, onSelectType = {}, onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onAllNodesWithTag("period-summary-card").assertCountEquals(0)
+        compose.onAllNodesWithTag("report-category-old-food").assertCountEquals(0)
     }
 
     @Test fun monthAndYearListsUseReferenceTitlesAndOpenTheSelectedPeriod() {

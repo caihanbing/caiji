@@ -34,7 +34,28 @@ data class PeriodLedgerReport(
     val entries: List<LedgerEntry>
 )
 
+internal data class PeriodRankingSnapshot(
+    val startInclusive: java.time.LocalDate,
+    val endExclusive: java.time.LocalDate,
+    val totals: LedgerPeriodTotals,
+    val categories: List<CategoryPeriodTotal>
+)
+
 object LedgerReports {
+    internal fun periodRankingSnapshot(
+        entries: Iterable<LedgerEntry>,
+        categories: List<Category>,
+        startInclusive: java.time.LocalDate,
+        endExclusive: java.time.LocalDate
+    ): PeriodRankingSnapshot {
+        require(endExclusive.isAfter(startInclusive)) { "账单期间无效" }
+        val periodEntries = entries.filter { !it.occurredOn.isBefore(startInclusive) && it.occurredOn.isBefore(endExclusive) }
+        val rankings = EntryType.entries.flatMap { type ->
+            categoryTotals(periodEntries, categories, startInclusive, endExclusive, type)
+        }
+        return PeriodRankingSnapshot(startInclusive, endExclusive, LedgerPeriodTotals.from(periodEntries), rankings)
+    }
+
     fun monthlyReports(entries: Iterable<LedgerEntry>, year: Int): List<MonthLedgerTotal> {
         val totalsByMonth = entries.asSequence()
             .filter { it.occurredOn.year == year }

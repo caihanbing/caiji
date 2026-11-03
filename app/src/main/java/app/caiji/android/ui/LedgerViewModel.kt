@@ -12,12 +12,16 @@ import app.caiji.android.data.MonthTotals
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
 import app.caiji.android.data.PeriodLedgerReport
+import app.caiji.android.data.PeriodRankingSnapshot
+import app.caiji.android.data.PeriodRankingRequestGate
+import app.caiji.android.data.ReportPeriod
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.EntryType
 import java.math.BigInteger
 import java.time.LocalDate
 import java.time.YearMonth
 import java.io.OutputStream
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,16 +50,58 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
     val reportError: StateFlow<String?> = _reportError.asStateFlow()
     private val _periodReport = MutableStateFlow<PeriodLedgerReport?>(null)
     val periodReport: StateFlow<PeriodLedgerReport?> = _periodReport.asStateFlow()
+    private val _periodRankingSnapshot = MutableStateFlow<PeriodRankingSnapshot?>(null)
+    internal val periodRankingSnapshot: StateFlow<PeriodRankingSnapshot?> = _periodRankingSnapshot.asStateFlow()
+    private val _periodRankingLoading = MutableStateFlow(false)
+    internal val periodRankingLoading: StateFlow<Boolean> = _periodRankingLoading.asStateFlow()
+    private val _periodRankingError = MutableStateFlow<String?>(null)
+    internal val periodRankingError: StateFlow<String?> = _periodRankingError.asStateFlow()
     private val reportRequests = LatestRequestGate()
+    private val rankingRequests = PeriodRankingRequestGate()
 
     init { refresh() }
 
-    fun refresh() = viewModelScope.launch {
-        runCatching {
-            repository.initialize()
-            _categories.value = repository.categories()
-            refreshMonth()
-        }.onFailure { _error.value = it.message ?: "读取账单失败" }
+    fun refresh(): Job {
+        invalidatePeriodRankings()
+        return viewModelScope.launch {
+            runCatching {
+                repository.initialize()
+                _categories.value = repository.categories()
+                refreshMonth()
+            }.onFailure { _error.value = it.message ?: "读取账单失败" }
+        }
+    }
+
+    private fun invalidatePeriodRankings() {
+        rankingRequests.invalidate()
+        _periodRankingSnapshot.value = null
+        _periodRankingLoading.value = false
+        _periodRankingError.value = null
+    }
+
+    internal fun loadPeriodRankingSnapshot(year: Int, monthValue: Int, force: Boolean = false) {
+        val start = if (monthValue == 0) LocalDate.of(year, 1, 1) else YearMonth.of(year, monthValue).atDay(1)
+        val end = if (monthValue == 0) LocalDate.of(year + 1, 1, 1) else YearMonth.of(year, monthValue).plusMonths(1).atDay(1)
+        val period = ReportPeriod(start, end)
+        val current = _periodRankingSnapshot.value
+        if (!force && current?.let { it.startInclusive == start && it.endExclusive == end } == true) {
+            if (rankingRequests.cancelIfDifferent(period)) _periodRankingLoading.value = false
+            _periodRankingError.value = null
+            return
+        }
+        if (!force && _periodRankingLoading.value && rankingRequests.isLoading(period)) return
+        val request = rankingRequests.begin(period)
+        _periodRankingLoading.value = true
+        _periodRankingError.value = null
+        viewModelScope.launch {
+            runCatching { repository.periodRankingSnapshot(start, end) }
+                .onSuccess { if (rankingRequests.isCurrent(request)) _periodRankingSnapshot.value = it }
+                .onFailure { if (rankingRequests.isCurrent(request)) _periodRankingError.value = it.message ?: "读取账单报告失败" }
+            if (rankingRequests.isCurrent(request)) {
+                _periodRankingLoading.value = false
+                rankingRequests.complete(request)
+            }
+        }
     }
 
     fun changeMonth(month: YearMonth) {
