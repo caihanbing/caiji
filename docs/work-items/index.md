@@ -12,5 +12,5 @@
 | [`WORK-20261102-001`](WORK-20261102-001.md) | 财记 0.3.0 问题反馈、主题与手势操作 | feature | high | handoff-ready | ledger-entries, entry-categories, local-backup, app-appearance, user-feedback | 2026-11-02 |
 | [`WORK-20261102-002`](WORK-20261102-002.md) | 财记 0.3.1 实机回归修复 | bugfix | high | handoff-ready | ledger-entries, entry-categories, app-appearance, user-feedback | 2026-11-02 |
 | [`WORK-20261103-001`](WORK-20261103-001.md) | 财记 0.3.2 切页响应与报告展示优化 | bugfix | high | handoff-ready | ledger-entries, entry-categories | 2026-11-03 |
-| [`WORK-20261104-001`](WORK-20261104-001.md) | 财记 0.3.3 记账分类与月年账单实机反馈修复 | bugfix | medium | implementing | ledger-entries, entry-categories | 2026-11-04 |
+| [`WORK-20261104-001`](WORK-20261104-001.md) | 财记 0.3.3 记账分类与月年账单实机反馈修复 | bugfix | medium | handoff-ready | ledger-entries, entry-categories | 2026-11-04 |
 <!-- manage-dev-work:index:end -->
