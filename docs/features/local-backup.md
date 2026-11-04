@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 -->
 <!-- last-verified: 2026-11-04 -->
-<!-- code-basis: HEAD bf759ecc78f3; worktree-digest sha256:fec131f45b01a72b12da693f25eccf83b617a4696d0499d06a615031c4b276d6 -->
+<!-- code-basis: HEAD b82e98e8ba27; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
@@ -169,7 +169,7 @@
 - **变化**：确认新增的工资数据库和工作簿不加入账本完整加密备份或恢复事务。
 - **原因**：工资按用户确认通过 XLSX 独立备份，并保持旧账本备份格式兼容。
 - **兼容性**：账本 schema 1 和备份格式 2 不变；恢复账本不覆盖工资库。
-- **验证**：工资 Room 数据库使用独立名称和独立 Repository；API34 工资存储及账本回归通过。
+- **验证**：工资 Room 数据库使用独立名称和独立 Repository；API34 108 项工资存储及账本回归通过。
 
 ### 2026-11-02 — 0.3.0 本机问题与主题备份范围
 

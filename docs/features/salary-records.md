@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立保存工资收入，按月年统计纯收入与现金类别，并支持与样例版式一致的 XLSX 导入导出。 -->
 <!-- last-verified: 2026-11-04 -->
-<!-- code-basis: HEAD bf759ecc78f3; worktree-digest sha256:fec131f45b01a72b12da693f25eccf83b617a4696d0499d06a615031c4b276d6 -->
+<!-- code-basis: HEAD b82e98e8ba27; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
@@ -157,7 +157,7 @@ Kotlin、Room 2.6.1、Jetpack Compose Material 3，minSdk 26。工作簿格式�
 
 ### 2026-11-04 — 添加工资收入记录与 XLSX 导入导出
 
-- **状态**：部分完成
+- **状态**：已完成
 - **变化**：新增独立工资数据、统计、项目管理、底栏入口、图表占位页和样例版式工作簿导入导出。
 - **原因**：支持单独记录和统计每笔工资及福利。
 - **兼容性**：账本 Room schema 1 和加密备份格式 2 未变；新增工资 Room schema 1。
