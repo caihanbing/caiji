@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -76,12 +77,36 @@ class EntryEditorScreenTest {
         compose.onAllNodesWithTag("entry-save").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-date").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-note").assertCountEquals(0)
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").assertIsDisplayed()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
         compose.onNodeWithTag("amount-display").performClick()
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
+    }
+
+    @Test fun collapsedCategoryGridUsesAvailableHeightAndCanReachLastCategory() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    onCancel = {}, onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed().assertHeightIsAtLeast(300.dp)
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-seed-expense-0").assertIsDisplayed()
+        val lastExpense = categories.filter { it.type == EntryType.EXPENSE }.maxBy { it.sortOrder }
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-${lastExpense.id}"))
+        compose.onNodeWithTag("entry-category-${lastExpense.id}").assertIsDisplayed()
+        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-input-dock").assertIsDisplayed()
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-${lastExpense.id}"))
+        compose.onNodeWithTag("entry-category-${lastExpense.id}").assertIsDisplayed()
     }
 
     @Test fun clipboardPrefillOpensKeypadWithAmountAndDateButLeavesCategoryEmpty() {
@@ -117,7 +142,7 @@ class EntryEditorScreenTest {
         }
 
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
         compose.onAllNodesWithTag("entry-key-dismiss").assertCountEquals(0)
@@ -227,12 +252,12 @@ class EntryEditorScreenTest {
             }
         }
 
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-type-income").performClick()
         compose.onNodeWithTag("entry-type-income").assertIsSelected()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
@@ -294,7 +319,7 @@ class EntryEditorScreenTest {
             }
         }
 
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-note").assertIsDisplayed()
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
@@ -401,7 +426,7 @@ class EntryEditorScreenTest {
             }
         }
 
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-note").performTextInput("早餐")
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)

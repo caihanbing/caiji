@@ -220,9 +220,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
         pendingClipboard = null
     }
 
-    LaunchedEffect(page, billListMode, reportYear, reportMonthValue, reportCategoryId) {
+    LaunchedEffect(page, reportYear, reportMonthValue, reportCategoryId) {
         when (page) {
-            Page.BILLS -> if (billListMode == BillListMode.MONTH.name) model.loadBillLists(reportYear) else model.loadYearlyReports()
             Page.PERIOD_REPORT -> if (reportCategoryId == null) model.loadPeriodRankingSnapshot(reportYear, reportMonthValue)
                 else model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName), reportCategoryId)
             else -> Unit
@@ -485,7 +484,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     monthReports = monthlyReports, yearReports = yearlyReports, loading = reportLoading, error = reportError,
                     onSelectMode = { billListMode = it.name }, onBack = { page = Page.LEDGER },
                     onPreviousYear = { reportYear -= 1 }, onNextYear = { reportYear += 1 },
-                    onRetryList = { if (billListMode == BillListMode.MONTH.name) model.loadBillLists(reportYear) else model.loadYearlyReports() },
+                    onRetryList = { model.loadBillLists(reportYear) },
+                    onLoadLists = { model.loadBillLists(it) },
                     onOpenMonth = { selected -> reportYear = selected.year; reportMonthValue = selected.monthValue; reportTypeName = EntryType.EXPENSE.name; reportCategoryId = null; page = Page.PERIOD_REPORT },
                     onOpenYear = { selected -> reportYear = selected; reportMonthValue = 0; reportTypeName = EntryType.EXPENSE.name; reportCategoryId = null; page = Page.PERIOD_REPORT }
                 )

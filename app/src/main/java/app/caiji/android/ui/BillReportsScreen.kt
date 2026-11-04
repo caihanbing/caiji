@@ -64,11 +64,14 @@ internal fun BillReportsScreen(
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
     onRetryList: () -> Unit,
+    onLoadLists: (Int) -> Unit = {},
     onOpenMonth: (YearMonth) -> Unit,
     onOpenYear: (Int) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = mode.ordinal, pageCount = { BillListMode.entries.size })
     val pagerScope = rememberCoroutineScope()
+    val visibleMonthReports = monthReports.filter { it.month.year == year }
+    LaunchedEffect(year) { onLoadLists(year) }
     LaunchedEffect(mode) { if (pagerState.currentPage != mode.ordinal) pagerState.animateScrollToPage(mode.ordinal) }
     LaunchedEffect(pagerState.settledPage) {
         val settled = BillListMode.entries[pagerState.settledPage]
@@ -102,13 +105,13 @@ internal fun BillReportsScreen(
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().testTag("bill-mode-pager")) { pageIndex ->
             when (BillListMode.entries[pageIndex]) {
                 BillListMode.MONTH -> {
-                    val yearTotals = monthReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
+                    val yearTotals = visibleMonthReports.fold(LedgerPeriodTotals(BigInteger.ZERO, BigInteger.ZERO)) { total, item ->
                         LedgerPeriodTotals(total.expenseFen + item.totals.expenseFen, total.incomeFen + item.totals.incomeFen)
                     }
                     Column(Modifier.fillMaxSize()) {
                         PeriodSummaryCard("${year}年结余", yearTotals,
                             incomeLabel = "${year}年收入", expenseLabel = "${year}年支出")
-                        val rows = monthReports.sortedByDescending { it.month }.map { item ->
+                        val rows = visibleMonthReports.sortedByDescending { it.month }.map { item ->
                             BillTableRow("${item.month.monthValue}月", item.totals, "month-row-${item.month.monthValue}") {
                                 onOpenMonth(item.month)
                             }

@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -412,7 +410,7 @@ private fun EntryEditorPageContent(
     onMove: (String, Int, (Boolean) -> Unit) -> Unit
 ) {
     val pageCategories = categories.filter { it.type == pageType && (it.active || it.id == selectedCategory) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("entry-editor-scroll")) {
+    Column(Modifier.fillMaxSize().testTag("entry-editor-scroll")) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
             Text("金额", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -443,7 +441,7 @@ private fun EntryEditorPageContent(
                 Text("管理分类", modifier = Modifier.padding(start = 5.dp))
             }
         }
-        Box(Modifier.fillMaxWidth().height(210.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().weight(1f).padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
             if (pageCategories.isEmpty()) {
                 Text("暂无可用分类，请先新增或启用分类", Modifier.padding(horizontal = 20.dp),
                     color = CaijiPalette.SecondaryText, textAlign = TextAlign.Center,

@@ -58,14 +58,14 @@ class EverydayLedgerFlowTest {
         val note = "保留草稿-${System.currentTimeMillis()}"
         compose.onNodeWithTag("nav-entry").performClick()
         compose.onNodeWithTag("entry-type-income").performClick()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         listOf("1", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
         val dateBefore = compose.onNodeWithTag("entry-key-date").fetchSemanticsNode().config[SemanticsProperties.Text]
         compose.onNodeWithTag("entry-note").performTextInput(note)
 
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-manage-categories"))
+        compose.onNodeWithTag("entry-manage-categories").assertIsDisplayed()
         compose.onNodeWithTag("entry-manage-categories").performClick()
         compose.onNodeWithText("分类管理").assertIsDisplayed()
         compose.onNodeWithText("工资").assertIsDisplayed()
@@ -79,17 +79,17 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("amount-display").assertTextEquals("123.00")
         compose.onNodeWithTag("entry-note").assertTextContains(note)
         assertEquals(dateBefore, compose.onNodeWithTag("entry-key-date").fetchSemanticsNode().config[SemanticsProperties.Text])
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasText(categoryName))
         compose.onNodeWithText(categoryName).assertIsDisplayed()
         compose.onNodeWithText(categoryName).performClick()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
 
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-manage-categories"))
+        compose.onNodeWithTag("entry-manage-categories").assertIsDisplayed()
         compose.onNodeWithTag("entry-manage-categories").performClick()
         compose.onNodeWithTag("category-back").performClick()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-manage-categories"))
+        compose.onNodeWithTag("entry-manage-categories").assertIsDisplayed()
         compose.onNodeWithTag("entry-manage-categories").performClick()
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithText(categoryName).assertIsDisplayed()
@@ -99,7 +99,7 @@ class EverydayLedgerFlowTest {
         compose.waitUntil(timeoutMillis = 5_000) {
             compose.onAllNodesWithText("该分类已停用，请重新选择启用分类").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasText("该分类已停用，请重新选择启用分类"))
+        compose.onNodeWithText("该分类已停用，请重新选择启用分类").assertIsDisplayed()
         compose.onNodeWithText("该分类已停用，请重新选择启用分类").assertIsDisplayed()
         compose.onNodeWithTag("amount-display").assertTextEquals("123.00")
         compose.onAllNodesWithTag("entry-note").assertCountEquals(0)
@@ -110,7 +110,7 @@ class EverydayLedgerFlowTest {
     @Test fun anExistingEntryCanSwitchFromExpenseToIncomeAndBeDeleted() {
         val note = "ui-transfer-${System.currentTimeMillis()}"
         compose.onNodeWithTag("nav-entry").performClick()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         listOf("1", ".", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
@@ -124,7 +124,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
         compose.onNodeWithTag("entry-type-income").performClick()
         compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         compose.onNodeWithTag("entry-key-save").performClick()
@@ -143,7 +143,7 @@ class EverydayLedgerFlowTest {
     @Test fun editingAFilteredReportEntryRefreshesTheReportAndKeepsItsCategoryFilter() {
         val note = "期间报告编辑-${System.currentTimeMillis()}"
         compose.onNodeWithTag("nav-entry").performClick()
-        compose.onNodeWithTag("entry-editor-scroll").performScrollToNode(hasTestTag("entry-category-grid"))
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         listOf("1", "7").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
         compose.onNodeWithTag("entry-note").performTextInput(note)

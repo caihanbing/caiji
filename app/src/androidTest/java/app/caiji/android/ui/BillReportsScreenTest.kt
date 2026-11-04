@@ -19,6 +19,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import app.caiji.android.ui.theme.CaijiTheme
 import java.math.BigInteger
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -61,14 +63,103 @@ class BillReportsScreenTest {
             CaijiTheme {
                 var mode by remember { mutableStateOf(BillListMode.MONTH) }
                 BillReportsScreen(
-                    mode = mode, year = 2026, monthReports = emptyList(), yearReports = emptyList(),
+                    mode = mode, year = 2026,
+                    monthReports = listOf(MonthLedgerTotal(YearMonth.of(2026, 10), totals(1_234, 5_678))),
+                    yearReports = listOf(2026 to totals(8_765, 4_321)),
                     loading = false, error = null, onBack = {}, onPreviousYear = {}, onNextYear = {},
                     onRetryList = {}, onSelectMode = { mode = it }, onOpenMonth = {}, onOpenYear = {}
                 )
             }
         }
+        compose.onNodeWithTag("report-balance").assertTextContains("¥44.44")
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithTag("report-balance").assertTextContains("−¥44.44")
+        compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeRight() }
+        compose.onNodeWithText("2026年结余").assertIsDisplayed()
+        compose.onNodeWithTag("report-balance").assertTextContains("¥44.44")
+    }
+
+    @Test fun monthlyAndYearlyBillSummaryRemainNonZeroDuringSwipe() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CaijiTheme {
+                var mode by remember { mutableStateOf(BillListMode.MONTH) }
+                BillReportsScreen(
+                    mode = mode, year = 2026,
+                    monthReports = listOf(MonthLedgerTotal(YearMonth.of(2026, 10), totals(2_000, 9_000))),
+                    yearReports = listOf(2026 to totals(9_000, 2_000)),
+                    loading = false, error = null, onBack = {}, onPreviousYear = {}, onNextYear = {},
+                    onRetryList = {}, onSelectMode = { mode = it }, onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("bill-mode-pager").performTouchInput {
+            down(center)
+            moveTo(center.copy(x = center.x - width * .55f), delayMillis = 60)
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onAllNodesWithTag("period-summary-card").assertCountEquals(2)
+        compose.onAllNodesWithTag("report-balance").assertCountEquals(2)
+        compose.onNodeWithTag("bill-mode-pager").performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(800)
+        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithTag("report-balance").assertTextContains("−¥70.00")
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun billListsReloadForYearChangesButNotForMonthYearPageSwipes() {
+        val loads = AtomicInteger()
+        val retryYear = AtomicInteger()
+        compose.setContent {
+            CaijiTheme {
+                var mode by remember { mutableStateOf(BillListMode.MONTH) }
+                var year by remember { mutableStateOf(2024) }
+                BillReportsScreen(
+                    mode = mode, year = year,
+                    monthReports = listOf(MonthLedgerTotal(YearMonth.of(year, 10), totals(1_000, 9_000))),
+                    yearReports = listOf(year to totals(9_000, 1_000)),
+                    loading = false, error = "读取失败", onBack = {}, onPreviousYear = { year-- }, onNextYear = { year++ },
+                    onRetryList = { loads.incrementAndGet(); retryYear.set(year) },
+                    onLoadLists = { loads.incrementAndGet(); retryYear.set(it) },
+                    onSelectMode = { mode = it }, onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(1, loads.get())
+        compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        assertEquals(1, loads.get())
+        compose.onNodeWithTag("bill-previous-year").performClick()
+        compose.waitForIdle()
+        assertEquals(2, loads.get())
+        assertEquals(2023, retryYear.get())
+        compose.onNodeWithTag("report-retry").performClick()
+        assertEquals(3, loads.get())
+        assertEquals(2023, retryYear.get())
+    }
+
+    @Test fun changingYearNeverShowsThePreviousYearsMonthlySummary() {
+        compose.setContent {
+            CaijiTheme {
+                var year by remember { mutableStateOf(2024) }
+                BillReportsScreen(
+                    mode = BillListMode.MONTH, year = year,
+                    monthReports = listOf(MonthLedgerTotal(YearMonth.of(2024, 10), totals(1_000, 5_000))),
+                    yearReports = listOf(2024 to totals(1_000, 5_000)),
+                    loading = false, error = null, onBack = {}, onPreviousYear = { year-- }, onNextYear = {},
+                    onRetryList = {}, onLoadLists = {}, onSelectMode = {}, onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("report-balance").assertTextContains("¥40.00")
+        compose.onNodeWithTag("bill-previous-year").performClick()
+        compose.onNodeWithText("2023年结余").assertIsDisplayed()
+        compose.onNodeWithTag("report-balance").assertTextContains("¥0.00")
+        compose.onAllNodesWithTag("month-row-10").assertCountEquals(0)
     }
 
     @Test fun shortBillRowPassesHorizontalSwipeToMonthYearPager() {
