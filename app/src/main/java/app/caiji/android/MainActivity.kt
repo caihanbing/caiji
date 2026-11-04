@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Page { LEDGER, BILLS, PERIOD_REPORT, EDITOR, SETTINGS, CATEGORIES, THEMES, FEEDBACK_LIST, FEEDBACK_EDITOR }
+private enum class Page { LEDGER, BILLS, PERIOD_REPORT, EDITOR, CHART, SALARY, SETTINGS, CATEGORIES, THEMES, FEEDBACK_LIST, FEEDBACK_EDITOR }
 private enum class RestoreFlow { IDLE, PREVIEW, PREPARING, BACKUP_PASSWORD, SELECTING_BACKUP, PREPARING_BACKUP, WRITING_BACKUP, APPLYING }
 
 @Composable
@@ -188,6 +188,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var selectedRestoreUri by remember { mutableStateOf(Uri.EMPTY) }
     var pickerError by remember { mutableStateOf<String?>(null) }
     var restoreSessionActive by remember { mutableStateOf(false) }
+    var salaryPreview by remember { mutableStateOf<app.caiji.android.data.SalaryImportPreview?>(null) }
+    var salaryExportPeriod by remember { mutableStateOf<app.caiji.android.data.SalaryPeriod?>(null) }
 
     LaunchedEffect(context) {
         val activity = context as? MainActivity ?: return@LaunchedEffect
@@ -202,7 +204,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     }
     LaunchedEffect(page, restoreFlow, restoreSessionActive, pendingClipboard, editEntryId) {
         val pending = pendingClipboard ?: return@LaunchedEffect
-        if (page == Page.EDITOR || page == Page.FEEDBACK_EDITOR || restoreFlow != RestoreFlow.IDLE || restoreSessionActive || editEntryId != null) return@LaunchedEffect
+        if (page == Page.EDITOR || page == Page.SALARY || page == Page.FEEDBACK_EDITOR || restoreFlow != RestoreFlow.IDLE || restoreSessionActive || editEntryId != null) return@LaunchedEffect
         val activity = context as? MainActivity ?: return@LaunchedEffect
         val preferences = activity.getSharedPreferences("clipboard_transaction_imports", Context.MODE_PRIVATE)
         val seen = preferences.getStringSet("fingerprints", emptySet()).orEmpty().toMutableSet()
@@ -280,6 +282,33 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
         }
     }
 
+    val salaryImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) pickerError = "已取消选择工资 Excel 文件"
+        else scope.launch {
+            runCatching { withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use {
+                    app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }
+                        .importPreview(it, (context.applicationContext as CaijiApplication).salaryRepository.incomeTypes(), LocalDate.now())
+                } ?: error("无法读取所选文件")
+            } }.onSuccess { salaryPreview = it; pickerError = if (it.errors.isEmpty()) null else "Excel 有错误行，修正文件后重新导入" }
+                .onFailure { pickerError = "导入失败：" + (it.message ?: "请重试") }
+        }
+    }
+    val salaryExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { uri: Uri? ->
+        val period = salaryExportPeriod; salaryExportPeriod = null
+        if (uri == null || period == null) pickerError = "已取消保存工资 Excel"
+        else scope.launch {
+            runCatching { withContext(Dispatchers.IO) {
+                val repo = (context.applicationContext as CaijiApplication).salaryRepository
+                val types = repo.incomeTypes()
+                val entries = app.caiji.android.data.SalaryReports.filter(repo.entries(), period)
+                context.contentResolver.openOutputStream(uri, "w")?.use {
+                    app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }.export(it, entries, types)
+                } ?: error("无法写入所选文件")
+            } }.onSuccess { pickerError = "工资 Excel 已保存" }
+                .onFailure { pickerError = "导出失败：" + (it.message ?: "请重试") }
+        }
+    }
     val preRestorePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
         val password = restoreBackupPassword
         restoreBackupPassword = null
@@ -423,7 +452,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     }
 
     Scaffold(bottomBar = {
-        if (page == Page.LEDGER || page == Page.SETTINGS) NavigationBar(containerColor = CaijiPalette.Surface) {
+        if (page == Page.LEDGER || page == Page.SALARY || page == Page.CHART || page == Page.SETTINGS) NavigationBar(containerColor = CaijiPalette.Surface) {
             val navigationColors = NavigationBarItemDefaults.colors(
                 selectedIconColor = CaijiPalette.Primary,
                 selectedTextColor = CaijiPalette.Ink,
@@ -434,6 +463,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
             NavigationBarItem(selected = page == Page.LEDGER, onClick = { page = Page.LEDGER },
                 icon = { CaijiIcon(CaijiIconName.LEDGER, contentDescription = null) }, label = { Text("明细") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-ledger"))
+            NavigationBarItem(selected = page == Page.CHART, onClick = { page = Page.CHART },
+                icon = { Text("▥") }, label = { Text("图表") }, colors = navigationColors, modifier = Modifier.testTag("nav-chart"))
             NavigationBarItem(selected = false, onClick = {
                 editEntry = null; editEntryId = null; initialEditorType = EntryType.EXPENSE
                 clipboardPrefill = null; clipboardPrefillId = null
@@ -446,6 +477,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 }
             }, label = { Text("记账") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-entry"))
+            NavigationBarItem(selected = page == Page.SALARY, onClick = { page = Page.SALARY },
+                icon = { Text("¥") }, label = { Text("工资") }, colors = navigationColors, modifier = Modifier.testTag("nav-salary"))
             NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
                 icon = { CaijiIcon(CaijiIconName.SETTINGS, contentDescription = null) }, label = { Text("设置") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-settings"))
@@ -531,6 +564,20 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     onSetCategoryActive = model::setCategoryActive,
                     onReorderCategory = model::reorderCategory,
                     categoryErrorMessage = modelError)
+                Page.CHART -> Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("图表", style = MaterialTheme.typography.headlineSmall)
+                    Text("图表功能即将上线", color = CaijiPalette.SecondaryText)
+                }
+                Page.SALARY -> app.caiji.android.ui.SalaryRootScreen(
+                    repo = (context.applicationContext as CaijiApplication).salaryRepository,
+                    preview = salaryPreview,
+                    onImport = { salaryImportPicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+                    onClear = { salaryPreview = null },
+                    onExport = { period ->
+                        salaryExportPeriod = period
+                        salaryExportPicker.launch("工资明细.xlsx")
+                    }
+                )
                 Page.SETTINGS -> SettingsScreen({ page = Page.CATEGORIES }, { password ->
                     exportPassword = password
                     exportPicker.launch("财记-完整备份-${LocalDate.now()}.cjbackup")
