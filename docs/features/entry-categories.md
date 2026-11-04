@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 管理收支类别、48 个内置图标、折线箭头顺序调整和启停状态；记账分类网格按可用高度显示并保留历史关联。 -->
 <!-- last-verified: 2026-11-04 -->
-<!-- code-basis: HEAD 28777c1b5700; worktree-digest sha256:32462ff8ec39a4a41b1def80efeeb243fecc4f2fa21e92b7e8e3ebc12c6fed58 -->
+<!-- code-basis: HEAD 5d4a61bc73b3; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 

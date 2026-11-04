@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览、手势切换并汇总收支。 -->
 <!-- last-verified: 2026-11-04 -->
-<!-- code-basis: HEAD 28777c1b5700; worktree-digest sha256:32462ff8ec39a4a41b1def80efeeb243fecc4f2fa21e92b7e8e3ebc12c6fed58 -->
+<!-- code-basis: HEAD 5d4a61bc73b3; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
