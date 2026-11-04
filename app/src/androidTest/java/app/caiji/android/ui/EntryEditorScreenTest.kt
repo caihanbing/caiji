@@ -2,6 +2,7 @@ package app.caiji.android.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -172,6 +174,32 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
     }
 
+    @Test fun rapidRepeatedCategorySwipesKeepBothCategoryGridsAndNeverReorder() {
+        val reorderCalls = AtomicLong(0)
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> reorderCalls.incrementAndGet(); done(true) }
+                )
+            }
+        }
+        repeat(3) {
+            compose.onNodeWithTag("entry-content-pager").performTouchInput { swipeLeft() }
+            compose.waitForIdle()
+            compose.onNodeWithTag("entry-type-income").assertIsSelected()
+            compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed().assertIsEnabled()
+
+            compose.onNodeWithTag("entry-content-pager").performTouchInput { swipeRight() }
+            compose.waitForIdle()
+            compose.onNodeWithTag("entry-type-expense").assertIsSelected()
+            compose.onNodeWithTag("entry-category-seed-expense-0").assertIsDisplayed().assertIsEnabled()
+        }
+        assertEquals(0L, reorderCalls.get())
+    }
+
     @Test fun swipingFromAmountAreaSwitchesTypeAndKeepsAmountDraft() {
         compose.setContent {
             CaijiTheme {
@@ -214,6 +242,31 @@ class EntryEditorScreenTest {
         assertEquals("seed-expense-0", moved.get()?.first)
         assertEquals(1, moved.get()?.second)
         compose.onNodeWithTag("amount-display").assertTextEquals("0.00")
+    }
+
+    @Test fun failedCategoryReorderRestoresItemsAndReleasesPagerLock() {
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onReorderCategory = { _, _, done -> done(false) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performTouchInput {
+            val start = center
+            down(start)
+            advanceEventTime(650)
+            moveTo(Offset(start.x + width + 12f, start.y))
+            up()
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("entry-category-seed-expense-0").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("entry-content-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("entry-type-income").assertIsSelected()
+        compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed().assertIsEnabled()
     }
 
     @Test fun savingLocksEntryTypeCategorySelectionAndCategoryManagement() {

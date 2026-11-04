@@ -480,8 +480,10 @@ private fun CategoryDragGrid(
     var draggedId by remember { mutableStateOf<String?>(null) }
     var dragStart by remember { mutableStateOf(Offset.Zero) }
     var dragDelta by remember { mutableStateOf(Offset.Zero) }
-    var originalOrder by remember { mutableStateOf<List<Category>>(emptyList()) }
+    var originalOrder by remember(visibleCategories) { mutableStateOf<List<Category>?>(null) }
+    var dragSourceCategories by remember(visibleCategories) { mutableStateOf<List<Category>?>(null) }
     var savingOrder by remember { mutableStateOf(false) }
+    val latestVisibleCategories by rememberUpdatedState(visibleCategories)
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
 
@@ -502,6 +504,7 @@ private fun CategoryDragGrid(
                             dragStart = start
                             dragDelta = Offset.Zero
                             originalOrder = order
+                            dragSourceCategories = visibleCategories
                             onDragActive(true)
                         }
                     },
@@ -535,7 +538,11 @@ private fun CategoryDragGrid(
                     onDragEnd = {
                         val id = draggedId
                         val reordered = order
-                        if (id == null || reordered == originalOrder) {
+                        val rollbackOrder = originalOrder
+                        val sourceCategories = dragSourceCategories
+                        originalOrder = null
+                        dragSourceCategories = null
+                        if (id == null || rollbackOrder == null || reordered == rollbackOrder) {
                             draggedId = null
                             dragDelta = Offset.Zero
                             onDragActive(false)
@@ -546,7 +553,7 @@ private fun CategoryDragGrid(
                             val target = completeOrder.indexOfFirst { it.id == id }
                             savingOrder = true
                             onMove(id, target) { saved ->
-                                if (!saved) order = originalOrder
+                                if (!saved && latestVisibleCategories == sourceCategories) order = rollbackOrder
                                 savingOrder = false
                                 draggedId = null
                                 dragDelta = Offset.Zero
@@ -555,10 +562,15 @@ private fun CategoryDragGrid(
                         }
                     },
                     onDragCancel = {
-                        order = originalOrder
-                        draggedId = null
-                        dragDelta = Offset.Zero
-                        onDragActive(false)
+                        val rollbackOrder = originalOrder
+                        if (rollbackOrder != null) {
+                            if (latestVisibleCategories == dragSourceCategories) order = rollbackOrder
+                            originalOrder = null
+                            dragSourceCategories = null
+                            draggedId = null
+                            dragDelta = Offset.Zero
+                            onDragActive(false)
+                        }
                     }
                 )
             },
