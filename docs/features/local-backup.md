@@ -107,7 +107,7 @@
 - 使用 600,000 轮 PBKDF2-HMAC-SHA256 派生 256 位 AES 密钥；AES-GCM 使用 128 位标签。
 - 每次导出通过 `SecureRandom` 生成 16 字节盐和 12 字节 nonce。
 - 密码不写入 Room、持久化偏好或日志；用户必须在设备外保管密码。
-- 通过 Storage Access Framework 使用用户选择的 URI，无需 INTERNET 或广泛存储权限。
+- 通过 Storage Access Framework 使用用户选择的 URI，无需广泛存储权限；应用的 INTERNET 权限仅供 GitHub 更新检查使用，备份文件和密码不会上传。
 - 禁用 Android 自动应用数据备份；release 签名密钥不包含在用户备份中。
 
 ## 配置与依赖

@@ -1,6 +1,6 @@
-# 财记 0.3.4 macOS 构建与安装
+# 财记 0.5.0 macOS 构建与安装
 
-财记 0.3.4 使用 applicationId `app.caiji.android`、`versionCode=11`、`minSdk=26` 和 `targetSdk=34`。账本 Room schema 保持 1，加密账本备份格式保持 2；反馈和主题继续保存在账本数据之外。构建入口为 `scripts/build-release-macos.sh`。
+财记 0.5.0 使用 applicationId `app.caiji.android`、`versionCode=15`、`minSdk=26` 和 `targetSdk=34`。账本 Room schema 保持 1，加密账本备份格式保持 2；问题反馈、工资、主题偏好和更新提示抑制状态继续各自独立。正式构建入口为 `scripts/build-release-macos.sh`。
 
 正式签名材料位于 Git 忽略的 `private-signing/caiji-release.jks` 和 `private-signing/signing.properties`，不得提交或分享。沿用现有正式签名以支持覆盖升级。
 
@@ -8,26 +8,27 @@
 
 运行：
 
-    ./scripts/build-release-macos.sh
+    ANDROID_SDK_ROOT=<Android SDK 路径> ./scripts/build-release-macos.sh
 
-脚本运行 JVM 测试和 lint，构建正式 APK，按内嵌版本号命名、生成 SHA-256 sidecar，并验证包名、minSdk、targetSdk、zipalign 和签名。
+脚本运行 JVM 测试和 lint，构建正式 APK，按内嵌版本号命名、生成 SHA-256 sidecar，并验证包名、版本、minSdk、targetSdk、zipalign 和签名。
 
 默认产物：
 
-    app/build/outputs/apk/release/caiji-0.3.4-release.apk
-    app/build/outputs/apk/release/caiji-0.3.4-release.apk.sha256
+    app/build/outputs/apk/release/caiji-0.5.0-release.apk
+    app/build/outputs/apk/release/caiji-0.5.0-release.apk.sha256
+
+每次发布新版本时，将同一正式 APK 和 SHA-256 sidecar 附到匹配的 `v<version>` GitHub Release。
 
 ## 安装或升级
 
-1. 核对 APK 的 SHA-256 sidecar 和包名 `app.caiji.android`。
-2. 安装 APK 并启动应用。
-3. 检查原账单与分类、反馈截图、主题选择、记账分类完整显示及快速左右滑动后分类仍在。
-4. 如需回退，使用同签名 0.3.3 APK 覆盖安装。
+1. 核对 APK 的 SHA-256 sidecar、包名 `app.caiji.android` 和正式签名。
+2. 安装 APK 并启动应用；升级安装会保留本机账单、分类、工资、反馈和主题偏好。
+3. 应用进入前台时自动检查 GitHub 最新正式版本；也可在“设置 → 关于财记 → 检查更新”手动检查。
+4. 若发现更新，检查版本号与 Release 说明后点击“下载更新”；系统浏览器打开 APK，安装仍由用户确认。
+5. 离线时更新检查失败不影响本机账本、工资、反馈与备份功能。
 
-0.3.4 不迁移或替换账本数据库或反馈数据库；旧账本加密备份仍按格式 2 处理。卸载应用会删除本机问题记录及截图。
-
-每次交付新版本时，除在 `main` 推送源码外，还要创建匹配版本号的 GitHub Release，附上经校验的正式 APK 及 `.sha256` 文件。
+0.5.0 不迁移账本 Room schema 或加密备份格式。回退可使用同签名 0.4.2 APK 覆盖安装；应用降级行为由 Android 版本策略决定，正式升级前仍建议导出加密账本备份。
 
 ## 回退
 
-使用同签名 0.3.3 APK 覆盖安装；账本、反馈记录、截图和主题偏好继续留在相同应用私有存储中。无服务端、队列或数据库服务需要部署或重启。
+优先恢复同签名的上一版本 APK。覆盖安装不会主动删除应用私有数据库；无服务端、队列或数据库服务需要部署或重启。

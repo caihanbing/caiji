@@ -68,6 +68,7 @@ import app.caiji.android.ui.LedgerHome
 import app.caiji.android.ui.LedgerViewModel
 import app.caiji.android.ui.RestoreSummaryDialog
 import app.caiji.android.ui.SettingsScreen
+import app.caiji.android.ui.UpdateAvailableDialog
 import app.caiji.android.ui.FeedbackEditorScreen
 import app.caiji.android.ui.FeedbackListScreen
 import app.caiji.android.ui.ThemePickerScreen
@@ -76,6 +77,7 @@ import app.caiji.android.ui.SalaryDraft
 import app.caiji.android.ui.theme.CaijiThemeId
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiTheme
+import app.caiji.android.update.UpdateState
 import java.time.LocalDate
 import java.security.MessageDigest
 import java.util.UUID
@@ -137,6 +139,8 @@ private enum class RestoreFlow { IDLE, PREVIEW, PREPARING, BACKUP_PASSWORD, SELE
 @Composable
 private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     val context = LocalContext.current
+    val updateManager = (context.applicationContext as CaijiApplication).updateManager
+    val updateState by updateManager.state.collectAsState()
     val feedbackRepository = remember { (context.applicationContext as CaijiApplication).feedbackRepository }
     val scope = rememberCoroutineScope()
     val month by model.month.collectAsState()
@@ -165,6 +169,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var feedbackEditId by remember { mutableStateOf<String?>(null) }
     var feedbackDraftId by remember { mutableStateOf<String?>(null) }
     var feedbackDeleteCandidate by remember { mutableStateOf<FeedbackItemWithScreenshots?>(null) }
+    var localBlockingDialogOpen by remember { mutableStateOf(false) }
     var selectedTheme by remember {
         val key = (context as? MainActivity)?.getSharedPreferences("appearance", Context.MODE_PRIVATE)
             ?.getString("theme", CaijiThemeId.AMBER.key)
@@ -482,6 +487,25 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
         )
     }
 
+    val canShowUpdateDialog = restoreFlow == RestoreFlow.IDLE &&
+        restoreCandidate == null && exportPassword == null && feedbackDeleteCandidate == null && !localBlockingDialogOpen &&
+        page !in setOf(Page.EDITOR, Page.CATEGORIES, Page.THEMES, Page.FEEDBACK_LIST, Page.FEEDBACK_EDITOR, Page.SALARY)
+    if (canShowUpdateDialog) (updateState as? UpdateState.Available)?.let { available ->
+        val release = available.release
+        UpdateAvailableDialog(
+            currentVersion = BuildConfig.VERSION_NAME,
+            release = release,
+            onDismiss = updateManager::dismissAvailable,
+            onDownload = {
+                val target = release.apkUrl ?: release.releaseUrl
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                }.onSuccess { updateManager.dismissAvailable() }
+                    .onFailure { updateManager.downloadFailed() }
+            }
+        )
+    }
+
     Scaffold(bottomBar = {
         if (page == Page.LEDGER || (page == Page.SALARY && showSalaryBottomNavigation) || page == Page.CHART || page == Page.SETTINGS) NavigationBar(containerColor = CaijiPalette.Surface) {
             val navigationColors = NavigationBarItemDefaults.colors(
@@ -542,7 +566,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                         page = Page.BILLS
                     }, onDelete = { entry, complete ->
                         model.deleteEntry(entry.id, onDeleted = { complete(true) }, onFailed = { complete(false) })
-                    })
+                    }, onModalVisibilityChange = { localBlockingDialogOpen = it })
                 Page.BILLS -> BillReportsScreen(
                     mode = BillListMode.valueOf(billListMode), year = reportYear,
                     monthReports = monthlyReports, yearReports = yearlyReports, loading = reportLoading, error = reportError,
@@ -624,7 +648,10 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     exportPassword = password
                     exportPicker.launch("财记-完整备份-${LocalDate.now()}.cjbackup")
                 }, { importPicker.launch(arrayOf("application/octet-stream", "application/*", "*/*")) },
-                    onTheme = { page = Page.THEMES }, onFeedback = { page = Page.FEEDBACK_LIST })
+                    onTheme = { page = Page.THEMES }, onFeedback = { page = Page.FEEDBACK_LIST },
+                    updateState = updateState,
+                    onCheckUpdates = { updateManager.check(manual = true) },
+                    onLocalDialogVisibilityChange = { localBlockingDialogOpen = it })
                 Page.CATEGORIES -> CategoryManagerScreen(categories, { page = Page.SETTINGS },
                     { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },

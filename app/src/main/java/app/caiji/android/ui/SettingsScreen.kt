@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import app.caiji.android.BuildConfig
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiThemeId
+import app.caiji.android.update.UpdateState
 
 @Composable
 internal fun SettingsScreen(
@@ -44,19 +45,22 @@ internal fun SettingsScreen(
     onExport: (String) -> Unit,
     onImport: () -> Unit,
     onTheme: () -> Unit = {},
-    onFeedback: () -> Unit = {}
+    onFeedback: () -> Unit = {},
+    updateState: UpdateState = UpdateState.Idle,
+    onCheckUpdates: () -> Unit = {},
+    onLocalDialogVisibilityChange: (Boolean) -> Unit = {}
 ) {
     var exportPrompt by remember { mutableStateOf(false) }
     if (exportPrompt) BackupPasswordDialog(
         title = "加密完整备份",
         confirmLabel = "选择保存位置",
         requireConfirmation = true,
-        onDismiss = { exportPrompt = false },
-        onConfirm = { password, _ -> exportPrompt = false; onExport(password) }
+        onDismiss = { exportPrompt = false; onLocalDialogVisibilityChange(false) },
+        onConfirm = { password, _ -> exportPrompt = false; onLocalDialogVisibilityChange(false); onExport(password) }
     )
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 18.dp),
+        Modifier.fillMaxSize().testTag("settings-root").verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -134,7 +138,7 @@ internal fun SettingsScreen(
         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("备份与恢复", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Button(
-                onClick = { exportPrompt = true },
+                onClick = { exportPrompt = true; onLocalDialogVisibilityChange(true) },
                 modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settings-export"),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)
@@ -156,6 +160,34 @@ internal fun SettingsScreen(
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("关于财记", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text("财记 ${BuildConfig.VERSION_NAME} · Android 8.0 及以上", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+        }
+        Card(
+            onClick = onCheckUpdates,
+            enabled = updateState != UpdateState.Checking,
+            modifier = Modifier.fillMaxWidth().testTag("settings-check-updates"),
+            colors = CardDefaults.cardColors(containerColor = CaijiPalette.Surface)
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(11.dp)) {
+                    Text("↻", modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), color = CaijiPalette.Primary)
+                }
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("检查更新", fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
+                    val status = when (updateState) {
+                        UpdateState.Checking -> "正在检查…"
+                        UpdateState.UpToDate -> "已是最新版本"
+                        UpdateState.Failed -> "检查失败，请重试"
+                        else -> "检查 GitHub 上的最新版本"
+                    }
+                    Text(status, color = if (updateState == UpdateState.Failed) CaijiPalette.Danger else CaijiPalette.SecondaryText,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (updateState == UpdateState.Checking) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
+                }
+            }
         }
     }
 }

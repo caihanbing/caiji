@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -68,11 +69,14 @@ internal fun LedgerHome(
     onEdit: (LedgerEntry) -> Unit,
     onCreateEntry: () -> Unit,
     onOpenBills: () -> Unit = {},
-    onDelete: (LedgerEntry, (Boolean) -> Unit) -> Unit = { _, complete -> complete(false) }
+    onDelete: (LedgerEntry, (Boolean) -> Unit) -> Unit = { _, complete -> complete(false) },
+    onModalVisibilityChange: (Boolean) -> Unit = {}
 ) {
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     var deleteCandidate by remember { mutableStateOf<LedgerEntry?>(null) }
     var deleting by remember { mutableStateOf(false) }
+    LaunchedEffect(deleteCandidate) { onModalVisibilityChange(deleteCandidate != null) }
+    DisposableEffect(onModalVisibilityChange) { onDispose { onModalVisibilityChange(false) } }
     Column(
         modifier = Modifier
             .fillMaxSize()
