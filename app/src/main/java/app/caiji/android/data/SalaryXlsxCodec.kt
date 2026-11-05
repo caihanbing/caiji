@@ -243,7 +243,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     val formula=when(idx){
                         0->"SUM("+col+"2:"+col+last+")"
                         1->"SUMIF(N2:N"+last+",\"1\","+col+"2:"+col+last+")"
-                        else->"C"+rn+"-C"+(rn-1)
+                        else->col+(rn-2)+"-"+col+(rn-1)
                     }
                     val f=sheet.createElementNS(MAIN,"f");f.textContent=formula;c.appendChild(f)
                     val cached=ordered.filter { idx==0 || (idx==1)==it.isCash }.fold(java.math.BigInteger.ZERO){a,e->a+java.math.BigInteger.valueOf(e.value(col))}

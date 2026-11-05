@@ -13,6 +13,7 @@ class BackupFeedbackToneTest {
     @Test fun successAndCancellationMessagesUseTheirOwnTones() {
         assertEquals(FeedbackTone.SUCCESS, backupFeedbackTone("加密备份已保存"))
         assertEquals(FeedbackTone.SUCCESS, backupFeedbackTone("账单已恢复"))
+        assertEquals(FeedbackTone.SUCCESS, backupFeedbackTone("工资 Excel 已保存"))
         assertEquals(FeedbackTone.NOTICE, backupFeedbackTone("已取消恢复，原数据未更改"))
     }
 }

@@ -5,7 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.math.BigDecimal
 import java.time.LocalDate
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
 
 class SalaryXlsxCodecTest {
     @Test fun parsesSampleColumnsAndComputesNetUsingNegativeTax() {
@@ -39,6 +42,58 @@ class SalaryXlsxCodecTest {
         assertEquals(listOf(entry.duplicateKey()), result.entries.map { it.duplicateKey() })
         assertTrue(result.errors.isEmpty())
         assertEquals(1, result.rowsRead)
+    }
+
+    @Test fun nonCashTotalsSubtractTheCashTotalFromTheSameColumn() {
+        val cashType = SalaryIncomeTypes.defaults.first { it.isCash }
+        val nonCashType = SalaryIncomeTypes.defaults.first { !it.isCash }
+        val date = LocalDate.of(2026, 11, 1)
+        val entries = listOf(
+            SalaryEntry("cash", date, cashType.id, 10_000, unionFen = 100, pensionFen = 200, medicalFen = 50,
+                unemploymentFen = 0, housingFen = 300, annuityFen = 150, taxFen = 100, isCash = true,
+                createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("noncash", date, nonCashType.id, 20_000, unionFen = 200, pensionFen = 300, medicalFen = 100,
+                unemploymentFen = 50, housingFen = 400, annuityFen = 250, taxFen = -100, isCash = false,
+                createdAtMillis = 2, updatedAtMillis = 2)
+        )
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, entries, SalaryIncomeTypes.defaults)
+        val sheetXml = java.util.zip.ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+            var sheet = byteArrayOf()
+            while (true) {
+                val part = zip.nextEntry ?: break
+                if (part.name == "xl/worksheets/sheet1.xml") sheet = zip.readBytes()
+            }
+            sheet.toString(Charsets.UTF_8)
+        }
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(ByteArrayInputStream(sheetXml.toByteArray()))
+        val cells = doc.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "c")
+        val byReference = (0 until cells.length).map { cells.item(it) as Element }.associateBy { it.getAttribute("r") }
+        val expectedFen = mapOf(
+            "C" to listOf(30_000L, 10_000L, 20_000L),
+            "D" to listOf(300L, 100L, 200L),
+            "E" to listOf(500L, 200L, 300L),
+            "F" to listOf(150L, 50L, 100L),
+            "G" to listOf(50L, 0L, 50L),
+            "H" to listOf(700L, 300L, 400L),
+            "I" to listOf(400L, 150L, 250L),
+            "J" to listOf(0L, 100L, -100L),
+            "K" to listOf(27_900L, 9_100L, 18_800L)
+        )
+        expectedFen.forEach { (column, fenValues) ->
+            val rowFormulas = listOf(
+                "SUM(" + column + "2:" + column + "3)",
+                "SUMIF(N2:N3,\"1\"," + column + "2:" + column + "3)",
+                column + "4-" + column + "5"
+            )
+            (4..6).forEachIndexed { index, row ->
+                val cell = byReference.getValue(column + row)
+                assertEquals(rowFormulas[index], cell.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "f").item(0).textContent)
+                assertEquals(BigDecimal.valueOf(fenValues[index], 2).toPlainString(), cell.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "v").item(0).textContent)
+            }
+        }
     }
 
     @Test fun customIncomeTypesRoundTripAndRemainInTheHiddenDropdownSource() {

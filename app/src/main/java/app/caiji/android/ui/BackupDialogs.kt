@@ -144,7 +144,7 @@ internal enum class FeedbackTone { SUCCESS, NOTICE, ERROR }
 internal fun backupFeedbackTone(message: String, isModelError: Boolean = false): FeedbackTone = when {
     isModelError -> FeedbackTone.ERROR
     message.contains("已取消") || message.contains("未更改") -> FeedbackTone.NOTICE
-    message == "加密备份已保存" || message == "账单已恢复" || message == "恢复前备份已保存，账单已恢复" -> FeedbackTone.SUCCESS
+    message == "加密备份已保存" || message == "工资 Excel 已保存" || message == "账单已恢复" || message == "恢复前备份已保存，账单已恢复" -> FeedbackTone.SUCCESS
     else -> FeedbackTone.ERROR
 }
 

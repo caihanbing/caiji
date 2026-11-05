@@ -287,6 +287,34 @@ class SalaryScreensTest {
         }
     }
 
+    @Test fun salaryExportSuccessBannerUsesSuccessStateAcrossAllThemes() {
+        val message = "工资 Excel 已保存"
+        compose.setContent {
+            CaijiTheme {
+                BackupFeedbackBanner(message, backupFeedbackTone(message), {})
+            }
+        }
+        CaijiThemeId.entries.forEach { theme ->
+            compose.runOnIdle { CaijiPalette.select(theme) }
+            compose.onNodeWithTag("backup-feedback").assertIsDisplayed()
+            compose.onNodeWithText("完成  ·  工资 Excel 已保存").assertIsDisplayed()
+        }
+    }
+
+    @Test fun salaryExcelExportSuccessFeedbackUsesTheSuccessBannerAcrossThemes() {
+        val message = "工资 Excel 已保存"
+        compose.setContent {
+            CaijiTheme {
+                BackupFeedbackBanner(message, backupFeedbackTone(message), {})
+            }
+        }
+        CaijiThemeId.entries.forEach { theme ->
+            compose.runOnIdle { CaijiPalette.select(theme) }
+            compose.onNodeWithTag("backup-feedback").assertIsDisplayed()
+            compose.onNodeWithText("完成  ·  工资 Excel 已保存").assertIsDisplayed()
+        }
+    }
+
     @Test fun cashFilterAndYearPeriodControlsRemainAvailable() {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.onNodeWithTag("salary-period-年").performClick()
