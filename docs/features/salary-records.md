@@ -4,15 +4,15 @@
 <!-- feature-title: 工资收入记录 -->
 <!-- feature-aliases: salary, 工资, 工资明细 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 独立保存工资收入，按月年统计纯收入与现金类别，并支持与样例版式一致的 XLSX 导入导出。 -->
-<!-- last-verified: 2026-11-04 -->
-<!-- code-basis: HEAD b82e98e8ba27; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- feature-summary: 独立保存工资收入并按期间统计；按样例版式导入导出 XLSX，错误提示定位到文件或单元格。 -->
+<!-- last-verified: 2026-11-05 -->
+<!-- code-basis: HEAD a84cf871ce8f; worktree-digest sha256:ac3ea78eacc4b83cce65605f0011175b6603afb27d244fd2026df16772f38c0c -->
 
 ## 快速上下文
 
 底部“工资”页面提供工资和福利收入的独立记录、统计及 Excel 导入导出。工资保存在独立 caiji-salary.db 中，不计入账本账单或账本加密备份。支持按月、年、全部统计毛收入、扣款、纯收入及现金/非现金金额。
 
-仅支持 .xlsx。SalaryXlsxCodec 使用样例格式模板生成和解析 Sheet1。导入先预览校验，确认后在单一 Room 事务内写入。
+仅支持 .xlsx。SalaryXlsxCodec 使用样例格式模板生成和解析 Sheet1。导入先预览校验，确认后在单一 Room 事务内写入。XML 按 UTF-8/UTF-16 严格解码，采用 Android 可用的 namespace-aware DOM，不设置 Xerces 专有 feature；拒绝 DTD、实体声明和外部资源。导入错误区分文件级、应用级和单元格级，单元格错误显示 Sheet1 坐标、字段、当前值及修改建议。
 
 ## 目标与边界
 
@@ -27,7 +27,7 @@
 - 记录日期、收入项、毛收入、工会费、养老保险、医疗保险、失业保险、公积金、企业年金及税。
 - 提供样例全部 17 种收入项；支持创建名称唯一且明确标记现金性质的自定义项目。
 - 自动计算纯收入并按期间统计现金和非现金合计。
-- 预览 Excel 行错误、重复记录和收入项后确认导入；支持导出全部或当前期间。
+- 预览 Excel 文件/应用/单元格错误、重复记录和收入项后确认导入；错误时隐藏成功统计、禁用整批导入，并提供重新选择文件入口；支持导出全部或当前期间。
 
 ### 范围外
 
@@ -56,7 +56,7 @@
 - app/src/main/java/app/caiji/android/data/SalaryModels.kt — SalaryEntry、SalaryIncomeType、SalaryReports 与金额验证。
 - app/src/main/java/app/caiji/android/data/SalaryDatabase.kt — SalaryDatabase、SalaryDao、工资和收入项 Room 实体及样例目录。
 - app/src/main/java/app/caiji/android/data/SalaryRepository.kt — RoomSalaryRepository、工资 CRUD、重复统计和原子导入。
-- app/src/main/java/app/caiji/android/data/SalaryXlsxCodec.kt — OOXML 解析、样例版式导出及文件边界保护。
+- app/src/main/java/app/caiji/android/data/SalaryXlsxCodec.kt — OOXML 安全解码和解析、字段错误定位、样例版式导出及文件边界保护。
 - app/src/main/java/app/caiji/android/ui/SalaryScreens.kt — 工资总览、表单、收入项、导入及导出界面。
 - app/src/main/java/app/caiji/android/MainActivity.kt、CaijiApplication.kt — 导航、SAF 与独立工资数据库创建。
 - app/src/main/assets/salary-template.xlsx — 删除账目内容后保留的格式模板。
@@ -73,7 +73,7 @@
 
 ### SalaryXlsxCodec.importPreview
 
-- 输入 XLSX、当前项目列表和当前日期，返回有效工资行、错误行及工作簿携带的自定义项目。不改数据库。
+- 输入 XLSX、当前项目列表和当前日期，返回有效工资行、分级错误及工作簿携带的自定义项目。不改数据库。数据错误包含实际工作表行、单元格、字段、当前值、原因和修改建议；整文件或运行时错误不伪造行号，也不展示底层异常文本。
 
 ### SalaryXlsxCodec.export
 
@@ -93,7 +93,8 @@
 
 ## 异常与边界条件
 
-- 日期、金额格式、精度或净收入错误 — 显示行号及原因，阻止整批导入。
+- 日期、金额格式、精度、收入项或纯收入不一致 — 显示具体 Sheet1 单元格、字段、当前值、原因和修改建议，阻止整批导入；输入金额无效时不生成依赖金额的净收入差额错误。
+- 文件结构、XML 编码或内容损坏 — 显示文件级错误及 Excel/WPS 修复或另存建议，不出现“第 0 行”或零值统计。
 - 未知项目、现金属性不匹配或净收入缓存不一致 — 显示错误，不写数据。
 - 缓存中只有 K 列公式值的样例空行 — 忽略。
 - 无效 URI、压缩包过大、部件数量超限、宏、外链、嵌入文件或 XML 外部实体 — 拒绝解析或写出并在界面反馈。
@@ -105,7 +106,7 @@
 
 ## 安全与权限
 
-工资保存在应用私有数据库；无网络及广泛存储权限。Excel 经 SAF 授权流访问。ZIP 展开总量限制为 16 MiB、部件限制 40 个；XML 禁用 DOCTYPE 和外部实体；拒绝宏、外部链接和嵌入内容。XLSX 是明文文件，由用户选择位置及保管。系统自动备份不包含工资数据库。
+工资保存在应用私有数据库；无网络及广泛存储权限。Excel 经 SAF 授权流访问。ZIP 展开总量限制为 16 MiB、部件限制 40 个；严格解码 UTF-8/UTF-16 并在解析前拒绝 DTD/实体声明，通过拒绝外部资源的 EntityResolver 防止外部读取；拒绝宏、外部链接和嵌入内容。XLSX 是明文文件，由用户选择位置及保管。系统自动备份不包含工资数据库。
 
 ## 配置与依赖
 
@@ -119,14 +120,14 @@ Kotlin、Room 2.6.1、Jetpack Compose Material 3，minSdk 26。工作簿格式�
 
 ### 已执行
 
-- :app:testDebugUnitTest — 通过；货币边界、负税额、期间汇总、样例结构、XLSX 往返、重复和异常输入。
+- :app:testDebugUnitTest — 通过；覆盖货币边界、负税额、期间汇总、样例结构、XLSX 往返、重复多重集、UTF-16、DTD/外链拒绝和单元格级错误。
 - :app:lintDebug — 通过。
-- :app:connectedDebugAndroidTest — API34 108 项通过，覆盖工资数据库事务、多重集去重、录入和汇总界面。
-- 临时本地集成测试实际读取用户样例并核验 180 笔和四项合计；临时测试源码已删除。
+- :app:connectedDebugAndroidTest — API26 和 API34 各 118 项通过；覆盖原生 XML 编解码、关系路径、XML 资源限制、工资数据库事务、多重集去重、导入错误界面、异步失败反馈、重新选择/过期状态、工资草稿跨底栏导航保存及动态合计区域。
+- 临时本地 Android 集成测试在 API26/API34 对用户样例完成导入→导出→重导入，核对 180 笔、17 种收入项；毛收入 ¥1,038,302.00、纯收入 ¥820,407.20、现金纯收入 ¥756,580.20、非现金纯收入 ¥63,827.00。三类合计公式和 182–184 行动态合并范围通过；临时测试源码和个人财务文件均未保留在仓库。
 
 ### 未执行
 
-- 最终 0.4.0 正式 APK 签名、覆盖升级及 Release 附件校验待发布验证。
+- 0.4.1 正式 APK 已构建并核验包名、版本、SDK、正式签名、zipalign 和 SHA-256；GitHub Release 附件待发布。
 - 尚未在用户实体设备和独立桌面 Excel/WPS GUI 上回归；工作簿公式与结构以程序测试覆盖。
 
 ## 关键决策
@@ -150,10 +151,18 @@ Kotlin、Room 2.6.1、Jetpack Compose Material 3，minSdk 26。工作簿格式�
 ### 用户实体设备验证
 
 - **影响**：不同厂商 SAF、系统字体及 WPS/Excel GUI 尚未实测。
-- **当前处理**：API34 仪器测试及真实用户样例数值核对已通过。
+- **当前处理**：API26/API34 仪器测试及真实用户样例导入/导出/重导入与数值核对已通过；正式 APK 签名和对齐验证已通过。
 - **后续动作**：按 Work Item WORK-20261104-003 回归步骤安装正式包并检查 Excel 展示。
 
 ## 变更记录
+
+### 2026-11-05 — 修复 Android XLSX 读取及错误定位
+
+- **状态**：已完成
+- **变化**：移除 Android 不支持的 Xerces XML feature，增加 UTF-8/UTF-16 安全读取；将导入错误分为文件级、应用级和单元格级并提供坐标、原因及修改建议；重新选择、取消或离开工资页时清理预览并忽略过期读取结果。
+- **原因**：Android 原生解析器在创建 XML parser 时因 `disallow-doctype-decl` feature 抛错，旧逻辑把底层 URI 显示成“第 0 行”，无法指导用户修复样例文件。
+- **兼容性**：工资独立数据库、账本 schema 和加密备份格式不变；XLSX 仍限于样例 `Sheet1`，并拒绝 DTD、实体、外链及不支持编码。
+- **验证**：API26/API34 各 118 项仪器测试、JVM 和 Lint 通过；临时本地测试在两种 API 运行时完成原样例导入、导出和重导入，核对 180 笔及四项总额与三类合计公式/合并范围。
 
 ### 2026-11-04 — 添加工资收入记录与 XLSX 导入导出
 

@@ -34,7 +34,7 @@ private enum class SR { HOME, EDIT, TYPES, IMPORT, EXPORT }
 private enum class PM { MONTH, YEAR, ALL }
 private enum class CF { ALL, CASH, NONCASH }
 
-private data class SalaryDraft(val date:LocalDate,val typeId:String,val gross:String,val union:String,val pension:String,val medical:String,val unemployment:String,val housing:String,val annuity:String,val tax:String) {
+internal data class SalaryDraft(val date:LocalDate,val typeId:String,val gross:String,val union:String,val pension:String,val medical:String,val unemployment:String,val housing:String,val annuity:String,val tax:String) {
  companion object {
   fun blank(typeId:String)=SalaryDraft(LocalDate.now(),typeId,"0.00","0.00","0.00","0.00","0.00","0.00","0.00","0.00")
   fun from(e:SalaryEntry)=SalaryDraft(e.occurredOn,e.incomeTypeId,inFen(e.grossFen),inFen(e.unionFen),inFen(e.pensionFen),inFen(e.medicalFen),inFen(e.unemploymentFen),inFen(e.housingFen),inFen(e.annuityFen),inFen(e.taxFen))
@@ -42,17 +42,23 @@ private data class SalaryDraft(val date:LocalDate,val typeId:String,val gross:St
 }
 
 @Composable
-internal fun SalaryRootScreen(repo:RoomSalaryRepository,preview:SalaryImportPreview?,onImport:()->Unit,onClear:()->Unit,onExport:(SalaryPeriod)->Unit){
- val scope=rememberCoroutineScope();var page by remember{mutableStateOf(SR.HOME)};var typesOrigin by remember{mutableStateOf(SR.HOME)};var records by remember{mutableStateOf(emptyList<SalaryEntry>())};var duplicates by remember{mutableIntStateOf(0)};var types by remember{mutableStateOf(emptyList<SalaryIncomeType>())};var selected by remember{mutableStateOf<SalaryEntry?>(null)};var draft by remember{mutableStateOf<SalaryDraft?>(null)};var message by remember{mutableStateOf<String?>(null)};var mode by remember{mutableStateOf(PM.MONTH)};var month by remember{mutableStateOf(YearMonth.now())};var year by remember{mutableIntStateOf(LocalDate.now().year)}
+internal fun SalaryRootScreen(
+ repo:RoomSalaryRepository,preview:SalaryImportPreview?,onImport:()->Unit,onClear:()->Unit,onExport:(SalaryPeriod)->Unit,
+ initialDraft:SalaryDraft?=null,initialEntry:SalaryEntry?=null,onDraftSnapshotChange:(SalaryDraft?,SalaryEntry?)->Unit={_,_->},
+ onAsyncError:(String)->Unit={},onBottomNavigationVisibility:(Boolean)->Unit={}
+){
+ val scope=rememberCoroutineScope();var page by remember{mutableStateOf(if(initialDraft==null)SR.HOME else SR.EDIT)};var typesOrigin by remember{mutableStateOf(SR.HOME)};var records by remember{mutableStateOf(emptyList<SalaryEntry>())};var duplicates by remember{mutableIntStateOf(0)};var entriesToInsert by remember{mutableStateOf(emptyList<SalaryEntry>())};var types by remember{mutableStateOf(emptyList<SalaryIncomeType>())};var selected by remember{mutableStateOf(initialEntry)};var draft by remember{mutableStateOf(initialDraft)};var message by remember{mutableStateOf<String?>(null)};var mode by remember{mutableStateOf(PM.MONTH)};var month by remember{mutableStateOf(YearMonth.now())};var year by remember{mutableIntStateOf(LocalDate.now().year)}
+ val updateDraft:(SalaryDraft)->Unit={updated->draft=updated;onDraftSnapshotChange(updated,selected)}
  suspend fun refresh(){withContext(Dispatchers.IO){types=repo.incomeTypes();records=repo.entries()}}
- LaunchedEffect(repo){runCatching{refresh()}.onFailure{message=it.message}}
- LaunchedEffect(preview){if(preview!=null){page=SR.IMPORT;duplicates=withContext(Dispatchers.IO){repo.duplicateCount(preview.entries)}}}
- BackHandler(page!=SR.HOME){if(page==SR.TYPES)page=typesOrigin else {if(page==SR.IMPORT)onClear();page=SR.HOME;selected=null;draft=null}}
+ LaunchedEffect(repo){runCatching{refresh()}.onFailure{val text="工资数据暂时无法读取，请重新进入工资页面；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}
+ LaunchedEffect(page){onBottomNavigationVisibility(page==SR.HOME||page==SR.IMPORT)}
+ LaunchedEffect(preview){if(preview!=null){page=SR.IMPORT;val delta=withContext(Dispatchers.IO){SalaryReports.importDelta(preview.entries,repo.entries())};duplicates=delta.skippedDuplicateCount;entriesToInsert=delta.entriesToInsert}else{duplicates=0;entriesToInsert=emptyList()}}
+ BackHandler(page!=SR.HOME){if(page==SR.TYPES)page=typesOrigin else {if(page==SR.IMPORT)onClear();if(page==SR.EDIT)onDraftSnapshotChange(null,null);page=SR.HOME;selected=null;draft=null}}
  when(page){
- SR.HOME->SalaryHome(records,types,mode,month,year,message,{message=null},{mode=it},{if(mode==PM.MONTH)month=month.minusMonths(1) else year--},{if(mode==PM.MONTH)month=month.plusMonths(1) else year++},{selected=null;draft=SalaryDraft.blank(types.firstOrNull()?.id.orEmpty());page=SR.EDIT},{selected=it;draft=SalaryDraft.from(it);page=SR.EDIT},{typesOrigin=SR.HOME;page=SR.TYPES},{page=SR.IMPORT;onClear();onImport()},{onExport(it);page=SR.HOME})
- SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(types.firstOrNull()?.id.orEmpty()),{draft=it},{page=SR.HOME;selected=null;draft=null},{typesOrigin=SR.EDIT;page=SR.TYPES},{e->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;page=SR.HOME}.onFailure{message=it.message?:"保存失败"}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;page=SR.HOME}.onFailure{message=it.message?:"删除失败"}}})
- SR.TYPES->SalaryTypesScreen(types,{page=typesOrigin},{n,c->scope.launch{runCatching{withContext(Dispatchers.IO){repo.createIncomeType(n,c)};refresh()}.onSuccess{message="收入项已添加"}.onFailure{message=it.message?:"添加失败"}}})
- SR.IMPORT->SalaryImportScreen(preview,duplicates,(SalaryIncomeTypes.defaults+types+preview?.incomeTypesToCreate.orEmpty()).associate{it.id to it.name},{page=SR.HOME;onClear()},onImport){val p=preview?:return@SalaryImportScreen;if(p.errors.isNotEmpty())return@SalaryImportScreen;scope.launch{runCatching{withContext(Dispatchers.IO){repo.importNew(p.entries,p.incomeTypesToCreate)}.also{refresh()}}.onSuccess{message="导入完成：新增 "+it.insertedCount+" 笔，跳过重复 "+it.skippedDuplicateCount+" 笔";page=SR.HOME;onClear()}.onFailure{message=it.message?:"导入失败"}}}
+ SR.HOME->SalaryHome(records,types,mode,month,year,message,{message=null},{mode=it},{if(mode==PM.MONTH)month=month.minusMonths(1) else year--},{if(mode==PM.MONTH)month=month.plusMonths(1) else year++},{selected=null;val nextDraft=SalaryDraft.blank(types.firstOrNull()?.id.orEmpty());draft=nextDraft;onDraftSnapshotChange(nextDraft,null);page=SR.EDIT},{selected=it;val nextDraft=SalaryDraft.from(it);draft=nextDraft;onDraftSnapshotChange(nextDraft,it);page=SR.EDIT},{typesOrigin=SR.HOME;page=SR.TYPES},{page=SR.IMPORT;onClear();onImport()},{onExport(it);page=SR.HOME})
+ SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(types.firstOrNull()?.id.orEmpty()),updateDraft,{page=SR.HOME;selected=null;draft=null;onDraftSnapshotChange(null,null)},{typesOrigin=SR.EDIT;page=SR.TYPES},{e->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;onDraftSnapshotChange(null,null);page=SR.HOME}.onFailure{val text="工资保存失败，输入内容已保留，请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;onDraftSnapshotChange(null,null);page=SR.HOME}.onFailure{val text="工资删除失败，请重试；记录仍保留。若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}})
+ SR.TYPES->SalaryTypesScreen(types,{page=typesOrigin},{n,c->scope.launch{runCatching{withContext(Dispatchers.IO){repo.createIncomeType(n,c)};refresh()}.onSuccess{message="收入项已添加"}.onFailure{val text="收入项未能添加，请检查名称是否重复，然后重试。";message=text;onAsyncError(text)}}})
+ SR.IMPORT->SalaryImportScreen(preview,duplicates,entriesToInsert,(SalaryIncomeTypes.defaults+types+preview?.incomeTypesToCreate.orEmpty()).associate{it.id to it.name},{page=SR.HOME;onClear()},{onClear();onImport()}){val p=preview?:return@SalaryImportScreen;if(p.errors.isNotEmpty())return@SalaryImportScreen;scope.launch{runCatching{withContext(Dispatchers.IO){repo.importNew(p.entries,p.incomeTypesToCreate)}.also{refresh()}}.onSuccess{message="导入完成：新增 "+it.insertedCount+" 笔，跳过重复 "+it.skippedDuplicateCount+" 笔";page=SR.HOME;onClear()}.onFailure{val text="工资导入未完成，已有工资记录仍保留。请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}}
  SR.EXPORT->SalaryExportScreen({page=SR.HOME},month,year,mode,{onExport(it);page=SR.HOME})
  }
 }
@@ -123,10 +129,62 @@ internal fun SalaryRootScreen(repo:RoomSalaryRepository,preview:SalaryImportPrev
  Column(Modifier.fillMaxSize().background(CaijiPalette.Background)){SalaryHeader("收入项",back);LazyColumn(Modifier.weight(1f)){items(types, key = { it.id }){t->Row(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically){Text(t.name,Modifier.weight(1f));Text(if(t.isCash)"现金" else "非现金",color=CaijiPalette.SecondaryText)};HorizontalDivider(color=CaijiPalette.Divider)}};Button(onClick={show=true},Modifier.fillMaxWidth().padding(18.dp),colors=ButtonDefaults.buttonColors(containerColor=CaijiPalette.Primary,contentColor=CaijiPalette.OnPrimary)){Text("新增收入项")}}
  if(show)AlertDialog(onDismissRequest={show=false},title={Text("新增收入项")},text={Column{OutlinedTextField(name,{name=it},label={Text("收入项名称")});Row(verticalAlignment=Alignment.CenterVertically){Text("现金收入");Spacer(Modifier.weight(1f));Switch(cash,{cash=it})};Text("关闭开关表示非现金",color=CaijiPalette.SecondaryText)}},confirmButton={TextButton(onClick={create(name,cash);name="";show=false}){Text("添加")}},dismissButton={TextButton(onClick={show=false}){Text("取消")}})
 }
-@Composable private fun SalaryImportScreen(preview:SalaryImportPreview?,duplicates:Int,typeNames:Map<String,String>,back:()->Unit,select:()->Unit,confirm:()->Unit){Column(Modifier.fillMaxSize().background(CaijiPalette.Background)){SalaryHeader("导入预览",back)
- if(preview==null)Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Text("选择工资 .xlsx 文件",style=MaterialTheme.typography.titleLarge);Text("导入前会检查重复记录和金额",Modifier.padding(8.dp),color=CaijiPalette.SecondaryText);Button(select){Text("选择 Excel 文件")}}
- else{val sum=SalaryReports.summarize(preview.entries);Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)){Text("新增 "+(preview.entries.size-duplicates)+" 笔 · 跳过重复 "+duplicates+" 笔 · 纯收入 ¥"+formatYuan(sum.netFen));if(preview.incomeTypesToCreate.isNotEmpty())Text("将恢复 "+preview.incomeTypesToCreate.size+" 个自定义收入项",Modifier.padding(top=8.dp),color=CaijiPalette.Income);preview.errors.forEach{Text("第 "+it.row+" 行："+it.message,color=CaijiPalette.Danger,modifier=Modifier.padding(top=8.dp))};preview.entries.take(30).forEach{Text(it.occurredOn.toString()+"　"+(typeNames[it.incomeTypeId]?:it.incomeTypeId)+"　¥"+formatYuan(it.netIncomeFen),Modifier.padding(vertical=5.dp))};if(preview.entries.size>30)Text("其余 "+(preview.entries.size-30)+" 笔将在确认后导入",color=CaijiPalette.SecondaryText)};Button(onClick=confirm,enabled=preview.errors.isEmpty()&&preview.entries.isNotEmpty(),modifier=Modifier.fillMaxWidth().padding(18.dp)){Text("确认导入")}}
-}}
+@Composable
+private fun SalaryImportScreen(preview: SalaryImportPreview?, duplicates: Int, entriesToInsert: List<SalaryEntry>, typeNames: Map<String, String>, back: () -> Unit, select: () -> Unit, confirm: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
+        SalaryHeader("导入预览", back)
+        if (preview == null) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text("选择工资 .xlsx 文件", style = MaterialTheme.typography.titleLarge)
+                Text("导入前会检查重复记录和金额", Modifier.padding(8.dp), color = CaijiPalette.SecondaryText)
+                Button(onClick = select) { Text("选择 Excel 文件") }
+            }
+        } else {
+            val fileIssues = preview.errors.filter { it.kind != SalaryImportErrorKind.CELL }
+            val cellIssues = preview.errors.filter { it.kind == SalaryImportErrorKind.CELL }
+            val hasIssues = preview.errors.isNotEmpty()
+            if (!hasIssues) {
+                val net = SalaryReports.summarize(entriesToInsert).netFen
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                    Text("新增 " + entriesToInsert.size + " 笔 · 跳过重复 " + duplicates + " 笔")
+                    Text("新增纯收入 ¥" + formatYuan(net), Modifier.padding(top = 8.dp))
+                    if (preview.incomeTypesToCreate.isNotEmpty()) Text("将恢复 " + preview.incomeTypesToCreate.size + " 个自定义收入项", Modifier.padding(top = 8.dp), color = CaijiPalette.Income)
+                    entriesToInsert.take(30).forEach { Text(it.occurredOn.toString() + "　" + (typeNames[it.incomeTypeId] ?: it.incomeTypeId) + "　¥" + formatYuan(it.netIncomeFen), Modifier.padding(vertical = 5.dp)) }
+                    if (entriesToInsert.size > 30) Text("其余 " + (entriesToInsert.size - 30) + " 笔将在确认后导入", color = CaijiPalette.SecondaryText)
+                }
+            } else {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                    Text(if (fileIssues.isEmpty()) "发现 " + cellIssues.size + " 处问题，尚未导入" else "文件未能读取，尚未导入", color = CaijiPalette.Danger, style = MaterialTheme.typography.titleMedium)
+                    Text(if (fileIssues.isEmpty()) "请按下方位置修正原文件，保存后重新选择。存在问题时，整份文件不会导入。" else "这是文件级错误，无需按行修改表格。已有工资记录未更改。", Modifier.padding(top = 7.dp), color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                    fileIssues.forEach { issue ->
+                        ImportIssueCard(issue, null)
+                    }
+                    cellIssues.forEach { issue ->
+                        ImportIssueCard(issue, "Sheet1 · " + (issue.cell ?: "") + " · " + (issue.field ?: ""))
+                    }
+                }
+                Button(onClick = select, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp), colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)) { Text("重新选择文件") }
+            }
+            Button(onClick = confirm, enabled = !hasIssues && preview.entries.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(18.dp), colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)) {
+                Text(if (hasIssues) "修正问题后可确认导入" else "确认导入")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportIssueCard(issue: SalaryImportError, location: String?) {
+    Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(location ?: issue.reason, color = CaijiPalette.Danger, fontWeight = FontWeight.SemiBold)
+            if (location != null && issue.currentValue != null) Text("当前内容：" + issue.currentValue, Modifier.padding(top = 6.dp), color = CaijiPalette.SecondaryText)
+            if (location != null) Text(issue.reason, Modifier.padding(top = 6.dp), fontWeight = FontWeight.Medium)
+            Text("修改方法", Modifier.padding(top = 8.dp), color = CaijiPalette.Primary, style = MaterialTheme.typography.bodySmall)
+            Text(issue.suggestion, Modifier.padding(top = 3.dp), style = MaterialTheme.typography.bodySmall)
+            Text("错误编号：" + issue.code, Modifier.padding(top = 6.dp), color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
 @Composable private fun SalaryExportScreen(back:()->Unit,month:YearMonth,year:Int,mode:PM,export:(SalaryPeriod)->Unit){var all by remember{mutableStateOf(true)}
  Column(Modifier.fillMaxSize().background(CaijiPalette.Background)){SalaryHeader("导出 Excel",back);Column(Modifier.weight(1f).padding(18.dp)){Text("文件格式",color=CaijiPalette.SecondaryText);Text(".xlsx · Sheet1 · 11 列，与工资样例一致",Modifier.padding(top=8.dp));HorizontalDivider(Modifier.padding(vertical=16.dp));Row(verticalAlignment=Alignment.CenterVertically){Text("全部记录（推荐备份）",Modifier.weight(1f));RadioButton(all,{all=true})};Row(verticalAlignment=Alignment.CenterVertically){Text("当前查看期间",Modifier.weight(1f));RadioButton(!all,{all=false})};Text("含所有收入、现金收入和非现金收入合计。",Modifier.padding(top=12.dp),color=CaijiPalette.SecondaryText)};Button(onClick={export(if(all)SalaryPeriod.All else when(mode){PM.MONTH->SalaryPeriod.Month(month.year,month.monthValue);PM.YEAR->SalaryPeriod.Year(year);PM.ALL->SalaryPeriod.All})},Modifier.fillMaxWidth().padding(18.dp)){Text("选择保存位置")}}
 }

@@ -47,6 +47,7 @@ import app.caiji.android.backup.BackupCodec
 import app.caiji.android.backup.BackupException
 import app.caiji.android.backup.BackupSummary
 import app.caiji.android.data.LedgerEntry
+import app.caiji.android.data.SalaryEntry
 import app.caiji.android.data.FeedbackItemRow
 import app.caiji.android.data.FeedbackItemWithScreenshots
 import app.caiji.android.domain.EntryType
@@ -71,6 +72,7 @@ import app.caiji.android.ui.FeedbackEditorScreen
 import app.caiji.android.ui.FeedbackListScreen
 import app.caiji.android.ui.ThemePickerScreen
 import app.caiji.android.ui.shareFeedback
+import app.caiji.android.ui.SalaryDraft
 import app.caiji.android.ui.theme.CaijiThemeId
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiTheme
@@ -189,7 +191,20 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var pickerError by remember { mutableStateOf<String?>(null) }
     var restoreSessionActive by remember { mutableStateOf(false) }
     var salaryPreview by remember { mutableStateOf<app.caiji.android.data.SalaryImportPreview?>(null) }
+    var salaryEditorDraft by remember { mutableStateOf<SalaryDraft?>(null) }
+    var salaryEditorEntry by remember { mutableStateOf<SalaryEntry?>(null) }
+    var showSalaryBottomNavigation by remember { mutableStateOf(true) }
     var salaryExportPeriod by remember { mutableStateOf<app.caiji.android.data.SalaryPeriod?>(null) }
+    var salaryImportGeneration by remember { mutableIntStateOf(0) }
+    var salaryImportRequest by remember { mutableIntStateOf(0) }
+    fun navigateMain(target: Page) {
+        if (target == Page.SALARY) showSalaryBottomNavigation = true
+        if (page == Page.SALARY && target != Page.SALARY) {
+            salaryImportGeneration++
+            salaryPreview = null
+        }
+        page = target
+    }
 
     LaunchedEffect(context) {
         val activity = context as? MainActivity ?: return@LaunchedEffect
@@ -283,15 +298,31 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     }
 
     val salaryImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri == null) pickerError = "已取消选择工资 Excel 文件"
-        else scope.launch {
-            runCatching { withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.use {
-                    app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }
-                        .importPreview(it, (context.applicationContext as CaijiApplication).salaryRepository.incomeTypes(), LocalDate.now())
-                } ?: error("无法读取所选文件")
-            } }.onSuccess { salaryPreview = it; pickerError = if (it.errors.isEmpty()) null else "Excel 有错误行，修正文件后重新导入" }
-                .onFailure { pickerError = "导入失败：" + (it.message ?: "请重试") }
+        val request = salaryImportRequest
+        if (request == salaryImportGeneration && page == Page.SALARY) {
+            if (uri == null) {
+                salaryPreview = null
+                pickerError = "已取消选择工资 Excel 文件"
+            } else scope.launch {
+                val result = runCatching { withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use {
+                        app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }
+                            .importPreview(it, (context.applicationContext as CaijiApplication).salaryRepository.incomeTypes(), LocalDate.now())
+                    } ?: throw java.io.IOException("Selected document is unavailable")
+                } }
+                if (request == salaryImportGeneration && page == Page.SALARY) {
+                    result.onSuccess { salaryPreview = it; pickerError = null }
+                        .onFailure {
+                            salaryPreview = app.caiji.android.data.SalaryImportPreview(
+                                emptyList(),
+                                listOf(app.caiji.android.data.SalaryImportError(app.caiji.android.data.SalaryImportErrorKind.FILE,
+                                    "无法读取所选文件", "请确认文件可访问，或用 Excel/WPS 另存为 .xlsx 后重新选择。", "IMP-URI-001")),
+                                0, emptyList()
+                            )
+                            pickerError = null
+                        }
+                }
+            }
         }
     }
     val salaryExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { uri: Uri? ->
@@ -452,7 +483,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     }
 
     Scaffold(bottomBar = {
-        if (page == Page.LEDGER || page == Page.SALARY || page == Page.CHART || page == Page.SETTINGS) NavigationBar(containerColor = CaijiPalette.Surface) {
+        if (page == Page.LEDGER || (page == Page.SALARY && showSalaryBottomNavigation) || page == Page.CHART || page == Page.SETTINGS) NavigationBar(containerColor = CaijiPalette.Surface) {
             val navigationColors = NavigationBarItemDefaults.colors(
                 selectedIconColor = CaijiPalette.Primary,
                 selectedTextColor = CaijiPalette.Ink,
@@ -460,15 +491,15 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 unselectedTextColor = CaijiPalette.SecondaryText,
                 indicatorColor = Color.Transparent
             )
-            NavigationBarItem(selected = page == Page.LEDGER, onClick = { page = Page.LEDGER },
+            NavigationBarItem(selected = page == Page.LEDGER, onClick = { navigateMain(Page.LEDGER) },
                 icon = { CaijiIcon(CaijiIconName.LEDGER, contentDescription = null) }, label = { Text("明细") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-ledger"))
-            NavigationBarItem(selected = page == Page.CHART, onClick = { page = Page.CHART },
+            NavigationBarItem(selected = page == Page.CHART, onClick = { navigateMain(Page.CHART) },
                 icon = { Text("▥") }, label = { Text("图表") }, colors = navigationColors, modifier = Modifier.testTag("nav-chart"))
             NavigationBarItem(selected = false, onClick = {
                 editEntry = null; editEntryId = null; initialEditorType = EntryType.EXPENSE
                 clipboardPrefill = null; clipboardPrefillId = null
-                editorReturnPage = Page.LEDGER.name; page = Page.EDITOR
+                editorReturnPage = Page.LEDGER.name; navigateMain(Page.EDITOR)
             }, icon = {
                 Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.Primary, modifier = Modifier.size(40.dp)) {
                     Box(contentAlignment = Alignment.Center) {
@@ -477,9 +508,9 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 }
             }, label = { Text("记账") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-entry"))
-            NavigationBarItem(selected = page == Page.SALARY, onClick = { page = Page.SALARY },
+            NavigationBarItem(selected = page == Page.SALARY, onClick = { navigateMain(Page.SALARY) },
                 icon = { Text("¥") }, label = { Text("工资") }, colors = navigationColors, modifier = Modifier.testTag("nav-salary"))
-            NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
+            NavigationBarItem(selected = page == Page.SETTINGS, onClick = { navigateMain(Page.SETTINGS) },
                 icon = { CaijiIcon(CaijiIconName.SETTINGS, contentDescription = null) }, label = { Text("设置") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-settings"))
         }
@@ -571,8 +602,19 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.SALARY -> app.caiji.android.ui.SalaryRootScreen(
                     repo = (context.applicationContext as CaijiApplication).salaryRepository,
                     preview = salaryPreview,
-                    onImport = { salaryImportPicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
-                    onClear = { salaryPreview = null },
+                    initialDraft = salaryEditorDraft,
+                    initialEntry = salaryEditorEntry,
+                    onDraftSnapshotChange = { draft, entry -> salaryEditorDraft = draft; salaryEditorEntry = entry },
+                    onAsyncError = { pickerError = it },
+                    onBottomNavigationVisibility = { showSalaryBottomNavigation = it },
+                    onImport = {
+                        salaryImportGeneration++
+                        salaryImportRequest = salaryImportGeneration
+                        salaryPreview = null
+                        pickerError = null
+                        salaryImportPicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    },
+                    onClear = { salaryImportGeneration++; salaryPreview = null },
                     onExport = { period ->
                         salaryExportPeriod = period
                         salaryExportPicker.launch("工资明细.xlsx")

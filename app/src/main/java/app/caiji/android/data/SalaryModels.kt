@@ -81,7 +81,21 @@ data class SalaryTotals(
     val entryCount: Int = 0
 )
 
+data class SalaryImportDelta(val entriesToInsert: List<SalaryEntry>, val skippedDuplicateCount: Int)
+
 object SalaryReports {
+    fun importDelta(incoming: List<SalaryEntry>, existing: List<SalaryEntry>): SalaryImportDelta {
+        val available = existing.groupingBy { it.duplicateKey() }.eachCount().toMutableMap()
+        val insert = mutableListOf<SalaryEntry>()
+        var skipped = 0
+        incoming.forEach { entry ->
+            val key = entry.duplicateKey()
+            val count = available[key] ?: 0
+            if (count > 0) { available[key] = count - 1; skipped++ } else insert += entry
+        }
+        return SalaryImportDelta(insert, skipped)
+    }
+
     fun filter(entries: List<SalaryEntry>, period: SalaryPeriod): List<SalaryEntry> = when (period) {
         is SalaryPeriod.Month -> entries.filter { YearMonth.from(it.occurredOn) == YearMonth.of(period.year, period.month) }
         is SalaryPeriod.Year -> entries.filter { it.occurredOn.year == period.year }
