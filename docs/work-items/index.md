@@ -16,5 +16,5 @@
 | [`WORK-20261104-002`](WORK-20261104-002.md) | 财记 0.3.4 快速切页时记账分类消失修复 | bugfix | medium | handoff-ready | entry-categories, ledger-entries | 2026-11-04 |
 | [`WORK-20261104-003`](WORK-20261104-003.md) | 财记工资记录与 Excel 导入导出 | feature | high | handoff-ready | salary-records, ledger-entries, local-backup | 2026-11-04 |
 | [`WORK-20261104-004`](WORK-20261104-004.md) | 财记工资 Excel 导入错误定位修复 | bugfix | high | handoff-ready | salary-records | 2026-11-05 |
-| [`WORK-20261105-001`](WORK-20261105-001.md) | 财记工资 Excel 导出提示与合计公式修复 | bugfix | high | verifying | salary-records | 2026-11-05 |
+| [`WORK-20261105-001`](WORK-20261105-001.md) | 财记工资 Excel 导出提示与合计公式修复 | bugfix | high | handoff-ready | salary-records | 2026-11-05 |
 <!-- manage-dev-work:index:end -->
