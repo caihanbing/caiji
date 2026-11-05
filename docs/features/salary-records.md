@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立保存工资收入并按期间统计；按样例版式导入导出 XLSX，错误提示定位到文件或单元格。 -->
 <!-- last-verified: 2026-11-05 -->
-<!-- code-basis: HEAD a84cf871ce8f; worktree-digest sha256:ac3ea78eacc4b83cce65605f0011175b6603afb27d244fd2026df16772f38c0c -->
+<!-- code-basis: HEAD 96f16170b7bd; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
