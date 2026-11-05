@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在设置页选择五套配色，并跨重启应用到全部账本页面和系统栏。 -->
 <!-- last-verified: 2026-11-05 -->
-<!-- code-basis: HEAD 113a7b8d510d; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- code-basis: HEAD 1f9447d596b0; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
