@@ -5,8 +5,8 @@
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分人民币账单，按日、月、年浏览、手势切换并汇总收支。 -->
-<!-- last-verified: 2026-11-04 -->
-<!-- code-basis: HEAD b82e98e8ba27; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- last-verified: 2026-11-05 -->
+<!-- code-basis: HEAD 113a7b8d510d; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 

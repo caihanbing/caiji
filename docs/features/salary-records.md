@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立保存工资收入并按期间统计；样例 XLSX 提供可定位导入错误、正确的导出提示和可重算合计。 -->
 <!-- last-verified: 2026-11-05 -->
-<!-- code-basis: HEAD 00474221cada; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- code-basis: HEAD 113a7b8d510d; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
