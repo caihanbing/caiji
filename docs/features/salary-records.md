@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立工资库按年浏览并提供跨年汇总；收入项名称/图标可编辑、现金属性固定且图标同步显示；支持 XLSX 导入导出。 -->
 <!-- last-verified: 2026-11-06 -->
-<!-- code-basis: HEAD 98386072b791; worktree-digest sha256:2d79350e7d4f35ea4be90f76d7e725958da1125d5912a36cbffa3d01fe554b48 -->
+<!-- code-basis: HEAD d510300c89d9; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 

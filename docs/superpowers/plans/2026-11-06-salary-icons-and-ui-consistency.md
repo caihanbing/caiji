@@ -81,5 +81,5 @@
 - [x] 运行 `:app:testDebugUnitTest`、`:app:lintDebug`、`:app:connectedDebugAndroidTest`（API26/API34）；按失败输出修复并重跑受影响套件。
 - [x] 完成独立代码审查；更新相关 Feature Docs、索引及 Work Item 并通过 fresh/结构校验。
 - [x] 构建正式 APK，核验包名、versionName/code、既有证书、zipalign、SHA-256；核验迁移覆盖升级。
-- [ ] 使用 dms-commit-msg 生成提交和 Release notes，提交并正常推送 `main`，创建 `v0.5.3` Release，标题“财记 0.5.3”，附 APK 与 SHA-256 sidecar。
+- [x] 使用 dms-commit-msg 生成提交和 Release notes，提交 `d510300` 并推送 `main`；创建 `v0.5.3` Release，标题“财记 0.5.3”，上传 APK 与 SHA-256 sidecar 并下载校验。
 - [x] 写明用户实体设备覆盖安装检查清单；实机结果未取得前保持 handoff-ready。
