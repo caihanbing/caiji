@@ -201,7 +201,7 @@ private fun MonthSelector(month: YearMonth, onPrevious: () -> Unit, onNext: () -
         PeriodArrowButton("上个月", "month-previous", isNext = false, onClick = onPrevious)
         Text(
             "${month.year}年${month.monthValue}月",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp).testTag("home-month")
         )

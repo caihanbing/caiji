@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,34 +61,67 @@ class SalaryScreensTest {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
         compose.onNodeWithText("＋  新增收入").performClick()
-        compose.onNodeWithTag("salary-field-毛收入").performTextClearance()
         compose.onNodeWithTag("salary-field-毛收入").performTextInput("100.00")
+        compose.onAllNodesWithText("收入性质").assertCountEquals(0)
+        compose.onAllNodesWithText("收入项管理").assertCountEquals(0)
         compose.onNodeWithText("保存收入").performClick()
         compose.onNodeWithTag("salary-net-total").assertTextContains("100.00", substring = true)
-        compose.onNodeWithText(java.time.LocalDate.now().year.toString() + "年纯收入").assertIsDisplayed()
+        compose.onNodeWithText("本年纯收入").assertIsDisplayed()
     }
 
-    @Test fun draftSurvivesOpeningIncomeTypeManagementFromTheEditor() {
+    @Test fun deductionToggleHasStateSpecificAccessibleDirection() {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.onNodeWithText("＋  新增收入").performClick()
-        compose.onNodeWithTag("salary-field-毛收入").performTextClearance()
-        compose.onNodeWithTag("salary-field-毛收入").performTextInput("235.50")
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
-        compose.onNodeWithText("扣款明细").performClick()
+        compose.onNodeWithTag("salary-deductions-toggle").assertContentDescriptionEquals("展开扣款明细").performClick()
         compose.onNodeWithTag("salary-field-工会费").assertIsDisplayed()
-        compose.onNodeWithText("收入项管理", substring = true).performClick()
-        compose.onNodeWithTag("salary-income-types-add").performClick()
-        compose.onNodeWithText("收入项名称").performTextInput("临时补贴")
-        compose.onNodeWithTag("salary-income-type-save").performClick()
-        compose.onNodeWithTag("salary-header-back").performClick()
-        compose.onNodeWithTag("salary-field-毛收入").assertTextContains("235.50", substring = true)
-        compose.onNodeWithTag("salary-field-工会费").assertIsDisplayed()
+        compose.onNodeWithTag("salary-deductions-toggle").assertContentDescriptionEquals("收起扣款明细").performClick()
+        compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
-    @Test fun incomeTypeManagementAddsAndEditsIconsWithoutChangingCashNature() {
+    @Test fun salarySummaryGroupsSameMonthByYearAndShowsFilteredNetSubtotals() {
+        val type = runBlocking { repository.incomeTypes().first { it.isCash } }
+        val nonCashType = runBlocking { repository.incomeTypes().first { !it.isCash } }
+        val now = java.time.LocalDate.now()
+        runBlocking {
+            repository.save(app.caiji.android.data.SalaryEntry("same-month-new", now.withDayOfMonth(5), type.id, 10_000, 2_000,
+                isCash = type.isCash, createdAtMillis = 1L, updatedAtMillis = 1L))
+            repository.save(app.caiji.android.data.SalaryEntry("same-month-new-2", now.withDayOfMonth(6), nonCashType.id, 5_000,
+                isCash = !type.isCash, createdAtMillis = 1L, updatedAtMillis = 1L))
+            repository.save(app.caiji.android.data.SalaryEntry("same-month-old", now.minusYears(1).withDayOfMonth(5), type.id, 20_000,
+                isCash = type.isCash, createdAtMillis = 1L, updatedAtMillis = 1L))
+        }
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
-        compose.onNodeWithText("＋  新增收入").performClick()
-        compose.onNodeWithText("收入项管理", substring = true).performClick()
+        compose.onNodeWithTag("salary-open-summary").performClick()
+        val newerGroup = "salary-month-group-${now.year}-${now.monthValue.toString().padStart(2, '0')}"
+        val olderGroup = "salary-month-group-${now.year - 1}-${now.monthValue.toString().padStart(2, '0')}"
+        compose.onNodeWithTag(newerGroup).assertIsDisplayed()
+        compose.onNodeWithTag(olderGroup).assertIsDisplayed()
+        assertTrue(compose.onNodeWithTag(newerGroup).fetchSemanticsNode().boundsInRoot.top <
+            compose.onNodeWithTag(olderGroup).fetchSemanticsNode().boundsInRoot.top)
+        compose.onNodeWithTag("salary-summary-filter-CASH").performClick()
+        compose.onNodeWithTag("salary-detail-total").assertTextContains("2笔", substring = true)
+        compose.onNodeWithTag("salary-detail-total").assertTextContains("￥280.00", substring = true)
+        compose.onNodeWithTag("salary-group-total-${now.year}-${now.monthValue.toString().padStart(2, '0')}")
+            .assertTextContains("1笔", substring = true).assertTextContains("￥80.00", substring = true)
+    }
+
+    @Test fun editingPreservesValuesAndRemovesNatureAndManagementRows() {
+        val type = runBlocking { repository.incomeTypes().first() }
+        val entry = app.caiji.android.data.SalaryEntry("edit-keeps-values", java.time.LocalDate.now(), type.id, 12_345, 123,
+            isCash = type.isCash, createdAtMillis = 1L, updatedAtMillis = 1L)
+        runBlocking { repository.save(entry) }
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
+        compose.onNodeWithTag("salary-entry-row-edit-keeps-values").performClick()
+        compose.onNodeWithTag("salary-field-毛收入").assertTextContains("123.45", substring = true)
+        compose.onNodeWithTag("salary-field-工会费").assertTextContains("1.23", substring = true)
+        compose.onAllNodesWithText("收入性质").assertCountEquals(0)
+        compose.onAllNodesWithText("收入项管理").assertCountEquals(0)
+    }
+
+    @Test fun settingsIncomeTypeManagementAddsAndEditsIconsWithoutChangingCashNature() {
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {},
+            initialManagementRoute = SalaryManagementRoute.TYPES) } }
         compose.onNodeWithText("收入项管理").assertIsDisplayed()
         compose.onNodeWithTag("salary-income-types-add").assertIsDisplayed().performClick()
         compose.onNodeWithText("添加收入项").assertIsDisplayed()
@@ -359,11 +393,12 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-open-summary").assertIsDisplayed()
         compose.onNodeWithTag("salary-year-label").assertIsDisplayed()
         compose.onNodeWithTag("salary-open-summary").performClick()
+        compose.onNodeWithText("累计毛收入").assertIsDisplayed()
         compose.onNodeWithText("累计纯收入").assertIsDisplayed()
         compose.onNodeWithTag("salary-net-total").assertIsDisplayed()
         compose.onNodeWithTag("salary-header-back").performClick()
         compose.onNodeWithTag("salary-year-label").assertIsDisplayed()
-        compose.onNodeWithText(java.time.LocalDate.now().year.toString() + "年纯收入").assertIsDisplayed()
+        compose.onNodeWithText("本年纯收入").assertIsDisplayed()
     }
 
     @Test fun choosingPriorYearShowsItsRowsAndYearBoundsAreEnforced() {
@@ -388,7 +423,7 @@ class SalaryScreensTest {
             androidx.compose.ui.test.hasTestTag("salary-entry-row-prior-year"))
         compose.onNodeWithTag("salary-net-total").assertTextContains("50.00", substring = true)
         compose.onNodeWithTag("salary-year-previous").performClick()
-        compose.onNodeWithText((now.year - 2).toString() + "年纯收入").assertIsDisplayed()
+        compose.onNodeWithText("本年纯收入").assertIsDisplayed()
         compose.onNodeWithTag("salary-net-total").assertTextContains("0.00", substring = true)
     }
 
@@ -528,14 +563,14 @@ class SalaryScreensTest {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("salary-entry-row-home-cash").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("salary-home-filter-NONCASH").performClick()
-        compose.onNodeWithText("0 笔").assertIsDisplayed()
+        compose.onNodeWithTag("salary-detail-total").assertTextContains("0笔 | ￥0.00", substring = true)
         compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
 
         compose.onNodeWithTag("salary-open-summary").performClick()
         compose.onNodeWithTag("salary-net-total").assertTextContains("150.00", substring = true)
         compose.onNodeWithTag("salary-record-list").assertIsDisplayed()
         compose.onNodeWithTag("salary-summary-filter-NONCASH").performClick()
-        compose.onNodeWithText("1 笔").assertIsDisplayed()
+        compose.onNodeWithTag("salary-detail-total").assertTextContains("1笔 | ￥50.00", substring = true)
         compose.onNodeWithTag("salary-record-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-entry-row-summary-noncash"))
         compose.onNodeWithTag("salary-entry-row-summary-noncash").assertIsDisplayed()
@@ -543,7 +578,7 @@ class SalaryScreensTest {
         compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
 
         compose.onNodeWithTag("salary-open-summary").performClick()
-        compose.onNodeWithText("1 笔").assertIsDisplayed()
+        compose.onNodeWithTag("salary-detail-total").assertTextContains("1笔 | ￥50.00", substring = true)
         compose.onNodeWithTag("salary-record-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-entry-row-summary-noncash"))
         compose.onNodeWithTag("salary-entry-row-summary-noncash").assertIsDisplayed()
@@ -587,7 +622,7 @@ class SalaryScreensTest {
         assertEquals(1, runBlocking { repository.entries().size })
     }
 
-    @Test fun settingsIncomeTypesReturnToSettingsWhileEditorManagementReturnsToDraft() {
+    @Test fun settingsIncomeTypesReturnToSettings() {
         var returned = 0
         compose.setContent {
             CaijiTheme {

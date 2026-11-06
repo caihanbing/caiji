@@ -47,12 +47,14 @@ class UpdateSettingsScreenTest {
     @Test fun settingsCopyExplainsLocalDataBackupAndManualFeedback() {
         compose.setContent { CaijiTheme { SettingsScreen({}, {}, {}) } }
         compose.onNodeWithText("管理账单、工资与应用偏好").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-local-data"))
         compose.onNodeWithText("数据保存在本机").assertIsDisplayed()
         compose.onNodeWithText("账单、工资与问题记录保存在此设备").assertIsDisplayed()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-backup-section"))
-        compose.onNodeWithText("账单备份与恢复").assertIsDisplayed()
-        compose.onNodeWithTag("settings-root").performScrollToNode(hasText("加密备份仅包含全部账单和分类", substring = true))
-        compose.onNodeWithText("加密备份仅包含全部账单和分类", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("settings-export").assertIsDisplayed()
+        compose.onNodeWithTag("settings-import").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasText("不含工资、问题记录或主题设置", substring = true))
+        compose.onNodeWithText("不含工资、问题记录或主题设置", substring = true).assertIsDisplayed()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasText("恢复将替换当前账单和分类", substring = true))
         compose.onNodeWithText("恢复将替换当前账单和分类", substring = true).assertIsDisplayed()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-feedback"))

@@ -223,13 +223,22 @@ class CategorySettingsScreenTest {
         compose.onNodeWithTag("settings-theme").assertIsDisplayed()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-feedback"))
         compose.onNodeWithTag("settings-feedback").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-categories"))
         compose.onNodeWithTag("settings-categories").assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-export"))
         compose.onNodeWithTag("settings-export").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-categories"))
+        val visibleBackupTop = compose.onNodeWithTag("settings-export").fetchSemanticsNode().boundsInRoot.top
+        val visibleRestoreTop = compose.onNodeWithTag("settings-import").fetchSemanticsNode().boundsInRoot.top
+        val visibleCategoriesTop = compose.onNodeWithTag("settings-categories").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Backup and restore should follow category management",
+            visibleCategoriesTop < visibleBackupTop && visibleBackupTop < visibleRestoreTop)
         compose.onAllNodesWithText("加密备份").assertCountEquals(2)
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-import"))
         compose.onNodeWithTag("settings-import").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-local-data"))
+        compose.onNodeWithTag("settings-local-data").assertIsDisplayed()
         assertEquals(listOf("categories", "import"), events)
     }
 

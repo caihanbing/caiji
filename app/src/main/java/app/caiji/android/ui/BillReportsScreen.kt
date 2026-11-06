@@ -79,24 +79,22 @@ internal fun BillReportsScreen(
         if (settled != mode) onSelectMode(settled)
     }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        CaijiPageTopBar(
-            title = "汇总",
-            onBack = onBack,
-            backTag = "bills-back",
-            actionTag = "bills-header-action"
-        )
-        if (mode == BillListMode.MONTH) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
-                PeriodArrowButton("上一年", "bill-previous-year", isNext = false,
-                    enabled = year > FIRST_BILL_YEAR, onClick = onPreviousYear)
-                Text("${year}年", Modifier.padding(horizontal = 2.dp).testTag("bill-selected-year"),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                PeriodArrowButton("下一年", "bill-next-year", isNext = true,
-                    enabled = year < Year.now().value, onClick = onNextYear)
+        Box(Modifier.fillMaxWidth().height(56.dp)) {
+            Box(Modifier.align(Alignment.CenterStart).padding(start = 4.dp).size(48.dp)
+                .clickable(onClick = onBack).testTag("bills-back"), contentAlignment = Alignment.Center) {
+                CaijiIcon(CaijiIconName.BACK, contentDescription = "返回")
+            }
+            Text("汇总", Modifier.align(Alignment.Center).testTag("page-title"),
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            if (mode == BillListMode.MONTH) {
+                Row(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CompactPeriodArrowButton("上一年", "bill-previous-year", isNext = false,
+                        enabled = year > FIRST_BILL_YEAR, onClick = onPreviousYear)
+                    Text("${year}年", Modifier.padding(horizontal = 2.dp).testTag("bill-selected-year"),
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    CompactPeriodArrowButton("下一年", "bill-next-year", isNext = true,
+                        enabled = year < Year.now().value, onClick = onNextYear)
+                }
             }
         }
         PagerSegmentedTabs(

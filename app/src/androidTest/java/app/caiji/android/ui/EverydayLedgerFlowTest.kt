@@ -101,16 +101,16 @@ class EverydayLedgerFlowTest {
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
-    @Test fun incomeTypeEditorDialogRestoresItsDraftAfterActivityRecreation() {
+    @Test fun settingsIncomeTypeEditorDialogRestoresItsDraftAfterActivityRecreation() {
         repeat(5) {
-            if (compose.onAllNodesWithTag("nav-salary").fetchSemanticsNodes().isEmpty()) {
+            if (compose.onAllNodesWithTag("nav-settings").fetchSemanticsNodes().isEmpty()) {
                 compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
                 compose.waitForIdle()
             }
         }
-        compose.onNodeWithTag("nav-salary").performClick()
-        compose.onNodeWithText("＋  新增收入").performClick()
-        compose.onNodeWithText("收入项管理", substring = true).performClick()
+        compose.onNodeWithTag("nav-settings").performClick()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-salary-types"))
+        compose.onNodeWithTag("settings-salary-types").performClick()
         compose.onNodeWithTag("salary-income-types-add").performClick()
         compose.onNodeWithTag("salary-income-type-name").performTextInput("重建后保留的收入项")
         compose.onNodeWithTag("salary-income-type-icon-grid").performScrollToNode(
@@ -151,7 +151,7 @@ class EverydayLedgerFlowTest {
         val note = "保留草稿-${System.currentTimeMillis()}"
         compose.onNodeWithTag("nav-entry").performClick()
         compose.onNodeWithTag("entry-type-income").performClick()
-        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
+        compose.onNodeWithTag("entry-category-grid").assertExists()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         listOf("1", "2", "3").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }

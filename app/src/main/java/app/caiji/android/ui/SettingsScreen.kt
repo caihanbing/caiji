@@ -70,18 +70,6 @@ internal fun SettingsScreen(
             Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = CaijiPalette.Ink)
             Text("管理账单、工资与应用偏好", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
         }
-        Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = CaijiPalette.IncomeSoft, shape = RoundedCornerShape(12.dp)) {
-                    Text("本机", modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp), color = CaijiPalette.Income, style = MaterialTheme.typography.labelLarge)
-                }
-                Column {
-                    Text("数据保存在本机", fontWeight = FontWeight.SemiBold, color = CaijiPalette.Ink)
-                    Text("账单、工资与问题记录保存在此设备", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("账单", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Card(
@@ -100,6 +88,14 @@ internal fun SettingsScreen(
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
             }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-backup-section")) {
+            SalarySettingsRow("加密备份", "仅备份账单和分类，密码至少 8 位", CaijiIconName.EXPORT,
+                { exportPrompt = true; onLocalDialogVisibilityChange(true) }, "settings-export")
+            SalarySettingsRow("从备份恢复", "恢复将替换当前账单和分类", CaijiIconName.IMPORT, onImport, "settings-import")
+            Text("加密备份仅包含全部账单和分类，不含工资、问题记录或主题设置。密码至少 8 位，忘记后无法打开。已有账单时，恢复前须先保存当前备份。工资请单独导出 Excel。",
+                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-salary")) {
@@ -145,31 +141,6 @@ internal fun SettingsScreen(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("账单备份与恢复", Modifier.testTag("settings-backup-section"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Button(
-                onClick = { exportPrompt = true; onLocalDialogVisibilityChange(true) },
-                modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settings-export"),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)
-            ) { Text("加密备份") }
-            OutlinedButton(
-                onClick = onImport,
-                modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settings-import"),
-                shape = RoundedCornerShape(14.dp)
-            ) { Text("从备份恢复", color = CaijiPalette.Ink) }
-            Text(
-                "加密备份仅包含全部账单和分类，不包含工资、问题记录或主题设置。工资请单独导出 Excel。",
-                color = CaijiPalette.SecondaryText,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "密码至少 8 个字符，忘记后无法打开备份。恢复将替换当前账单和分类；已有数据时，需先保存当前账单备份。",
-                color = CaijiPalette.SecondaryText,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-
         Spacer(Modifier.height(4.dp))
         HorizontalDivider(color = CaijiPalette.Divider)
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -203,6 +174,13 @@ internal fun SettingsScreen(
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
             }
+        }
+        Column(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("settings-local-data"),
+            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("数据保存在本机", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium)
+            Text("账单、工资与问题记录保存在此设备", color = CaijiPalette.SecondaryText,
+                style = MaterialTheme.typography.bodySmall)
         }
     }
 }

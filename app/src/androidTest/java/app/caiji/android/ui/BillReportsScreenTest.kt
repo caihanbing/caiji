@@ -349,6 +349,9 @@ class BillReportsScreenTest {
 
         compose.onNodeWithText("月账单").assertIsDisplayed()
         compose.onNodeWithTag("bill-selected-year").assertIsDisplayed()
+        val titleBounds = compose.onNodeWithTag("page-title").fetchSemanticsNode().boundsInRoot
+        val yearBounds = compose.onNodeWithTag("bill-selected-year").fetchSemanticsNode().boundsInRoot
+        assertTrue("Year selector should share the summary title row", kotlin.math.abs(titleBounds.center.y - yearBounds.center.y) < 2f)
         compose.onNodeWithText("10月").assertIsDisplayed().performClick()
         assertEquals("2026-10", opened.get())
         compose.onNodeWithTag("bill-tab-year").performClick()

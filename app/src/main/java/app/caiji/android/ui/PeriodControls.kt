@@ -55,6 +55,30 @@ internal fun PeriodArrowButton(
 }
 
 @Composable
+internal fun CompactPeriodArrowButton(
+    label: String,
+    tag: String,
+    isNext: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label }
+            .testTag(tag),
+        contentAlignment = Alignment.Center
+    ) {
+        CaijiIcon(
+            if (isNext) CaijiIconName.MONTH_NEXT else CaijiIconName.MONTH_PREVIOUS,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
 internal fun PeriodSummaryCard(
     title: String,
     totals: LedgerPeriodTotals,
