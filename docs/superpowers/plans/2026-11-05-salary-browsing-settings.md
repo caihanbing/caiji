@@ -63,4 +63,4 @@
 
 - [x] 完成 API26/API34 仪器回归、正式 APK 签名/包名/版本/对齐/SHA-256 核验及代码审查。
 - [x] 更新工资档案并通过结构/fresh 校验；记录实机回归所需操作，无数据库迁移。
-- [ ] 生成并核验中文 commit 与 Release notes；提交并推送 main，创建 `v0.5.1`、“财记 0.5.1” Release，上传 APK 和 SHA-256 sidecar。
+- [x] 使用 dms-commit-msg 生成并核验中文 commit 与 Release notes；提交 `77d850fc09d9e5f78bbe1507f4f30d054a410c70` 并推送 main，创建 `v0.5.1`、“财记 0.5.1” Release，上传 APK 和 SHA-256 sidecar。

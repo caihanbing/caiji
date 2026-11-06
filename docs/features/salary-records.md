@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立保存工资收入并按年或全部记录浏览；设置提供收入项管理和可独立选择范围的 XLSX 导入导出。 -->
 <!-- last-verified: 2026-11-05 -->
-<!-- code-basis: HEAD 7ec32c153001; worktree-digest sha256:e89b55db83dd2bdd1ed8306e7472bda6c6faf241d82048ce9edda979897c86c4 -->
+<!-- code-basis: HEAD 77d850fc09d9; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
