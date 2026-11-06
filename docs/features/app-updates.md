@@ -5,12 +5,12 @@
 <!-- feature-aliases: 检查更新, 版本更新, GitHub Release -->
 <!-- feature-status: active -->
 <!-- feature-summary: 设置页可手动检查 GitHub 正式 Release，应用每次进入前台自动检查并提示高于当前安装版本的更新。 -->
-<!-- last-verified: 2026-11-05 -->
-<!-- code-basis: HEAD 1f9447d596b0; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- last-verified: 2026-11-06 -->
+<!-- code-basis: HEAD 8a9f849cb837; worktree-digest sha256:3650d4c05b63d1ce00253dd53b3809a3f51d8f11deff01d6a25a3db6101a38b5 -->
 
 ## 快速上下文
 
-设置页“关于财记”提供手动检查更新；Android 进程启动及从后台回到前台时，由 `ProcessLifecycleOwner` 自动检查 GitHub `caihanbing/caiji` 最新正式 Release。版本标签要求 `v主版本.次版本.修订版本`，使用数值顺序比较。
+设置页“关于财记”提供手动检查更新，入口说明“检查 GitHub 上的新版本”；Android 进程启动及从后台回到前台时，由 `ProcessLifecycleOwner` 自动检查 GitHub `caihanbing/caiji` 最新正式 Release。版本标签要求 `v主版本.次版本.修订版本`，使用数值顺序比较。
 
 只有高于当前版本的 Release 会提示。用户可稍后处理或在浏览器打开 Release 附带 APK；APK 缺失时打开 Release 页面。检查不上传账本信息，不修改数据库或备份文件。
 
@@ -139,6 +139,14 @@ AndroidManifest 声明 `android.permission.INTERNET`。运行时依赖 `androidx
 - **后续动作**：用户安装正式 APK 后核对浏览器下载、系统安装和离线记账。
 
 ## 变更记录
+
+### 2026-11-06 — 调整设置页更新说明
+
+- **状态**：已完成
+- **变化**：设置页更新入口说明为“检查 GitHub 上的新版本”，与只检查正式 Release 的实际能力一致。
+- **原因**：让入口文字直接说明检查来源和动作。
+- **兼容性**：仅调整设置说明文案；网络请求、版本比较和更新流程不变。
+- **验证**：设置页文案仪器测试及 API26/API34 全回归通过。
 
 ### 2026-11-05 — GitHub 检查更新
 

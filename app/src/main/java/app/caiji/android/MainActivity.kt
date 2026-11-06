@@ -197,8 +197,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var pickerError by remember { mutableStateOf<String?>(null) }
     var restoreSessionActive by remember { mutableStateOf(false) }
     var salaryPreview by remember { mutableStateOf<app.caiji.android.data.SalaryImportPreview?>(null) }
-    var salaryEditorDraft by remember { mutableStateOf<SalaryDraft?>(null) }
-    var salaryEditorEntry by remember { mutableStateOf<SalaryEntry?>(null) }
+    var salaryEditorDraft by rememberSaveable { mutableStateOf<SalaryDraft?>(null) }
+    var salaryEditorEntry by rememberSaveable { mutableStateOf<SalaryEntry?>(null) }
     var salaryManagementRoute by rememberSaveable { mutableStateOf(SalaryManagementRoute.HOME) }
     var showSalaryBottomNavigation by remember { mutableStateOf(true) }
     var salaryExportPeriod by rememberSaveable { mutableStateOf<app.caiji.android.data.SalaryPeriod?>(null) }
@@ -524,7 +524,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 indicatorColor = Color.Transparent
             )
             NavigationBarItem(selected = page == Page.LEDGER, onClick = { navigateMain(Page.LEDGER) },
-                icon = { CaijiIcon(CaijiIconName.LEDGER, contentDescription = null) }, label = { Text("明细") },
+                icon = { CaijiIcon(CaijiIconName.LEDGER, contentDescription = null) }, label = { Text("账单") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-ledger"))
             NavigationBarItem(selected = page == Page.CHART, onClick = { navigateMain(Page.CHART) },
                 icon = { Text("▥") }, label = { Text("图表") }, colors = navigationColors, modifier = Modifier.testTag("nav-chart"))

@@ -71,8 +71,12 @@ class BillReportsScreenTest {
                 )
             }
         }
+        compose.onNodeWithText("汇总").assertIsDisplayed()
+        compose.onAllNodesWithText("账单").assertCountEquals(0)
         compose.onNodeWithTag("report-balance").assertTextContains("¥44.44")
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithText("汇总").assertIsDisplayed()
+        compose.onNodeWithText("账单").assertDoesNotExist()
         compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
         compose.onNodeWithTag("report-balance").assertTextContains("−¥44.44")
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeRight() }

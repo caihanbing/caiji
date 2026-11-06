@@ -68,7 +68,7 @@ internal fun SettingsScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = CaijiPalette.Ink)
-            Text("管理账本与使用偏好", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
+            Text("管理账单、工资与应用偏好", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
         }
         Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -76,14 +76,14 @@ internal fun SettingsScreen(
                     Text("本机", modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp), color = CaijiPalette.Income, style = MaterialTheme.typography.labelLarge)
                 }
                 Column {
-                    Text("本机离线账本", fontWeight = FontWeight.SemiBold, color = CaijiPalette.Ink)
-                    Text("账单只保存在这台设备", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                    Text("数据保存在本机", fontWeight = FontWeight.SemiBold, color = CaijiPalette.Ink)
+                    Text("账单、工资与问题记录保存在此设备", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("账本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("账单", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Card(
                 onClick = onCategories,
                 modifier = Modifier.fillMaxWidth().testTag("settings-categories"),
@@ -95,7 +95,7 @@ internal fun SettingsScreen(
                     }
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text("分类管理", fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
-                        Text("新增、编辑、排序和停用分类", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                        Text("新增、编辑、排序和停用收支分类", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
                     }
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
@@ -104,9 +104,9 @@ internal fun SettingsScreen(
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-salary")) {
             Text("工资", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            SalarySettingsRow("导入 Excel", "导入工资记录，预览后确认", CaijiIconName.IMPORT, onSalaryImport, "settings-salary-import")
-            SalarySettingsRow("导出 Excel", "导出全部记录或指定年份", CaijiIconName.EXPORT, onSalaryExport, "settings-salary-export")
-            SalarySettingsRow("管理收入项", "管理工资、补贴和福利收入项", CaijiIconName.CATEGORY, onSalaryTypes, "settings-salary-types")
+            SalarySettingsRow("导入 Excel", "选择 .xlsx 文件，核对后导入工资", CaijiIconName.IMPORT, onSalaryImport, "settings-salary-import")
+            SalarySettingsRow("导出 Excel", "将全部或指定年份工资导出为 .xlsx", CaijiIconName.EXPORT, onSalaryExport, "settings-salary-export")
+            SalarySettingsRow("收入项管理", "查看收入项，新增自定义收入项", CaijiIconName.CATEGORY, onSalaryTypes, "settings-salary-types")
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -122,7 +122,7 @@ internal fun SettingsScreen(
                     }
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text("换肤", fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
-                        Text(CaijiPalette.selected.label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                        Text("当前主题：" + CaijiPalette.selected.label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
                     }
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
@@ -138,7 +138,7 @@ internal fun SettingsScreen(
                     }
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text("问题反馈", fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
-                        Text("记录体验中的问题", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                        Text("记录问题和截图，按需分享", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
                     }
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
@@ -146,20 +146,25 @@ internal fun SettingsScreen(
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("备份与恢复", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("账单备份与恢复", Modifier.testTag("settings-backup-section"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Button(
                 onClick = { exportPrompt = true; onLocalDialogVisibilityChange(true) },
                 modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settings-export"),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)
-            ) { Text("加密备份", fontWeight = FontWeight.SemiBold) }
+            ) { Text("加密备份") }
             OutlinedButton(
                 onClick = onImport,
                 modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settings-import"),
                 shape = RoundedCornerShape(14.dp)
             ) { Text("从备份恢复", color = CaijiPalette.Ink) }
             Text(
-                "备份包含全部账单和分类。请设置至少 8 个字符的密码并妥善保存；忘记密码后无法打开备份。恢复会替换当前数据，开始前可先另存当前账本。",
+                "加密备份仅包含全部账单和分类，不包含工资、问题记录或主题设置。工资请单独导出 Excel。",
+                color = CaijiPalette.SecondaryText,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "密码至少 8 个字符，忘记后无法打开备份。恢复将替换当前账单和分类；已有数据时，需先保存当前账单备份。",
                 color = CaijiPalette.SecondaryText,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -187,7 +192,7 @@ internal fun SettingsScreen(
                         UpdateState.Checking -> "正在检查…"
                         UpdateState.UpToDate -> "已是最新版本"
                         UpdateState.Failed -> "检查失败，请重试"
-                        else -> "检查 GitHub 上的最新版本"
+                        else -> "检查 GitHub 上的新版本"
                     }
                     Text(status, color = if (updateState == UpdateState.Failed) CaijiPalette.Danger else CaijiPalette.SecondaryText,
                         style = MaterialTheme.typography.bodySmall)

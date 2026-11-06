@@ -85,7 +85,7 @@ internal fun BillReportsScreen(
             TextButton(onClick = onBack, modifier = Modifier.testTag("bills-back")) {
                 CaijiIcon(CaijiIconName.BACK, "返回")
             }
-            Text("账单", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("汇总", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             if (mode == BillListMode.MONTH) {
                 PeriodArrowButton("上一年", "bill-previous-year", isNext = false,
                     enabled = year > FIRST_BILL_YEAR, onClick = onPreviousYear)
@@ -184,7 +184,7 @@ internal fun BillPeriodReportScreen(
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { if (selectedCategoryId != null) onSelectCategory(null) else onBack() }, modifier = Modifier.testTag("period-report-back")) {
-                CaijiIcon(CaijiIconName.BACK, if (selectedCategoryId != null) "返回分类排行" else "返回账单")
+                CaijiIcon(CaijiIconName.BACK, if (selectedCategoryId != null) "返回分类排行" else "返回汇总")
             }
             Text(
                 if (selectedCategoryId != null) "分类明细" else if (monthValue == 0) "${year}年报告" else "${year}年${monthValue}月报告",

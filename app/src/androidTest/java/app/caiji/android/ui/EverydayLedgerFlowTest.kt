@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.caiji.android.MainActivity
@@ -31,13 +32,61 @@ import org.junit.runner.RunWith
 class EverydayLedgerFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun launchesTheMonthlyLedgerAndExposesEntryAndSettingsNavigation() {
-        compose.onNodeWithText("本月支出").assertIsDisplayed()
-        compose.onNodeWithTag("nav-entry").assertIsDisplayed()
+    @Test fun settingsAndBillSummaryNavigationUseConsistentLabels() {
+        repeat(5) {
+            if (compose.onAllNodesWithTag("nav-settings").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            }
+        }
+        compose.onNodeWithTag("nav-settings").assertIsDisplayed()
         compose.onNodeWithTag("nav-settings").performClick()
         compose.onNodeWithText("分类管理").assertIsDisplayed()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasText("加密备份"))
         compose.onNodeWithText("加密备份").assertIsDisplayed()
+        compose.onNodeWithTag("nav-ledger").performClick()
+        compose.onNodeWithTag("nav-ledger").assertTextContains("账单")
+        compose.onNodeWithTag("ledger-open-bills").assertTextContains("汇总").performClick()
+        compose.onNodeWithTag("bills-back").assertIsDisplayed()
+        compose.onNodeWithText("汇总").assertIsDisplayed()
+    }
+
+    @Test fun salarySummaryPageSurvivesActivityRecreation() {
+        repeat(5) {
+            if (compose.onAllNodesWithTag("nav-salary").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                compose.waitForIdle()
+            }
+        }
+        compose.onNodeWithTag("nav-salary").performClick()
+        compose.onNodeWithTag("salary-open-summary").performClick()
+        compose.onNodeWithText("累计纯收入").assertIsDisplayed()
+
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("累计纯收入").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("累计纯收入").assertIsDisplayed()
+        compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
+    }
+
+    @Test fun salaryEditorDraftSurvivesActivityRecreation() {
+        repeat(5) {
+            if (compose.onAllNodesWithTag("nav-salary").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                compose.waitForIdle()
+            }
+        }
+        compose.onNodeWithTag("nav-salary").performClick()
+        compose.onNodeWithText("＋  新增收入").performClick()
+        compose.onNodeWithTag("salary-field-毛收入").performTextClearance()
+        compose.onNodeWithTag("salary-field-毛收入").performTextInput("123.45")
+
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("salary-field-毛收入").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("salary-field-毛收入").assertTextContains("123.45", substring = true)
+        compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
     @Test fun openingTheEntryTabShowsIncomeExpenseAndCalculatorControls() {

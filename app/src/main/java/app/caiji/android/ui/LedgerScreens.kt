@@ -89,8 +89,8 @@ internal fun LedgerHome(
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onOpenBills, modifier = Modifier.testTag("ledger-open-bills")) {
-                CaijiIcon(CaijiIconName.DATE, "账单", Modifier.size(18.dp))
-                Text("账单", Modifier.padding(start = 5.dp), fontWeight = FontWeight.SemiBold)
+                CaijiIcon(CaijiIconName.DATE, "汇总", Modifier.size(18.dp))
+                Text("汇总", Modifier.padding(start = 5.dp), fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.weight(1f))
             MonthSelector(month, onPrevious, onNext)

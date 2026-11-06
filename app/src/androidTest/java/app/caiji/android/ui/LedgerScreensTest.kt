@@ -278,6 +278,7 @@ class LedgerScreensTest {
         compose.onAllNodesWithText("按月查看").assertCountEquals(0)
         compose.onNodeWithText("2026年11月").assertIsDisplayed()
         compose.onNodeWithTag("ledger-open-bills").assertIsDisplayed()
+        compose.onNodeWithText("汇总").assertIsDisplayed()
         compose.onNodeWithTag("empty-start-entry").assertIsDisplayed()
     }
 

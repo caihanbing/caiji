@@ -3,6 +3,7 @@ package app.caiji.android.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -28,19 +29,36 @@ class UpdateSettingsScreenTest {
         compose.setContent {
             CaijiTheme {
                 SettingsScreen({}, {}, {}, onSalaryImport = { selected = "导入 Excel" },
-                    onSalaryExport = { selected = "导出 Excel" }, onSalaryTypes = { selected = "管理收入项" })
+                    onSalaryExport = { selected = "导出 Excel" }, onSalaryTypes = { selected = "收入项管理" })
             }
         }
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-salary"))
         compose.onNodeWithTag("settings-salary").assertIsDisplayed()
-        compose.onNodeWithText("账本").assertIsDisplayed()
+        compose.onNodeWithText("账单").assertIsDisplayed()
         compose.onNodeWithText("工资").assertIsDisplayed()
         compose.onNodeWithText("导入 Excel").performClick()
         assertEquals("导入 Excel", selected)
         compose.onNodeWithText("导出 Excel").performClick()
         assertEquals("导出 Excel", selected)
-        compose.onNodeWithText("管理收入项").performClick()
-        assertEquals("管理收入项", selected)
+        compose.onNodeWithText("收入项管理").performClick()
+        assertEquals("收入项管理", selected)
+    }
+
+    @Test fun settingsCopyExplainsLocalDataBackupAndManualFeedback() {
+        compose.setContent { CaijiTheme { SettingsScreen({}, {}, {}) } }
+        compose.onNodeWithText("管理账单、工资与应用偏好").assertIsDisplayed()
+        compose.onNodeWithText("数据保存在本机").assertIsDisplayed()
+        compose.onNodeWithText("账单、工资与问题记录保存在此设备").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-backup-section"))
+        compose.onNodeWithText("账单备份与恢复").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasText("加密备份仅包含全部账单和分类", substring = true))
+        compose.onNodeWithText("加密备份仅包含全部账单和分类", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasText("恢复将替换当前账单和分类", substring = true))
+        compose.onNodeWithText("恢复将替换当前账单和分类", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-feedback"))
+        compose.onNodeWithText("记录问题和截图，按需分享").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-check-updates"))
+        compose.onNodeWithText("检查 GitHub 上的新版本").assertIsDisplayed()
     }
 
     @Test fun settingsExposeManualCheckAndDisableItWhileChecking() {

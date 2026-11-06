@@ -33,7 +33,7 @@ data class SalaryEntry(
     val isCash: Boolean,
     val createdAtMillis: Long,
     val updatedAtMillis: Long
-) {
+) : java.io.Serializable {
     val deductionsFen: BigInteger
         get() = listOf(unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen)
             .fold(BigInteger.ZERO) { total, fen -> total + BigInteger.valueOf(fen) }
