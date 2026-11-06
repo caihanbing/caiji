@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -78,15 +79,18 @@ internal fun BillReportsScreen(
         if (settled != mode) onSelectMode(settled)
     }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack, modifier = Modifier.testTag("bills-back")) {
-                CaijiIcon(CaijiIconName.BACK, "返回")
-            }
-            Text("汇总", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (mode == BillListMode.MONTH) {
+        CaijiPageTopBar(
+            title = "汇总",
+            onBack = onBack,
+            backTag = "bills-back",
+            actionTag = "bills-header-action"
+        )
+        if (mode == BillListMode.MONTH) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(Modifier.weight(1f))
                 PeriodArrowButton("上一年", "bill-previous-year", isNext = false,
                     enabled = year > FIRST_BILL_YEAR, onClick = onPreviousYear)
                 Text("${year}年", Modifier.padding(horizontal = 2.dp).testTag("bill-selected-year"),
@@ -182,16 +186,12 @@ internal fun BillPeriodReportScreen(
         }
     }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { if (selectedCategoryId != null) onSelectCategory(null) else onBack() }, modifier = Modifier.testTag("period-report-back")) {
-                CaijiIcon(CaijiIconName.BACK, if (selectedCategoryId != null) "返回分类排行" else "返回汇总")
-            }
-            Text(
-                if (selectedCategoryId != null) "分类明细" else if (monthValue == 0) "${year}年报告" else "${year}年${monthValue}月报告",
-                Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold
-            )
-            Spacer(Modifier.width(48.dp))
-        }
+        CaijiPageTopBar(
+            title = if (selectedCategoryId != null) "分类明细" else if (monthValue == 0) "${year}年报告" else "${year}年${monthValue}月报告",
+            onBack = { if (selectedCategoryId != null) onSelectCategory(null) else onBack() },
+            backTag = "period-report-back",
+            actionTag = "period-report-header-action"
+        )
         summaryTotals?.let {
             PeriodSummaryCard(
                 "${year}年${if (monthValue == 0) "结余" else "${monthValue}月结余"}",

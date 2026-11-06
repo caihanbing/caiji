@@ -55,7 +55,7 @@ internal fun SettingsScreen(
 ) {
     var exportPrompt by remember { mutableStateOf(false) }
     if (exportPrompt) BackupPasswordDialog(
-        title = "加密完整备份",
+        title = "加密备份",
         confirmLabel = "选择保存位置",
         requireConfirmation = true,
         onDismiss = { exportPrompt = false; onLocalDialogVisibilityChange(false) },

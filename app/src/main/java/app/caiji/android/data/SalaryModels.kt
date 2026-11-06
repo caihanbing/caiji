@@ -15,7 +15,8 @@ data class SalaryIncomeType(
     val name: String,
     val isCash: Boolean,
     val builtIn: Boolean = false,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    val iconKey: String = "other"
 )
 
 data class SalaryEntry(
@@ -82,6 +83,11 @@ data class SalaryTotals(
 )
 
 data class SalaryImportDelta(val entriesToInsert: List<SalaryEntry>, val skippedDuplicateCount: Int)
+
+data class SalaryImportCatalog(
+    val incomeTypes: List<SalaryIncomeType>,
+    val restoreDefaultDirectory: Boolean
+)
 
 object SalaryReports {
     fun importDelta(incoming: List<SalaryEntry>, existing: List<SalaryEntry>): SalaryImportDelta {

@@ -4,9 +4,9 @@
 <!-- feature-title: 工资收入记录 -->
 <!-- feature-aliases: salary, 工资, 工资明细 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 独立保存工资收入，首页按年浏览并可进入累计汇总页查看全部逐笔记录；设置提供 XLSX 导入导出及收入项管理。 -->
+<!-- feature-summary: 独立工资库按年浏览并提供跨年汇总；收入项名称/图标可编辑、现金属性固定且图标同步显示；支持 XLSX 导入导出。 -->
 <!-- last-verified: 2026-11-06 -->
-<!-- code-basis: HEAD cdeeca4da1a4; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- code-basis: HEAD 98386072b791; worktree-digest sha256:2d79350e7d4f35ea4be90f76d7e725958da1125d5912a36cbffa3d01fe554b48 -->
 
 ## 快速上下文
 
@@ -26,7 +26,7 @@
 
 - 总览默认当前年，可在 1900 至当前年选择年份或切换跨年全部；全部列表日期包含年份。
 - 记录日期、收入项、毛收入、工会费、养老保险、医疗保险、失业保险、公积金、企业年金及税。
-- 提供样例全部 17 种收入项；支持创建名称唯一且明确标记现金性质的自定义项目。
+- 提供样例全部 17 种收入项；收入项可改名和换 48 个分类目录图标，现金性质在创建时确定且编辑中固定；名称全局唯一。
 - 自动计算纯收入并按期间统计现金和非现金合计。
 - 设置页独立提供收入项管理与 Excel 导入/导出；导入预览保留文件/应用/单元格错误、重复记录及整批确认语义；导出全部或指定年份，不依赖工资页当前浏览期间。
 
@@ -49,8 +49,10 @@
 - 首页记录日期显示月/日，累计汇总页显示完整年月日；工资汇总不提供添加按钮，点击记录可编辑，保存/删除后返回汇总并更新数据。
 - 录入及编辑支持七项扣款折叠和即时纯收入计算；删除前确认。
 - 新增工资记录时扣款明细默认收起，展开后可逐项录入；编辑已有记录保持展开；收入项管理返回时保留草稿及扣款展开状态。
-- 项目管理按名称唯一性创建收入类型并指定现金属性。
+- 收入项管理页右上添加新项，列表显示图标与现金性质并可点击编辑；收入编辑器项目选择列表、工资首页和汇总记录均按稳定收入项 ID 显示相同图标。
+- 创建收入项指定现金性质和图标（默认现金/“其他”图标）；编辑仅修改名称和图标，不改变现金性质、稳定 ID、顺序或工资记录。
 - 设置中的导入复用样例 11 列结构及原校验、重复匹配和原子写入逻辑；取消文件选择停留在导入页；离页和重选时使旧请求失效。
+- 导入旧格式通过原预置名称映射稳定 ID；新版 XLSX 携带可选版本化的收入项 ID、名称、现金和图标元数据，本机同 ID/名称项目优先。仅工资记录为空且预置目录未自定义时恢复文件中的预置名称和图标；未知图标回退“其他”。确认时目录恢复与工资写入同一事务提交。
 - 设置中的导出默认全部记录，可选指定年份；成功后返回设置，取消保留所选范围供重试。
 - 导入按日期、项目与全部金额构成的多重集匹配重复笔数；错误、取消及事务失败均不留下部分导入。
 - 导出使用 SAF，包含全部收入、现金收入、非现金收入的明细公式、合计和下拉项目；非现金合计 C:K 每列由同列全部合计减现金合计得出，缓存值同步使用整数分汇总。
@@ -58,7 +60,7 @@
 ## 架构与代码地图
 
 - app/src/main/java/app/caiji/android/data/SalaryModels.kt — SalaryEntry、SalaryIncomeType、SalaryReports 与金额验证。
-- app/src/main/java/app/caiji/android/data/SalaryDatabase.kt — SalaryDatabase、SalaryDao、工资和收入项 Room 实体及样例目录。
+- app/src/main/java/app/caiji/android/data/SalaryDatabase.kt — SalaryDatabase、SalaryDao、工资和收入项 Room 实体、schema migration 1→2 及样例图标目录。
 - app/src/main/java/app/caiji/android/data/SalaryRepository.kt — RoomSalaryRepository、工资 CRUD、重复统计和原子导入。
 - app/src/main/java/app/caiji/android/data/SalaryXlsxCodec.kt — OOXML 安全解码和解析、字段错误定位、样例版式导出及文件边界保护。
 - app/src/main/java/app/caiji/android/ui/SalaryScreens.kt — 工资按年/全部总览、表单及复用的收入项、导入、导出界面。
@@ -72,21 +74,25 @@
 
 - 校验日期、金额、扣款和收入类型后新增或更新一笔记录；失败由调用页面展示，不覆盖数据库内容。
 
-### RoomSalaryRepository.importNew
+### RoomSalaryRepository.createIncomeType / updateIncomeType
 
-- 输入经过预览校验的工资列表及需创建的自定义收入项；在一个事务内再次校验类型和重复多重集，再原子写入。错误时整笔事务回滚。
+- 创建接收名称、现金性质和分类目录图标；更新通过稳定 ID 只修改名称和图标，在事务内重检唯一名称，不提供修改现金性质的参数。
+
+### RoomSalaryRepository.incomeTypeImportCatalog / importNew
+
+- `incomeTypeImportCatalog` 一致读取目录并确认是否为空白默认目录；`importNew` 在一个事务内重验预置目录恢复条件、现金性质、多重集重复及收入项约束，再原子更新允许恢复的预置项、插入缺失自定义项和工资。失败整笔回滚。
 
 ### SalaryXlsxCodec.importPreview
 
-- 输入 XLSX、当前项目列表和当前日期，返回有效工资行、分级错误及工作簿携带的自定义项目。不改数据库。数据错误包含实际工作表行、单元格、字段、当前值、原因和修改建议；整文件或运行时错误不伪造行号，也不展示底层异常文本。
+- 输入 XLSX、当前收入项目录、日期和首次恢复标志，返回有效工资行、分级错误、新建自定义项及可恢复的预置改名/图标。不改数据库。新目录元数据 `CaijiSalaryIncomeDirectoryV2` 可选，旧 `CaijiSalaryIncomeTypes` 三字段格式仍可读取；样例表可见 11 列不变。
 
 ### SalaryXlsxCodec.export
 
-- 按样例格式把工资行和项目性质写入 XLSX 输出流；模板和明细均不依赖网络。
+- 按样例格式把工资行、现金性质及新旧收入项目录元数据写入 XLSX 输出流；模板、可见列和合计公式不依赖网络。
 
 ## 数据模型与迁移
 
-新增独立 Room schema 1，文件为 caiji-salary.db。salary_income_types 用名称唯一索引；salary_entries 以外键关联项目，保存稳定 ID、本地日期、八项金额及创建/更新时间。账本数据库 schema 1 和账本备份格式 2 未更改。
+独立工资数据库 `caiji-salary.db` 当前为 Room schema 2。`salary_income_types` 以名称建唯一索引，并存储稳定 ID、现金性质、预置标记、顺序及 `iconKey`；`salary_entries` 以收入项 ID 外键关联，保存本地日期、八项金额及创建/更新时间。显式 `MIGRATION_1_2` 为旧自定义项填默认图标，为 17 个预置项按用途映射图标，不更新工资行、现金性质或顺序。账本 schema 1 和账单备份格式 2 未更改。
 
 ## 核心流程
 
@@ -127,7 +133,7 @@ Kotlin、Room 2.6.1、Jetpack Compose Material 3，minSdk 26。工作簿格式�
 
 - :app:testDebugUnitTest — 通过；覆盖货币边界、负税额、期间汇总、样例结构、XLSX 往返、重复多重集、UTF-16、DTD/外链拒绝和单元格级错误。
 - :app:lintDebug — 通过。
-- :app:connectedDebugAndroidTest — API26 和 API34 各 140 项通过；覆盖原生 XML 编解码、工资数据库事务、多重集去重、导入错误及过期状态、年度首页、全量汇总与筛选隔离、编辑取消/保存/删除返回、扣款默认折叠和 Activity 重建。
+- :app:connectedDebugAndroidTest — API26 和 API34 各 153 项通过；覆盖 schema 1→2 迁移和失败回滚、收入项改名/图标、本机优先目录恢复、旧名映射、XLSX 版本元数据、年度首页、跨年汇总、标题/入口和 Activity 重建。
 - :app:testDebugUnitTest — 逐列检查 C:K 三类合计公式和缓存值，包含负税额，确保非现金公式不引用自身。
 - LibreOffice 对由实机导出记录生成的临时工作簿进行重算：C:K 公式无错误，非现金纯收入为 ¥63,827.00。
 - 临时本地 Android 集成测试在 API26/API34 对用户样例完成导入→导出→重导入，核对 180 笔、17 种收入项；毛收入 ¥1,038,302.00、纯收入 ¥820,407.20、现金纯收入 ¥756,580.20、非现金纯收入 ¥63,827.00。三类合计公式和 182–184 行动态合并范围通过；临时测试源码和个人财务文件均未保留在仓库。
@@ -157,10 +163,18 @@ Kotlin、Room 2.6.1、Jetpack Compose Material 3，minSdk 26。工作簿格式�
 ### 用户实体设备验证
 
 - **影响**：不同厂商 SAF、系统字体及 WPS/Excel GUI 尚未实测。
-- **当前处理**：API26/API34 各 140 项仪器测试和正式 APK 包身份/签名/zipalign/SHA-256 核验已通过。
-- **后续动作**：按 Work Item WORK-20261106-001 回归步骤安装 0.5.2 并检查工资汇总、扣款折叠及 Excel 文件选择/打开。
+- **当前处理**：67 项 JVM、Lint 和 API26/API34 各 153 项仪器测试通过；正式 APK 包身份、签名、zipalign 和 SHA-256 核验见 Work Item WORK-20261106-002。
+- **后续动作**：按 Work Item WORK-20261106-002 回归步骤安装 0.5.3，检查收入项图标编辑、迁移后旧工资及旧/新版 Excel 文件。
 
 ## 变更记录
+
+### 2026-11-06 — 统一入口并支持收入项目录编辑
+
+- **状态**：已完成
+- **变化**：统一“记一笔”入口、共用居中标题及工资年份箭头；收入项右上添加并支持改名/换图标，现金性质固定，图标同步到选择/工资/汇总；工资 Room schema 2 增加显式 v1→v2 Migration；XLSX 可选目录元数据支持旧格式兼容、本机优先和首次恢复。
+- **原因**：使导航、标题与管理界面统一，并让收入项目录由用户管理且显示在工资历史中。
+- **兼容性**：工资行稳定 ID、现金性质和账单数据库/schema/备份不变；显式迁移将旧自定义项设为“其他”图标。工作表可见 11 列及公式保持不变，新增 custom property 元数据；新版可读旧文件，旧版不保证恢复新元数据。
+- **验证**：67 项 JVM、Lint、API26/API34 各 153 项仪器测试通过，覆盖 v1→v2 迁移/失败回滚、收入项改名图标、旧别名/新目录导入、本机优先和各页状态；版本 0.5.3/code18，APK 证据记录在 Work Item WORK-20261106-002。
 
 ### 2026-11-06 — 增加工资累计汇总和新建扣款折叠
 

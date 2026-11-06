@@ -72,6 +72,9 @@ class BillReportsScreenTest {
             }
         }
         compose.onNodeWithText("汇总").assertIsDisplayed()
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithTag("page-title").fetchSemanticsNode().boundsInRoot
+        assertTrue("Bill summary title should be centered", kotlin.math.abs(root.center.x - title.center.x) <= 1f)
         compose.onAllNodesWithText("账单").assertCountEquals(0)
         compose.onNodeWithTag("report-balance").assertTextContains("¥44.44")
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeLeft() }

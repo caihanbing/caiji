@@ -44,6 +44,132 @@ class SalaryXlsxCodecTest {
         assertEquals(1, result.rowsRead)
     }
 
+    @Test fun exportWritesVersionedMetadataForBuiltinIncomeNamesAndIcons() {
+        val customizedTypes = SalaryIncomeTypes.defaults.map { type ->
+            if (type.id == "builtin-1") type.copy(name = "工资（新名称）", iconKey = "salary") else type
+        }
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, emptyList(), customizedTypes)
+        val customProperties = zipPart(output.toByteArray(), "docProps/custom.xml")
+        assertTrue(customProperties.contains("CaijiSalaryIncomeDirectoryV2"))
+        assertTrue(customProperties.contains("builtin-1"))
+        assertTrue(customProperties.contains(java.util.Base64.getEncoder().encodeToString("工资（新名称）".toByteArray())))
+        assertTrue(customProperties.contains(java.util.Base64.getEncoder().encodeToString("salary".toByteArray())))
+    }
+
+    @Test fun legacyBuiltinNameResolvesToStableIdAfterLocalRename() {
+        val renamedBuiltin = SalaryIncomeTypes.defaults.map { type ->
+            if (type.id == "builtin-17") type.copy(name = "已改名退税", iconKey = "refund") else type
+        }
+        val renamedLocalTypes = renamedBuiltin + SalaryIncomeType("local-custom-claim", "退税（中行 到账时间）", false)
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val result = codec.importPreview(ByteArrayInputStream(fixture()), renamedLocalTypes, LocalDate.of(2026, 11, 4))
+        assertTrue(result.errors.toString(), result.errors.isEmpty())
+        assertEquals("builtin-17", result.entries.single().incomeTypeId)
+        assertEquals(true, result.entries.single().isCash)
+        assertTrue(result.incomeTypesToCreate.isEmpty())
+    }
+
+    @Test fun pristineRestoreKeepsFreedBuiltinNameOnItsExportedCustomIncomeId() {
+        val originalBuiltin = SalaryIncomeTypes.defaults.first { it.id == "builtin-1" }
+        val renamedBuiltin = originalBuiltin.copy(name = "工资新名称", iconKey = "salary")
+        val reusedNameCustom = SalaryIncomeType("custom-reused-builtin-name", originalBuiltin.name, true,
+            sortOrder = 17, iconKey = "gift")
+        val date = LocalDate.of(2026, 11, 1)
+        val entries = listOf(
+            SalaryEntry("renamed-builtin-row", date, renamedBuiltin.id, 30_000, isCash = true, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("reused-name-custom-row", date, reusedNameCustom.id, 20_000, isCash = true, createdAtMillis = 2, updatedAtMillis = 2)
+        )
+        val workbookTypes = SalaryIncomeTypes.defaults.map { if (it.id == renamedBuiltin.id) renamedBuiltin else it } + reusedNameCustom
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, entries, workbookTypes)
+
+        val preview = codec.importPreview(ByteArrayInputStream(output.toByteArray()), SalaryIncomeTypes.defaults, date,
+            restoreDefaultDirectory = true)
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(listOf(renamedBuiltin.id, reusedNameCustom.id), preview.entries.map { it.incomeTypeId })
+        assertEquals(reusedNameCustom.id, preview.incomeTypesToCreate.single().id)
+        assertEquals(renamedBuiltin, preview.incomeTypesToRestore.single())
+    }
+
+    @Test fun legacyCustomMetadataUsesMatchingLocalIdAndKeepsLocalNameAndIcon() {
+        val fileType = SalaryIncomeType("custom-rename", "旧项目名", true, iconKey = "gift")
+        val file = legacyCustomWorkbook(fixture(), fileType.name, fileType.id, fileType.name, fileType.isCash)
+        val localType = fileType.copy(name = "本机项目名", iconKey = "allowance")
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val result = codec.importPreview(ByteArrayInputStream(file), listOf(localType), LocalDate.of(2026, 11, 4))
+        assertTrue(result.errors.toString(), result.errors.isEmpty())
+        assertEquals(localType.id, result.entries.single().incomeTypeId)
+        assertTrue("An ID match must not create a stale duplicate", result.incomeTypesToCreate.isEmpty())
+    }
+
+    @Test fun versionedDirectoryMetadataUsesLocalPriorityAndRestoresOnlyIntoPristineDirectory() {
+        val editedBuiltin = SalaryIncomeTypes.defaults.first { it.id == "builtin-1" }
+            .copy(name = "工作簿工资名", iconKey = "salary")
+        val fileCustom = SalaryIncomeType("file-custom-02", "文件自定义项", false, sortOrder = 17, iconKey = "gift")
+        val entryDate = LocalDate.of(2026, 11, 1)
+        val entries = listOf(
+            SalaryEntry("builtin-row", entryDate, editedBuiltin.id, 20_000, isCash = true, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("custom-row", entryDate, fileCustom.id, 10_000, isCash = false, createdAtMillis = 2, updatedAtMillis = 2)
+        )
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val file = ByteArrayOutputStream().also { codec.export(it, entries, SalaryIncomeTypes.defaults.map {
+            if (it.id == editedBuiltin.id) editedBuiltin else it
+        } + fileCustom) }.toByteArray()
+
+        val pristinePreview = codec.importPreview(ByteArrayInputStream(file), SalaryIncomeTypes.defaults, entryDate, true)
+        assertTrue(pristinePreview.errors.toString(), pristinePreview.errors.isEmpty())
+        assertEquals(editedBuiltin, pristinePreview.incomeTypesToRestore.single())
+        assertEquals(fileCustom.id, pristinePreview.incomeTypesToCreate.single().id)
+        assertEquals(listOf("builtin-1", fileCustom.id), pristinePreview.entries.map { it.incomeTypeId })
+
+        val localBuiltin = editedBuiltin.copy(name = "本机工资名", iconKey = "allowance")
+        val localCustom = fileCustom.copy(name = "本机自定义项", iconKey = "refund")
+        val localTypes = SalaryIncomeTypes.defaults.map { if (it.id == localBuiltin.id) localBuiltin else it } + localCustom
+        val existingPreview = codec.importPreview(ByteArrayInputStream(file), localTypes, entryDate, false)
+        assertTrue(existingPreview.errors.toString(), existingPreview.errors.isEmpty())
+        assertTrue(existingPreview.incomeTypesToRestore.isEmpty())
+        assertTrue(existingPreview.incomeTypesToCreate.isEmpty())
+        assertEquals(listOf("builtin-1", fileCustom.id), existingPreview.entries.map { it.incomeTypeId })
+        assertEquals(localBuiltin.isCash, existingPreview.entries.first().isCash)
+        assertEquals(localCustom.isCash, existingPreview.entries.last().isCash)
+    }
+
+    @Test fun unknownDirectoryIconFallsBackAndBuiltinCashChangesAreRejected() {
+        val unknownIcon = SalaryIncomeType("unknown-icon", "新项目", false, iconKey = "unknown-key")
+        val entry = SalaryEntry("unknown-icon-row", LocalDate.of(2026, 11, 1), unknownIcon.id, 10_000,
+            isCash = false, createdAtMillis = 1, updatedAtMillis = 1)
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, listOf(entry), SalaryIncomeTypes.defaults + unknownIcon)
+        val preview = codec.importPreview(ByteArrayInputStream(output.toByteArray()), SalaryIncomeTypes.defaults,
+            LocalDate.of(2026, 11, 4))
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals("other", preview.incomeTypesToCreate.single().iconKey)
+
+        val invalidBuiltin = SalaryIncomeTypes.defaults.first { it.id == "builtin-1" }.copy(isCash = false)
+        val invalidOutput = ByteArrayOutputStream()
+        codec.export(invalidOutput, listOf(entry.copy(incomeTypeId = invalidBuiltin.id, isCash = false)),
+            SalaryIncomeTypes.defaults.map { if (it.id == invalidBuiltin.id) invalidBuiltin else it })
+        val rejected = codec.importPreview(ByteArrayInputStream(invalidOutput.toByteArray()),
+            SalaryIncomeTypes.defaults, LocalDate.of(2026, 11, 4), restoreDefaultDirectory = true)
+        assertTrue(rejected.entries.isEmpty())
+        assertTrue(rejected.errors.isNotEmpty())
+        assertTrue(rejected.incomeTypesToCreate.isEmpty())
+        assertTrue(rejected.incomeTypesToRestore.isEmpty())
+    }
+
+    @Test fun unknownIncomeItemSuggestionUsesTheCurrentSettingsPath() {
+        val renamed = replaceSharedIncomeName(fixture(), "退税（中行 到账时间）", "外部补贴")
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val result = codec.importPreview(ByteArrayInputStream(renamed), SalaryIncomeTypes.defaults, LocalDate.of(2026, 11, 4))
+        val issue = result.errors.single { it.field == "收入项" }
+        assertTrue(issue.suggestion.contains("设置 → 工资 → 收入项管理"))
+        assertEquals(false, issue.suggestion.contains("工资 → 更多"))
+    }
+
     @Test fun nonCashTotalsSubtractTheCashTotalFromTheSameColumn() {
         val cashType = SalaryIncomeTypes.defaults.first { it.isCash }
         val nonCashType = SalaryIncomeTypes.defaults.first { !it.isCash }
@@ -230,6 +356,65 @@ class SalaryXlsxCodecTest {
             part("xl/sharedStrings.xml", "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" + labels.joinToString("") { "<si><t>" + it + "</t></si>" } + "</sst>")
             val headerCells = labels.take(11).mapIndexed { i, _ -> "<c r=\"" + ('A' + i) + "1\" t=\"s\"><v>" + i + "</v></c>" }.joinToString("")
             part("xl/worksheets/sheet1.xml", "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\">" + headerCells + "</row><row r=\"2\"><c r=\"A2\"><v>46327</v></c><c r=\"B2\" t=\"s\"><v>11</v></c><c r=\"C2\"><v>100</v></c><c r=\"J2\"><v>-10</v></c><c r=\"K2\"><v>110</v></c></row><row r=\"3\"><c r=\"K3\"><f>C3-SUM(D3:J3)</f><v>0</v></c></row></sheetData></worksheet>")
+        }
+        return out.toByteArray()
+    }
+
+    private fun zipPart(source: ByteArray, name: String): String =
+        java.util.zip.ZipInputStream(ByteArrayInputStream(source)).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (entry.name == name) return@use zip.readBytes().toString(Charsets.UTF_8)
+            }
+            ""
+        }
+
+    private fun replaceSharedIncomeName(source: ByteArray, oldName: String, newName: String): ByteArray {
+        val out = ByteArrayOutputStream()
+        java.util.zip.ZipInputStream(ByteArrayInputStream(source)).use { input ->
+            java.util.zip.ZipOutputStream(out).use { output ->
+                while (true) {
+                    val item = input.nextEntry ?: break
+                    val bytes = input.readBytes()
+                    val content = if (item.name == "xl/sharedStrings.xml") {
+                        bytes.toString(Charsets.UTF_8).replace(oldName, newName).toByteArray()
+                    } else bytes
+                    output.putNextEntry(java.util.zip.ZipEntry(item.name))
+                    output.write(content)
+                    output.closeEntry()
+                }
+            }
+        }
+        return out.toByteArray()
+    }
+
+    private fun legacyCustomWorkbook(
+        source: ByteArray,
+        rowName: String,
+        typeId: String,
+        metadataName: String,
+        isCash: Boolean
+    ): ByteArray {
+        val out = ByteArrayOutputStream()
+        java.util.zip.ZipInputStream(ByteArrayInputStream(source)).use { input ->
+            java.util.zip.ZipOutputStream(out).use { output ->
+                while (true) {
+                    val item = input.nextEntry ?: break
+                    val bytes = input.readBytes()
+                    val content = if (item.name == "xl/sharedStrings.xml") {
+                        bytes.toString(Charsets.UTF_8).replace("退税（中行 到账时间）", rowName).toByteArray()
+                    } else bytes
+                    output.putNextEntry(java.util.zip.ZipEntry(item.name))
+                    output.write(content)
+                    output.closeEntry()
+                }
+                val encodedName = java.util.Base64.getEncoder().encodeToString(metadataName.toByteArray())
+                val cash = if (isCash) "1" else "0"
+                val metadata = """<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="CaijiSalaryIncomeTypes"><vt:lpwstr>$typeId|$encodedName|$cash</vt:lpwstr></property></Properties>"""
+                output.putNextEntry(java.util.zip.ZipEntry("docProps/custom.xml"))
+                output.write(metadata.toByteArray())
+                output.closeEntry()
+            }
         }
         return out.toByteArray()
     }

@@ -312,9 +312,11 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 pickerError = "已取消选择工资 Excel 文件"
             } else scope.launch {
                 val result = runCatching { withContext(Dispatchers.IO) {
+                    val salaryRepository = (context.applicationContext as CaijiApplication).salaryRepository
+                    val importCatalog = salaryRepository.incomeTypeImportCatalog()
                     context.contentResolver.openInputStream(uri)?.use {
                         app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }
-                            .importPreview(it, (context.applicationContext as CaijiApplication).salaryRepository.incomeTypes(), LocalDate.now())
+                            .importPreview(it, importCatalog.incomeTypes, LocalDate.now(), importCatalog.restoreDefaultDirectory)
                     } ?: throw java.io.IOException("Selected document is unavailable")
                 } }
                 if (request == salaryImportGeneration && page == Page.SALARY) {
@@ -538,7 +540,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                         CaijiIcon(CaijiIconName.ADD, contentDescription = null, modifier = Modifier.size(23.dp))
                     }
                 }
-            }, label = { Text("记账") },
+            }, label = { Text("记一笔") },
                 colors = navigationColors, modifier = Modifier.testTag("nav-entry"))
             NavigationBarItem(selected = page == Page.SALARY, onClick = { navigateMain(Page.SALARY) },
                 icon = { Text("¥") }, label = { Text("工资") }, colors = navigationColors, modifier = Modifier.testTag("nav-salary"))

@@ -247,6 +247,7 @@ class LedgerScreensTest {
 
         compose.onNodeWithText("本月还没有账单").assertIsDisplayed()
         compose.onNodeWithText("记下第一笔收支，月度明细会显示在这里").assertIsDisplayed()
+        compose.onNodeWithText("记一笔").assertIsDisplayed()
         compose.onNodeWithTag("empty-start-entry").performClick()
         assertTrue("Empty-state action should open the existing entry editor", createRequested.get())
     }

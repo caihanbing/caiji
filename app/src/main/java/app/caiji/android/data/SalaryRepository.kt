@@ -1,6 +1,7 @@
 package app.caiji.android.data
 
 import androidx.room.withTransaction
+import app.caiji.android.domain.CategoryCatalog
 import java.util.UUID
 
 class RoomSalaryRepository(private val database: SalaryDatabase) {
@@ -10,13 +11,43 @@ class RoomSalaryRepository(private val database: SalaryDatabase) {
     suspend fun entries(): List<SalaryEntry> { initialize(); return dao.entries().map { it.toDomain() } }
     suspend fun entry(id: String): SalaryEntry? { initialize(); return dao.entry(id)?.toDomain() }
 
-    suspend fun createIncomeType(name: String, isCash: Boolean): SalaryIncomeType {
+    suspend fun incomeTypeImportCatalog(): SalaryImportCatalog {
+        initialize()
+        return database.withTransaction {
+            val types = dao.incomeTypes().map { it.toDomain() }
+            SalaryImportCatalog(types, dao.salaryEntryCount() == 0 && isDefaultIncomeTypeCatalog(types))
+        }
+    }
+
+    suspend fun createIncomeType(name: String, isCash: Boolean, iconKey: String = "other"): SalaryIncomeType {
         initialize()
         val clean = name.trim()
         validateIncomeTypeName(clean)
-        val type = SalaryIncomeType(UUID.randomUUID().toString(), clean, isCash, false, dao.incomeTypes().maxOfOrNull { it.sortOrder + 1 } ?: 0)
-        dao.insertIncomeType(type.toRow())
-        return type
+        validateIncomeTypeIcon(iconKey)
+        return database.withTransaction {
+            val existing = dao.incomeTypes()
+            require(existing.none { it.name == clean }) { "收入项名称已存在" }
+            val type = SalaryIncomeType(
+                UUID.randomUUID().toString(), clean, isCash, false,
+                existing.maxOfOrNull { it.sortOrder + 1 } ?: 0, iconKey
+            )
+            dao.insertIncomeType(type.toRow())
+            type
+        }
+    }
+
+    suspend fun updateIncomeType(id: String, name: String, iconKey: String): SalaryIncomeType {
+        initialize()
+        val clean = name.trim()
+        validateIncomeTypeName(clean)
+        validateIncomeTypeIcon(iconKey)
+        return database.withTransaction {
+            val existing = dao.incomeType(id)?.toDomain() ?: error("收入项不存在")
+            require(dao.incomeTypes().none { it.id != id && it.name == clean }) { "收入项名称已存在" }
+            val updated = existing.copy(name = clean, iconKey = iconKey)
+            require(dao.updateIncomeType(id, clean, iconKey) == 1) { "收入项已不存在" }
+            updated
+        }
     }
 
     suspend fun save(entry: SalaryEntry): SalaryEntry {
@@ -49,13 +80,45 @@ class RoomSalaryRepository(private val database: SalaryDatabase) {
         return duplicates
     }
 
-    /** Inserts non-duplicate rows atomically. Identical rows are matched as a multiset. */
-    suspend fun importNew(incoming: List<SalaryEntry>, newTypes: List<SalaryIncomeType> = emptyList()): ImportSalaryResult {
+    /** Applies permitted catalog restoration and inserts non-duplicate rows atomically. */
+    suspend fun importNew(
+        incoming: List<SalaryEntry>,
+        newTypes: List<SalaryIncomeType> = emptyList(),
+        typesToRestore: List<SalaryIncomeType> = emptyList()
+    ): ImportSalaryResult {
         initialize()
         incoming.forEach { it.validate() }
+        newTypes.forEach(::validateIncomeType)
+        typesToRestore.forEach(::validateIncomeType)
         return database.withTransaction {
+            val currentTypes = dao.incomeTypes().map { it.toDomain() }
+            val canRestoreCatalog = typesToRestore.isNotEmpty() && dao.salaryEntryCount() == 0 &&
+                isDefaultIncomeTypeCatalog(currentTypes)
+            if (canRestoreCatalog) {
+                val defaults = SalaryIncomeTypes.defaults.associateBy { it.id }
+                require(typesToRestore.map { it.id }.distinct().size == typesToRestore.size) { "收入目录包含重复 ID" }
+                val restoreById = typesToRestore.associateBy { it.id }
+                val resultingNames = currentTypes.map { restoreById[it.id]?.name ?: it.name }
+                require(resultingNames.distinct().size == resultingNames.size) { "收入目录名称冲突" }
+                typesToRestore.forEach { type ->
+                    val default = defaults[type.id] ?: error("只能恢复预置收入项设置")
+                    require(type.builtIn && type.isCash == default.isCash) { "内置收入项现金性质不能修改" }
+                }
+                val currentById = currentTypes.associateBy { it.id }
+                val temporaryNames = mutableSetOf<String>()
+                typesToRestore.filter { currentById[it.id]?.name != it.name }.forEach { type ->
+                    var temporary = "__salary_restore_${UUID.randomUUID()}"
+                    while (currentTypes.any { it.name == temporary } || !temporaryNames.add(temporary)) {
+                        temporary = "__salary_restore_${UUID.randomUUID()}"
+                    }
+                    val current = currentById[type.id] ?: error("内置收入项已不存在")
+                    require(dao.updateIncomeType(type.id, temporary, current.iconKey) == 1) { "内置收入项已不存在" }
+                }
+                typesToRestore.forEach { type ->
+                    require(dao.updateIncomeType(type.id, type.name, type.iconKey) == 1) { "内置收入项已不存在" }
+                }
+            }
             newTypes.forEach { type ->
-                validateIncomeTypeName(type.name)
                 require(type.name == type.name.trim() && type.id.isNotBlank() && type.id.length <= 128 && !type.builtIn) { "工作簿自定义收入项无效" }
                 require(dao.incomeType(type.id) == null && dao.incomeTypes().none { it.name == type.name }) { "收入项已存在，请重新导入" }
                 dao.insertIncomeType(type.toRow())
@@ -81,6 +144,26 @@ class RoomSalaryRepository(private val database: SalaryDatabase) {
 private fun validateIncomeTypeName(name: String) {
     require(name.isNotBlank()) { "收入项名称不能为空" }
     require(name.length <= 100) { "收入项名称不能超过100个字符" }
+}
+
+private fun validateIncomeTypeIcon(iconKey: String) {
+    require(CategoryCatalog.isAllowedIcon(iconKey)) { "请选择有效图标" }
+}
+
+private fun validateIncomeType(type: SalaryIncomeType) {
+    validateIncomeTypeName(type.name)
+    require(type.name == type.name.trim() && type.id.isNotBlank() && type.id.length <= 128) { "工作簿收入项无效" }
+    validateIncomeTypeIcon(type.iconKey)
+}
+
+private fun isDefaultIncomeTypeCatalog(types: List<SalaryIncomeType>): Boolean {
+    if (types.size != SalaryIncomeTypes.defaults.size) return false
+    val byId = types.associateBy { it.id }
+    return SalaryIncomeTypes.defaults.all { expected ->
+        val actual = byId[expected.id] ?: return@all false
+        actual.name == expected.name && actual.isCash == expected.isCash &&
+            actual.builtIn && actual.sortOrder == expected.sortOrder && actual.iconKey == expected.iconKey
+    }
 }
 
 data class ImportSalaryResult(val insertedCount: Int, val skippedDuplicateCount: Int)

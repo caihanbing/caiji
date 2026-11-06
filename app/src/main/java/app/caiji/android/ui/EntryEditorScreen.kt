@@ -233,30 +233,19 @@ internal fun EntryEditorScreen(
                 .imePadding()
                 .background(CaijiPalette.Background)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = ::cancel) {
-                    CaijiIcon(CaijiIconName.BACK, contentDescription = "取消编辑")
-                }
-                Text(
-                    if (existing == null) "记一笔" else "编辑账单",
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (existing != null) {
-                    TextButton(onClick = { deletePrompt = true }) {
+            CaijiPageTopBar(
+                title = if (existing == null) "记一笔" else "编辑账单",
+                onBack = ::cancel,
+                backTag = "entry-editor-back",
+                actionTag = "entry-editor-delete-action",
+                action = if (existing != null) {
+                    {
+                        TextButton(onClick = { deletePrompt = true }) {
                         CaijiIcon(CaijiIconName.DELETE, contentDescription = "删除账单", modifier = Modifier.size(20.dp))
+                        }
                     }
-                } else {
-                    Spacer(Modifier.size(48.dp))
-                }
-            }
+                } else null
+            )
 
             PagerSegmentedTabs(
                 state = pagerState,

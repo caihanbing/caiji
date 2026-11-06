@@ -7,9 +7,9 @@
 | --- | --- | --- | --- | --- | --- |
 | [`app-appearance`](app-appearance.md) | 应用主题外观 | themes, 换肤 | active | 在设置页选择五套配色，并跨重启应用到全部账本页面和系统栏。 | 2026-11-05 |
 | [`app-updates`](app-updates.md) | 应用版本更新 | 检查更新, 版本更新, GitHub Release | active | 设置页可手动检查 GitHub 正式 Release，应用每次进入前台自动检查并提示高于当前安装版本的更新。 | 2026-11-06 |
-| [`entry-categories`](entry-categories.md) | 账单分类管理 | categories, 分类 | active | 管理收支类别、48 个内置图标、折线箭头顺序调整和启停状态；记账分类网格按可用高度显示并保留历史关联。 | 2026-11-06 |
-| [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分账单，按日/月浏览；首页“汇总”可查看月度或年度收支报告。 | 2026-11-06 |
+| [`entry-categories`](entry-categories.md) | 账单分类管理 | categories, 分类 | active | 管理收支分类、48 个内置图标、顺序和启停；图标目录也供工资收入项管理复用。 | 2026-11-06 |
+| [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告。 | 2026-11-06 |
 | [`local-backup`](local-backup.md) | 本地加密备份与恢复 | backup, 恢复, 加密备份 | active | 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 | 2026-11-06 |
-| [`salary-records`](salary-records.md) | 工资收入记录 | salary, 工资, 工资明细 | active | 独立保存工资收入，首页按年浏览并可进入累计汇总页查看全部逐笔记录；设置提供 XLSX 导入导出及收入项管理。 | 2026-11-06 |
+| [`salary-records`](salary-records.md) | 工资收入记录 | salary, 工资, 工资明细 | active | 独立工资库按年浏览并提供跨年汇总；收入项名称/图标可编辑、现金属性固定且图标同步显示；支持 XLSX 导入导出。 | 2026-11-06 |
 | [`user-feedback`](user-feedback.md) | 本机问题反馈 | feedback, 问题反馈, 截图分享 | active | 在本机记录体验问题及最多 5 张截图，按用户选择通过 Android 分享面板外发。 | 2026-11-06 |
 <!-- manage-feature-docs:index:end -->

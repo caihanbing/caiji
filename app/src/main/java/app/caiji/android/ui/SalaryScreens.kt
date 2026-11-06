@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.*
 import app.caiji.android.ui.theme.CaijiPalette
@@ -112,8 +113,23 @@ internal fun SalaryRootScreen(
    val nextDraft = SalaryDraft.from(entry); draft = nextDraft; onDraftSnapshotChange(nextDraft, entry); page = SR.EDIT }
  )
  SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(types.firstOrNull()?.id.orEmpty()),deductionsExpanded,{deductionsExpanded=it},updateDraft,{page=editOrigin;selected=null;draft=null;onDraftSnapshotChange(null,null)},{typesOrigin=SR.EDIT;page=SR.TYPES},{e->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资保存失败，输入内容已保留，请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资删除失败，请重试；记录仍保留。若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}})
- SR.TYPES->SalaryTypesScreen(types,{if(settingsOrigin)onManagementBack() else page=typesOrigin},{n,c->scope.launch{runCatching{withContext(Dispatchers.IO){repo.createIncomeType(n,c)};refresh()}.onSuccess{message="收入项已添加"}.onFailure{val text="收入项未能添加，请检查名称是否重复，然后重试。";message=text;onAsyncError(text)}}})
- SR.IMPORT->SalaryImportScreen(preview,duplicates,entriesToInsert,(SalaryIncomeTypes.defaults+types+preview?.incomeTypesToCreate.orEmpty()).associate{it.id to it.name},{if(settingsOrigin)onManagementBack() else page=SR.HOME;onClear()},{onClear();onImport()}){val p=preview?:return@SalaryImportScreen;if(p.errors.isNotEmpty())return@SalaryImportScreen;scope.launch{runCatching{withContext(Dispatchers.IO){repo.importNew(p.entries,p.incomeTypesToCreate)}.also{refresh()}}.onSuccess{val success="导入完成：新增 "+it.insertedCount+" 笔，跳过重复 "+it.skippedDuplicateCount+" 笔";message=success;onClear();if(settingsOrigin){onManagementSuccess(success);onManagementBack()}else page=SR.HOME}.onFailure{val text="工资导入未完成，已有工资记录仍保留。请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}}
+ SR.TYPES->SalaryTypesScreen(
+  types = types,
+  back = { if (settingsOrigin) onManagementBack() else page = typesOrigin },
+  create = { name, cash, icon, done ->
+   scope.launch { runCatching { withContext(Dispatchers.IO) { repo.createIncomeType(name, cash, icon) }; refresh() }
+    .onSuccess { message = "收入项已添加"; done(true, null) }
+    .onFailure { done(false, it.message ?: "收入项未能添加，请重试。") }
+   }
+  },
+  update = { id, name, icon, done ->
+   scope.launch { runCatching { withContext(Dispatchers.IO) { repo.updateIncomeType(id, name, icon) }; refresh() }
+    .onSuccess { message = "收入项已更新"; done(true, null) }
+    .onFailure { done(false, it.message ?: "收入项未能保存，请重试。") }
+   }
+  }
+ )
+ SR.IMPORT->SalaryImportScreen(preview,duplicates,entriesToInsert,(SalaryIncomeTypes.defaults+types+preview?.incomeTypesToCreate.orEmpty()+preview?.incomeTypesToRestore.orEmpty()).associate{it.id to it.name},{if(settingsOrigin)onManagementBack() else page=SR.HOME;onClear()},{onClear();onImport()}){val p=preview?:return@SalaryImportScreen;if(p.errors.isNotEmpty())return@SalaryImportScreen;scope.launch{runCatching{withContext(Dispatchers.IO){repo.importNew(p.entries,p.incomeTypesToCreate,p.incomeTypesToRestore)}.also{refresh()}}.onSuccess{val success="导入完成：新增 "+it.insertedCount+" 笔，跳过重复 "+it.skippedDuplicateCount+" 笔";message=success;onClear();if(settingsOrigin){onManagementSuccess(success);onManagementBack()}else page=SR.HOME}.onFailure{val text="工资导入未完成，已有工资记录仍保留。请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}}
  SR.EXPORT->SalaryExportScreen({if(settingsOrigin)onManagementBack() else page=SR.HOME},{period->onExport(period)})
  }
 }
@@ -142,7 +158,7 @@ private fun SalaryHome(
     val periodRows = if (summary) records else SalaryReports.filter(records, SalaryPeriod.Year(year))
     val visible = periodRows.filter { cashFilter == CF.ALL || (cashFilter == CF.CASH) == it.isCash }
     val sums = SalaryReports.summarize(periodRows)
-    val names = types.associate { it.id to it.name }
+    val typesById = types.associateBy { it.id }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         if (summary) {
             SalaryHeader("汇总", backToYear)
@@ -154,9 +170,8 @@ private fun SalaryHome(
                 }
                 Spacer(Modifier.weight(1f))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
-                    IconButton(onClick = previous, enabled = year > 1900, modifier = Modifier.size(48.dp).testTag("salary-year-previous")) {
-                        Text("‹", style = MaterialTheme.typography.headlineSmall)
-                    }
+                    PeriodArrowButton("上一年", "salary-year-previous", isNext = false,
+                        enabled = year > 1900, onClick = previous)
                     Box {
                         TextButton(onClick = { yearMenu = true }, modifier = Modifier.testTag("salary-year-label")) {
                             Text("$year 年", color = CaijiPalette.Ink, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -169,9 +184,8 @@ private fun SalaryHome(
                             }
                         }
                     }
-                    IconButton(onClick = next, enabled = year < currentYear, modifier = Modifier.size(48.dp).testTag("salary-year-next")) {
-                        Text("›", style = MaterialTheme.typography.headlineSmall)
-                    }
+                    PeriodArrowButton("下一年", "salary-year-next", isNext = true,
+                        enabled = year < currentYear, onClick = next)
                 }
             }
         }
@@ -222,10 +236,13 @@ private fun SalaryHome(
                 Row(Modifier.fillMaxWidth().clickable { edit(entry) }.testTag("salary-entry-row-${entry.id}")
                     .padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(color = CaijiPalette.SurfaceAlt, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Text(if (entry.isCash) "¥" else "✦", color = CaijiPalette.Primary) }
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(categoryEmoji(typesById[entry.incomeTypeId]?.iconKey ?: "other"),
+                                style = MaterialTheme.typography.titleMedium)
+                        }
                     }
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                        Text(names[entry.incomeTypeId] ?: entry.incomeTypeId)
+                        Text(typesById[entry.incomeTypeId]?.name ?: entry.incomeTypeId, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         val date = if (summary) entry.occurredOn.format(DateTimeFormatter.ofPattern("yyyy/M/d", Locale.CHINA))
                             else entry.occurredOn.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
                         Text(date + " · " + if (entry.isCash) "现金" else "非现金", color = CaijiPalette.SecondaryText,
@@ -240,7 +257,7 @@ private fun SalaryHome(
             Button(add, Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 7.dp).height(48.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary),
                 shape = RoundedCornerShape(12.dp)) { Text("＋  新增收入") }
-            Text("工资独立统计，不计入记账收支。", Modifier.padding(horizontal = 18.dp, vertical = 3.dp),
+            Text("工资独立统计，不计入账单收支。", Modifier.padding(horizontal = 18.dp, vertical = 3.dp),
                 color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -256,9 +273,26 @@ private fun SalaryHome(
      val ctx=LocalContext.current
      Row(Modifier.fillMaxWidth().heightIn(min=54.dp).clickable{DatePickerDialog(ctx,{_,y,m,d->change(draft.copy(date=LocalDate.of(y,m+1,d)))},draft.date.year,draft.date.monthValue-1,draft.date.dayOfMonth).apply{datePicker.maxDate=System.currentTimeMillis()}.show()},verticalAlignment=Alignment.CenterVertically){Text("时间");Spacer(Modifier.weight(1f));Text(draft.date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")))}
      HorizontalDivider(color=CaijiPalette.Divider);var menu by remember{mutableStateOf(false)}
-     Box{Row(Modifier.fillMaxWidth().heightIn(min=54.dp).clickable{menu=true},verticalAlignment=Alignment.CenterVertically){Text("收入项");Spacer(Modifier.weight(1f));Text(types.firstOrNull{it.id==draft.typeId}?.name?:"选择收入项",maxLines=1)};DropdownMenu(menu,{menu=false}){types.forEach{t->DropdownMenuItem(text={Text(t.name)},onClick={change(draft.copy(typeId=t.id));menu=false})}}}
+     Box {
+      Row(Modifier.fillMaxWidth().heightIn(min=54.dp).clickable { menu = true }, verticalAlignment = Alignment.CenterVertically) {
+       Text("收入项")
+       Spacer(Modifier.weight(1f))
+       val selectedType = types.firstOrNull { it.id == draft.typeId }
+       if (selectedType != null) Text(categoryEmoji(selectedType.iconKey), modifier = Modifier.padding(end = 7.dp))
+       Text(selectedType?.name ?: "选择收入项", Modifier.weight(1f), maxLines = 1,
+           textAlign = TextAlign.End, overflow = TextOverflow.Ellipsis)
+      }
+      DropdownMenu(menu, { menu = false }) {
+       types.forEach { type ->
+        DropdownMenuItem(
+         text = { Row(verticalAlignment = Alignment.CenterVertically) { Text(categoryEmoji(type.iconKey)); Text(type.name, Modifier.padding(start = 9.dp), maxLines = 2, overflow = TextOverflow.Ellipsis) } },
+         onClick = { change(draft.copy(typeId = type.id)); menu = false }
+        )
+       }
+      }
+     }
      HorizontalDivider(color=CaijiPalette.Divider);Row(Modifier.fillMaxWidth().heightIn(min=48.dp),verticalAlignment=Alignment.CenterVertically){Text("收入性质");Spacer(Modifier.weight(1f));Text(if(types.firstOrNull{it.id==draft.typeId}?.isCash==true)"现金" else "非现金",color=CaijiPalette.SecondaryText)}
-     TextButton(onClick=manage,Modifier.align(Alignment.End)){Text("管理收入项　›")}
+     TextButton(onClick=manage,Modifier.align(Alignment.End)){Text("收入项管理　›")}
     }
    }
    Surface(color=CaijiPalette.Surface,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth().padding(top=12.dp)){
@@ -288,14 +322,168 @@ private fun SalaryHome(
 }
 
 @Composable private fun SalaryMoneyField(label:String,value:String,change:(String)->Unit,tax:Boolean=false){Row(Modifier.fillMaxWidth().heightIn(min=54.dp),verticalAlignment=Alignment.CenterVertically){Text(label,Modifier.weight(1f));OutlinedTextField(value,change,Modifier.weight(1f).widthIn(max=190.dp).testTag("salary-field-"+label),singleLine=true,placeholder={Text("0.00")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),prefix={Text(if(tax)"±¥" else "¥")})}}
-@Composable private fun SalaryTypesScreen(types:List<SalaryIncomeType>,back:()->Unit,create:(String,Boolean)->Unit){var show by remember{mutableStateOf(false)};var name by remember{mutableStateOf("")};var cash by remember{mutableStateOf(true)}
- Column(Modifier.fillMaxSize().background(CaijiPalette.Background)){SalaryHeader("收入项",back);LazyColumn(Modifier.weight(1f)){items(types, key = { it.id }){t->Row(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically){Text(t.name,Modifier.weight(1f));Text(if(t.isCash)"现金" else "非现金",color=CaijiPalette.SecondaryText)};HorizontalDivider(color=CaijiPalette.Divider)}};Button(onClick={show=true},Modifier.fillMaxWidth().padding(18.dp),colors=ButtonDefaults.buttonColors(containerColor=CaijiPalette.Primary,contentColor=CaijiPalette.OnPrimary)){Text("新增收入项")}}
- if(show)AlertDialog(onDismissRequest={show=false},title={Text("新增收入项")},text={Column{OutlinedTextField(name,{name=it},label={Text("收入项名称")});Row(verticalAlignment=Alignment.CenterVertically){Text("现金收入");Spacer(Modifier.weight(1f));Switch(cash,{cash=it})};Text("关闭开关表示非现金",color=CaijiPalette.SecondaryText)}},confirmButton={TextButton(onClick={create(name,cash);name="";show=false}){Text("添加")}},dismissButton={TextButton(onClick={show=false}){Text("取消")}})
+@Composable
+private fun SalaryTypesScreen(
+    types: List<SalaryIncomeType>,
+    back: () -> Unit,
+    create: (String, Boolean, String, (Boolean, String?) -> Unit) -> Unit,
+    update: (String, String, String, (Boolean, String?) -> Unit) -> Unit
+) {
+    var addOpen by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var cash by rememberSaveable { mutableStateOf(true) }
+    var iconKey by rememberSaveable { mutableStateOf("other") }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val editing = types.firstOrNull { it.id == editingId }
+    fun beginAdd() {
+        addOpen = true
+        editingId = null
+        name = ""
+        cash = true
+        iconKey = "other"
+        error = null
+    }
+
+    fun beginEdit(type: SalaryIncomeType) {
+        addOpen = false
+        editingId = type.id
+        name = type.name
+        cash = type.isCash
+        iconKey = type.iconKey
+        error = null
+    }
+
+    Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
+        CaijiPageTopBar(
+            title = "收入项管理",
+            onBack = back,
+            backTag = "salary-header-back",
+            actionTag = "salary-income-types-add",
+            action = {
+                TextButton(onClick = ::beginAdd) {
+                    CaijiIcon(CaijiIconName.ADD, "添加收入项", Modifier.size(18.dp))
+                    Text("添加", Modifier.padding(start = 4.dp))
+                }
+            }
+        )
+        if (types.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("还没有收入项，点击右上角添加", color = CaijiPalette.SecondaryText)
+            }
+        } else LazyColumn(
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).testTag("salary-income-types-list"),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(types, key = { it.id }) { type ->
+                Surface(
+                    color = CaijiPalette.Surface,
+                    shape = RoundedCornerShape(15.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("salary-income-type-row-${type.id}")
+                        .clickable { beginEdit(type) }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            color = CaijiPalette.SurfaceAlt,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(categoryEmoji(type.iconKey), style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.testTag("salary-income-type-icon-${type.id}"))
+                            }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                type.name,
+                                color = CaijiPalette.Ink,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(if (type.isCash) "现金" else "非现金", color = CaijiPalette.SecondaryText,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                        CaijiIcon(CaijiIconName.EDIT, "编辑收入项", Modifier.size(20.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    if (addOpen || editing != null) {
+        AlertDialog(
+            onDismissRequest = { if (!saving) { addOpen = false; editingId = null; error = null } },
+            title = { Text(if (editing == null) "添加收入项" else "编辑收入项") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    if (editing == null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("现金收入")
+                                Text("关闭开关表示非现金", color = CaijiPalette.SecondaryText,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            Switch(cash, { cash = it }, modifier = Modifier.testTag("salary-income-type-cash"))
+                        }
+                    } else Text(
+                        if (editing.isCash) "现金收入" else "非现金收入",
+                        color = CaijiPalette.SecondaryText,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("salary-income-type-cash-fixed")
+                    )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it; error = null },
+                        label = { Text("收入项名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("salary-income-type-name")
+                    )
+                    Text("选择图标", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.labelMedium)
+                    IconCatalogPicker(iconKey, Modifier.height(210.dp).testTag("salary-income-type-icon-grid")) {
+                        iconKey = it
+                        error = null
+                    }
+                    error?.let {
+                        Text(it, color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("salary-income-type-error"))
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (saving) return@Button
+                        saving = true
+                        error = null
+                        val done: (Boolean, String?) -> Unit = { saved, message ->
+                            saving = false
+                            if (saved) { addOpen = false; editingId = null }
+                            else error = message ?: "收入项保存失败，请检查内容后重试。"
+                        }
+                        if (editing == null) create(name.trim(), cash, iconKey, done)
+                        else update(editing.id, name.trim(), iconKey, done)
+                    },
+                    enabled = name.trim().isNotEmpty() && !saving,
+                    colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary),
+                    modifier = Modifier.testTag("salary-income-type-save")
+        ) { Text(if (saving) "保存中" else if (editing == null) "添加" else "保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { addOpen = false; editingId = null; error = null }, enabled = !saving) { Text("取消") }
+            }
+        )
+    }
 }
 @Composable
 private fun SalaryImportScreen(preview: SalaryImportPreview?, duplicates: Int, entriesToInsert: List<SalaryEntry>, typeNames: Map<String, String>, back: () -> Unit, select: () -> Unit, confirm: () -> Unit) {
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
-        SalaryHeader("导入预览", back)
+        SalaryHeader("导入 Excel", back)
         if (preview == null) {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text("选择工资 .xlsx 文件", style = MaterialTheme.typography.titleLarge)
@@ -311,7 +499,8 @@ private fun SalaryImportScreen(preview: SalaryImportPreview?, duplicates: Int, e
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
                     Text("新增 " + entriesToInsert.size + " 笔 · 跳过重复 " + duplicates + " 笔")
                     Text("新增纯收入 ¥" + formatYuan(net), Modifier.padding(top = 8.dp))
-                    if (preview.incomeTypesToCreate.isNotEmpty()) Text("将恢复 " + preview.incomeTypesToCreate.size + " 个自定义收入项", Modifier.padding(top = 8.dp), color = CaijiPalette.Income)
+                    if (preview.incomeTypesToCreate.isNotEmpty()) Text("将新增 " + preview.incomeTypesToCreate.size + " 个自定义收入项", Modifier.padding(top = 8.dp), color = CaijiPalette.Income)
+                    if (preview.incomeTypesToRestore.isNotEmpty()) Text("将更新 " + preview.incomeTypesToRestore.size + " 个预置收入项的名称和图标", Modifier.padding(top = 8.dp), color = CaijiPalette.Income)
                     entriesToInsert.take(30).forEach { Text(it.occurredOn.toString() + "　" + (typeNames[it.incomeTypeId] ?: it.incomeTypeId) + "　¥" + formatYuan(it.netIncomeFen), Modifier.padding(vertical = 5.dp)) }
                     if (entriesToInsert.size > 30) Text("其余 " + (entriesToInsert.size - 30) + " 笔将在确认后导入", color = CaijiPalette.SecondaryText)
                 }
@@ -389,7 +578,15 @@ private fun SalaryExportScreen(back: () -> Unit, export: (SalaryPeriod) -> Unit)
     }
 }
 
-@Composable private fun SalaryHeader(title:String,back:()->Unit){Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=back,Modifier.width(60.dp)){Text("‹",style=MaterialTheme.typography.headlineSmall)};Text(title,Modifier.weight(1f),textAlign=TextAlign.Center,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold);Spacer(Modifier.width(60.dp))}}
+@Composable
+private fun SalaryHeader(title: String, back: () -> Unit) {
+    CaijiPageTopBar(
+        title = title,
+        onBack = back,
+        backTag = "salary-header-back",
+        actionTag = "salary-header-action"
+    )
+}
 private fun inFen(f:Long)=BigDecimal.valueOf(f,2).toPlainString()
 private fun String.money(negative:Boolean):Long{val x=BigDecimal(trim().ifEmpty{"0"});require(x.scale()<=2||x.stripTrailingZeros().scale()<=2){"金额最多保留两位小数"};if(!negative)require(x.signum()>=0){"金额不能为负数"};return x.movePointRight(2).longValueExact()}
 private fun List<String>.sumFen()=fold(BigInteger.ZERO){a,s->a+BigInteger.valueOf(runCatching{s.money(true)}.getOrDefault(0L))}

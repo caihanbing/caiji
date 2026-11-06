@@ -244,7 +244,7 @@ private fun EmptyLedgerState(onCreateEntry: () -> Unit, modifier: Modifier) {
                     contentColor = CaijiPalette.OnPrimary
                 )
             ) {
-                Text("开始记账", fontWeight = FontWeight.SemiBold)
+                Text("记一笔", fontWeight = FontWeight.SemiBold)
             }
         }
     }

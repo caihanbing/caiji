@@ -226,7 +226,7 @@ class CategorySettingsScreenTest {
         compose.onNodeWithTag("settings-categories").assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-export"))
         compose.onNodeWithTag("settings-export").assertIsDisplayed().performClick()
-        compose.onNodeWithText("加密完整备份").assertIsDisplayed()
+        compose.onAllNodesWithText("加密备份").assertCountEquals(2)
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-import"))
         compose.onNodeWithTag("settings-import").assertIsDisplayed().performClick()

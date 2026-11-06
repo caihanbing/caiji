@@ -2,6 +2,7 @@ package app.caiji.android.data
 
 import org.w3c.dom.Document
 import org.w3c.dom.Element
+import app.caiji.android.domain.CategoryCatalog
 import java.io.*
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -32,7 +33,14 @@ data class SalaryImportError(
     val field: String? = null,
     val currentValue: String? = null
 )
-data class SalaryImportPreview(val entries: List<SalaryEntry>, val errors: List<SalaryImportError>, val rowsRead: Int, val incomeTypesToCreate: List<SalaryIncomeType>, val duplicateCount: Int = 0)
+data class SalaryImportPreview(
+    val entries: List<SalaryEntry>,
+    val errors: List<SalaryImportError>,
+    val rowsRead: Int,
+    val incomeTypesToCreate: List<SalaryIncomeType>,
+    val duplicateCount: Int = 0,
+    val incomeTypesToRestore: List<SalaryIncomeType> = emptyList()
+)
 
 private class SalaryXlsxProblem(val userReason: String, val userSuggestion: String, val errorCode: String) : IllegalArgumentException()
 private class SalaryCellProblem(val userReason: String, val userSuggestion: String) : IllegalArgumentException()
@@ -51,10 +59,16 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         private val headers = listOf("时间", "收入项", "毛收入", "工会费", "养老保险", "医疗保险", "失业保险", "公积金", "企业年金", "税", "纯收入")
     }
 
-    fun importPreview(source: InputStream, knownTypes: List<SalaryIncomeType>, today: LocalDate): SalaryImportPreview {
+    fun importPreview(
+        source: InputStream,
+        knownTypes: List<SalaryIncomeType>,
+        today: LocalDate,
+        restoreDefaultDirectory: Boolean = false
+    ): SalaryImportPreview {
         val entries = mutableListOf<SalaryEntry>()
         val errors = mutableListOf<SalaryImportError>()
         val typesToCreate = mutableListOf<SalaryIncomeType>()
+        val typesToRestore = mutableListOf<SalaryIncomeType>()
         var rowsRead = 0
         try {
             val parts = archive(source)
@@ -70,7 +84,11 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             }
             val worksheetPart = worksheetPart(parts, sheets.item(0) as Element)
             val shared = parts["xl/sharedStrings.xml"]?.let(::strings).orEmpty()
-            val customTypes = metadata(parts["docProps/custom.xml"])
+            val legacyTypes = metadata(parts["docProps/custom.xml"])
+            val directoryTypes = directoryMetadata(parts["docProps/custom.xml"])
+            val resolvedTypes = resolveIncomeTypes(knownTypes, legacyTypes, directoryTypes, restoreDefaultDirectory)
+            typesToCreate += resolvedTypes.toCreate
+            typesToRestore += resolvedTypes.toRestore
             val doc = xml(parts[worksheetPart] ?: throw SalaryXlsxProblem("文件中缺少 Sheet1 内容", "请用 Excel/WPS 打开后另存为新的 .xlsx 文件。", "IMP-SHEET-002"))
             val rows = doc.getElementsByTagNameNS(MAIN, "row")
             var headerSeen = false
@@ -101,7 +119,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                 if (dateRaw.isBlank() && listOf("B", "C", "D", "E", "F", "G", "H", "I", "J").all { values[it].isNullOrBlank() }) continue
                 if (dateRaw in totals) continue
                 rowsRead++
-                parseSalaryRow(rowNumber, values, customTypes, knownTypes, typesToCreate, today, entries, errors)
+                parseSalaryRow(rowNumber, values, knownTypes, resolvedTypes.byWorkbookName, today, entries, errors)
             }
             if (!headerSeen) errors += fileError("工作簿中没有表头行", "请检查 Sheet1 的第 1 行是否保留了样例表头。", "IMP-HEADER-001")
             if (rowsRead == 0 && errors.isEmpty()) errors += fileError("工作簿中没有收入明细", "请在样例表头下添加收入记录后重试。", "IMP-EMPTY-001")
@@ -119,7 +137,76 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             errors += appError("应用读取 Excel 时遇到异常", "无需按行修改文件。请重新选择；若仍失败，在设置的反馈中附上编号 IMP-READ-002。", "IMP-READ-002"); entries.clear(); rowsRead = 0
         }
         if (errors.isNotEmpty() && errors.none { it.kind == SalaryImportErrorKind.CELL }) entries.clear()
-        return SalaryImportPreview(entries, errors, rowsRead, typesToCreate)
+        if (errors.isNotEmpty()) {
+            entries.clear()
+            typesToCreate.clear()
+            typesToRestore.clear()
+        }
+        return SalaryImportPreview(entries, errors, rowsRead, typesToCreate, incomeTypesToRestore = typesToRestore)
+    }
+
+    private data class ResolvedIncomeTypes(
+        val byWorkbookName: Map<String, SalaryIncomeType>,
+        val toCreate: List<SalaryIncomeType>,
+        val toRestore: List<SalaryIncomeType>
+    )
+
+    private fun resolveIncomeTypes(
+        known: List<SalaryIncomeType>,
+        legacy: List<SalaryIncomeType>,
+        directory: List<SalaryIncomeType>,
+        restoreDefaultDirectory: Boolean
+    ): ResolvedIncomeTypes {
+        require(directory.map { it.id }.distinct().size == directory.size) { "工资元数据含重复收入项 ID" }
+        require(directory.map { it.name }.distinct().size == directory.size) { "工资元数据含重复收入项名称" }
+        val candidates = linkedMapOf<String, SalaryIncomeType>()
+        legacy.forEach { candidates[it.id] = it }
+        directory.forEach { candidates[it.id] = it }
+        require(candidates.values.map { it.name }.distinct().size == candidates.size) { "工资元数据含重复收入项名称" }
+        val byWorkbookName = linkedMapOf<String, SalaryIncomeType>()
+        val byId = linkedMapOf<String, SalaryIncomeType>()
+        val toCreate = mutableListOf<SalaryIncomeType>()
+        val toRestore = mutableListOf<SalaryIncomeType>()
+        var nextSort = (known.maxOfOrNull { it.sortOrder } ?: -1) + 1
+        val restoredBuiltinNames = if (restoreDefaultDirectory) {
+            directory.filter { type -> SalaryIncomeTypes.defaults.any { it.id == type.id } }.associate { it.id to it.name }
+        } else emptyMap()
+
+        candidates.values.forEach { incoming ->
+            val builtIn = SalaryIncomeTypes.defaults.firstOrNull { it.id == incoming.id }
+            val localById = known.firstOrNull { it.id == incoming.id }
+            val localByName = known.firstOrNull { local ->
+                local.name == incoming.name &&
+                    !(local.builtIn && restoredBuiltinNames[local.id]?.let { it != local.name } == true)
+            }
+            val resolved = when {
+                builtIn != null -> {
+                    require(incoming.isCash == builtIn.isCash) { "工资元数据与内置收入项的现金性质不一致" }
+                    val local = localById ?: error("内置收入项 ID 不存在")
+                    require(local.isCash == incoming.isCash) { "工资元数据与本机收入项的现金性质不一致" }
+                    if (restoreDefaultDirectory) {
+                        incoming.copy(builtIn = true, sortOrder = local.sortOrder).also { updated ->
+                            if (local.name != updated.name || local.iconKey != updated.iconKey) toRestore += updated
+                        }
+                    } else local
+                }
+                localById != null -> {
+                    require(localById.isCash == incoming.isCash) { "工资元数据与本机收入项的现金性质不一致" }
+                    localById
+                }
+                localByName != null -> {
+                    require(localByName.isCash == incoming.isCash) { "工资元数据与本机收入项的现金性质不一致" }
+                    localByName
+                }
+                else -> incoming.copy(id = incoming.id, builtIn = false, sortOrder = nextSort++).also(toCreate::add)
+            }
+            byId[incoming.id] = resolved
+        }
+
+        (legacy + directory).forEach { incoming ->
+            byWorkbookName[incoming.name] = byId[incoming.id] ?: incoming
+        }
+        return ResolvedIncomeTypes(byWorkbookName, toCreate, toRestore)
     }
 
     private fun fileError(reason: String, suggestion: String, code: String) =
@@ -165,7 +252,15 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         return resolved
     }
 
-    private fun parseSalaryRow(row:Int,v:Map<String,String>,metadata:List<SalaryIncomeType>,known:List<SalaryIncomeType>,created:MutableList<SalaryIncomeType>,today:LocalDate,entries:MutableList<SalaryEntry>,errors:MutableList<SalaryImportError>) {
+    private fun parseSalaryRow(
+        row: Int,
+        v: Map<String, String>,
+        known: List<SalaryIncomeType>,
+        importedTypesByName: Map<String, SalaryIncomeType>,
+        today: LocalDate,
+        entries: MutableList<SalaryEntry>,
+        errors: MutableList<SalaryImportError>
+    ) {
         val issues=mutableListOf<SalaryImportError>()
         val labels=mapOf("A" to "时间","B" to "收入项","C" to "毛收入","D" to "工会费","E" to "养老保险","F" to "医疗保险","G" to "失业保险","H" to "公积金","I" to "企业年金","J" to "税","K" to "纯收入")
         val rawDate=v["A"].orEmpty()
@@ -173,12 +268,13 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         } catch(e:Exception) {
             issues+=cellError(row,"A",labels.getValue("A"),rawDate,if(e is SalaryCellProblem)e.userReason else if(rawDate.isBlank())"日期不能为空" else "无法识别此日期",if(e is SalaryCellProblem)e.userSuggestion else "请填写 Excel 日期或 yyyy-MM-dd，例如 2026-11-05。");null
         }
-        val name=v["B"].orEmpty().trim();val meta=metadata.firstOrNull{it.name==name};val existing=known.firstOrNull{it.name==name}
-        val type=existing?:meta?.let{m->created.firstOrNull{it.name==name}?:SalaryIncomeType(m.id,m.name,m.isCash,false,known.size+created.size).also(created::add)}
+        val name = v["B"].orEmpty().trim()
+        val type = importedTypesByName[name]
+            ?: SalaryIncomeTypes.defaultForName(name)?.let { default -> known.firstOrNull { it.id == default.id } }
+            ?: known.firstOrNull { it.name == name }
         when {
-            name.isBlank()->issues+=cellError(row,"B","收入项",v["B"],"收入项不能为空","请选择一个收入项；自定义项目请先在“工资 → 更多 → 管理收入项”中创建。")
-            type==null->issues+=cellError(row,"B","收入项",name,"应用中没有此收入项","在“工资 → 更多 → 管理收入项”中创建同名项目并设置现金属性，再重新导入。")
-            meta!=null&&existing!=null&&meta.isCash!=existing.isCash->issues+=cellError(row,"B","收入项",name,"收入项现金属性与工作簿记录不一致","请核对管理收入项中的现金属性，或修正工作簿来源。","IMP-TYPE-002")
+            name.isBlank()->issues+=cellError(row,"B","收入项",v["B"],"收入项不能为空","请选择收入项；自定义项目请先在“设置 → 工资 → 收入项管理”中创建。")
+            type==null->issues+=cellError(row,"B","收入项",name,"应用中没有此收入项","在“设置 → 工资 → 收入项管理”中创建同名项目并设置现金属性，再重新导入。")
         }
         val amounts=mutableMapOf<String,Long>()
         listOf("C","D","E","F","G","H","I","J").forEach{col->try{amounts[col]=parseAmount(v[col],labels.getValue(col),col=="J")}catch(e:SalaryCellProblem){issues+=cellError(row,col,labels.getValue(col),v[col],e.userReason,e.userSuggestion)}}
@@ -281,7 +377,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         (sheet.getElementsByTagNameNS(MAIN,"dataValidation").item(0) as? Element)?.apply { setAttribute("sqref","B2:B"+last);getElementsByTagNameNS(MAIN,"formula1").item(0)?.textContent="SalaryIncomeItems" }
         p["xl/worksheets/sheet1.xml"]=bytes(sheet)
         p["xl/sharedStrings.xml"]=writeStrings(p["xl/sharedStrings.xml"]!!,values)
-        p["docProps/custom.xml"]=custom(types.filterNot{it.builtIn})
+        p["docProps/custom.xml"]=custom(types)
         p["_rels/.rels"]=relationship(p["_rels/.rels"]!!)
         p["[Content_Types].xml"]=contentType(p["[Content_Types].xml"]!!)
         val wb=xml(p["xl/workbook.xml"]!!)
@@ -424,7 +520,29 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
     private fun bytes(d:Document):ByteArray{val t=TransformerFactory.newInstance().apply{runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") };runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalStylesheet", "") }}.newTransformer();val o=ByteArrayOutputStream();t.setOutputProperty(OutputKeys.ENCODING,"UTF-8");t.transform(DOMSource(d),StreamResult(o));return o.toByteArray()}
     private fun strings(b:ByteArray):List<String>{val d=xml(b);val n=d.getElementsByTagNameNS(MAIN,"si");return (0 until n.length).map{i->val t=(n.item(i) as Element).getElementsByTagNameNS(MAIN,"t");(0 until t.length).joinToString(""){j->t.item(j).textContent}}}
     private fun writeStrings(b:ByteArray,values:List<String>):ByteArray{val d=xml(b);val r=d.documentElement;while(r.firstChild!=null)r.removeChild(r.firstChild);values.forEach{s->val i=d.createElementNS(MAIN,"si");val t=d.createElementNS(MAIN,"t");t.textContent=s;i.appendChild(t);r.appendChild(i)};r.setAttribute("count",values.size.toString());r.setAttribute("uniqueCount",values.size.toString());return bytes(d)}
-    private fun custom(types:List<SalaryIncomeType>):ByteArray{val d=xml("""<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>""".toByteArray());val p=d.createElementNS("http://schemas.openxmlformats.org/officeDocument/2006/custom-properties","property");p.setAttribute("fmtid","{D5CDD505-2E9C-101B-9397-08002B2CF9AE}");p.setAttribute("pid","2");p.setAttribute("name","CaijiSalaryIncomeTypes");val v=d.createElementNS("http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes","vt:lpwstr");v.textContent=types.joinToString("\n"){it.id+"|"+Base64.getEncoder().encodeToString(it.name.toByteArray())+"|"+if(it.isCash)"1" else "0"};p.appendChild(v);d.documentElement.appendChild(p);return bytes(d)}
+    private fun custom(types: List<SalaryIncomeType>): ByteArray {
+        val d = xml("""<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>""".toByteArray())
+        val properties = d.documentElement
+        fun add(name: String, pid: String, value: String) {
+            val property = d.createElementNS("http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "property")
+            property.setAttribute("fmtid", "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}")
+            property.setAttribute("pid", pid)
+            property.setAttribute("name", name)
+            val text = d.createElementNS("http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "vt:lpwstr")
+            text.textContent = value
+            property.appendChild(text)
+            properties.appendChild(property)
+        }
+        add("CaijiSalaryIncomeTypes", "2", types.filterNot { it.builtIn }.joinToString("\n") {
+            it.id + "|" + Base64.getEncoder().encodeToString(it.name.toByteArray()) + "|" + if (it.isCash) "1" else "0"
+        })
+        val directory = "2\n" + types.sortedBy { it.sortOrder }.joinToString("\n") {
+            it.id + "|" + Base64.getEncoder().encodeToString(it.name.toByteArray()) + "|" +
+                (if (it.isCash) "1" else "0") + "|" + Base64.getEncoder().encodeToString(it.iconKey.toByteArray())
+        }
+        add("CaijiSalaryIncomeDirectoryV2", "3", directory)
+        return bytes(d)
+    }
     private fun metadata(b:ByteArray?):List<SalaryIncomeType>{
         if(b==null)return emptyList()
         val d=xml(b);val n=d.getElementsByTagNameNS("http://schemas.openxmlformats.org/officeDocument/2006/custom-properties","property")
@@ -435,6 +553,42 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             require(p[0].isNotBlank()&&p[0].length<=128&&name.isNotBlank()&&name==name.trim()&&name.length<=100&&p[2] in setOf("0","1")){"工资元数据损坏"}
             SalaryIncomeType(p[0],name,p[2]=="1",false)
         }.toList()
+    }
+
+    private fun directoryMetadata(b: ByteArray?): List<SalaryIncomeType> {
+        if (b == null) return emptyList()
+        val properties = xml(b).getElementsByTagNameNS(
+            "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "property"
+        )
+        val value = (0 until properties.length).map { properties.item(it) as Element }
+            .firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV2" }
+            ?.textContent.orEmpty()
+        if (value.isBlank()) return emptyList()
+        val lines = value.lineSequence().toList()
+        require(lines.firstOrNull() == "2") { "工资目录元数据版本不受支持" }
+        return lines.drop(1).filter(String::isNotBlank).map { line ->
+            val fields = line.split('|')
+            require(fields.size == 4) { "工资目录元数据损坏" }
+            val id = fields[0]
+            val name = String(Base64.getDecoder().decode(fields[1]), Charsets.UTF_8)
+            val cashFlag = fields[2]
+            require(cashFlag in setOf("0", "1")) { "工资目录元数据损坏" }
+            val isCash = cashFlag == "1"
+            val savedIcon = String(Base64.getDecoder().decode(fields[3]), Charsets.UTF_8)
+            require(id.isNotBlank() && id.length <= 128 && name.isNotBlank() && name == name.trim() && name.length <= 100) {
+                "工资目录元数据损坏"
+            }
+            val builtIn = SalaryIncomeTypes.defaults.firstOrNull { it.id == id }
+            if (builtIn != null) require(builtIn.isCash == isCash) { "工资元数据与内置收入项的现金性质不一致" }
+            SalaryIncomeType(
+                id = id,
+                name = name,
+                isCash = isCash,
+                builtIn = builtIn != null,
+                sortOrder = builtIn?.sortOrder ?: 0,
+                iconKey = if (CategoryCatalog.isAllowedIcon(savedIcon)) savedIcon else "other"
+            )
+        }
     }
     private fun relationship(b:ByteArray):ByteArray{val d=xml(b);val r=d.documentElement;val n=(0 until r.childNodes.length).mapNotNull{r.childNodes.item(it) as? Element};if(n.none{it.getAttribute("Type").endsWith("/custom-properties")}){val e=d.createElementNS(r.namespaceURI,"Relationship");e.setAttribute("Id","rIdSalaryCustom");e.setAttribute("Type","http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties");e.setAttribute("Target","docProps/custom.xml");r.appendChild(e)};return bytes(d)}
     private fun contentType(b:ByteArray):ByteArray{val d=xml(b);val r=d.documentElement;val n=(0 until r.childNodes.length).mapNotNull{r.childNodes.item(it) as? Element};if(n.none{it.getAttribute("PartName")=="/docProps/custom.xml"}){val e=d.createElementNS(r.namespaceURI,"Override");e.setAttribute("PartName","/docProps/custom.xml");e.setAttribute("ContentType","application/vnd.openxmlformats-officedocument.custom-properties+xml");r.appendChild(e)};return bytes(d)}

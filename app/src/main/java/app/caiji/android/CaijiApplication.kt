@@ -47,7 +47,9 @@ class CaijiApplication : Application(), DefaultLifecycleObserver {
         Room.databaseBuilder(this, FeedbackDatabase::class.java, "caiji-feedback.db").build()
     }
     val salaryDatabase: SalaryDatabase by lazy {
-        Room.databaseBuilder(this, SalaryDatabase::class.java, "caiji-salary.db").build()
+        Room.databaseBuilder(this, SalaryDatabase::class.java, "caiji-salary.db")
+            .addMigrations(SalaryDatabase.MIGRATION_1_2)
+            .build()
     }
     val salaryRepository by lazy { RoomSalaryRepository(salaryDatabase) }
     val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository(this, feedbackDatabase) }

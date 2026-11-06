@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -354,7 +355,7 @@ private fun CategoryEditorDialog(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun IconCatalogPicker(selectedKey: String, modifier: Modifier = Modifier, onSelected: (String) -> Unit) {
+internal fun IconCatalogPicker(selectedKey: String, modifier: Modifier = Modifier, onSelected: (String) -> Unit) {
     Column(modifier.verticalScroll(rememberScrollState())) {
         CategoryCatalog.iconKeys().groupBy { it.group }.forEach { (group, icons) ->
             Text(group, Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
@@ -369,7 +370,10 @@ private fun IconCatalogPicker(selectedKey: String, modifier: Modifier = Modifier
                         color = if (selected) CaijiPalette.PrimarySoft else CaijiPalette.SurfaceAlt,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.size(44.dp).clickable { onSelected(item.key) }
-                            .semantics { contentDescription = "${item.label}图标" }
+                            .semantics {
+                                contentDescription = "${item.label}图标"
+                                this.selected = selected
+                            }
                             .testTag("category-icon-${item.key}")
                     ) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

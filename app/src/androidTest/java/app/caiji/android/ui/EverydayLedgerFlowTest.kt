@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
@@ -24,6 +25,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.caiji.android.MainActivity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,6 +34,15 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EverydayLedgerFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Before fun returnToMainNavigationIfLaunchedOnAChildRoute() {
+        repeat(8) {
+            if (compose.onAllNodesWithTag("nav-entry").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                compose.waitForIdle()
+            }
+        }
+    }
 
     @Test fun settingsAndBillSummaryNavigationUseConsistentLabels() {
         repeat(5) {
@@ -89,8 +101,39 @@ class EverydayLedgerFlowTest {
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
+    @Test fun incomeTypeEditorDialogRestoresItsDraftAfterActivityRecreation() {
+        repeat(5) {
+            if (compose.onAllNodesWithTag("nav-salary").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                compose.waitForIdle()
+            }
+        }
+        compose.onNodeWithTag("nav-salary").performClick()
+        compose.onNodeWithText("＋  新增收入").performClick()
+        compose.onNodeWithText("收入项管理", substring = true).performClick()
+        compose.onNodeWithTag("salary-income-types-add").performClick()
+        compose.onNodeWithTag("salary-income-type-name").performTextInput("重建后保留的收入项")
+        compose.onNodeWithTag("salary-income-type-icon-grid").performScrollToNode(
+            hasTestTag("category-icon-allowance"))
+        compose.onNodeWithTag("category-icon-allowance").performClick()
+
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("salary-income-type-name").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("添加收入项").assertIsDisplayed()
+        compose.onNodeWithTag("salary-income-type-name").assertTextContains("重建后保留的收入项")
+        compose.onNodeWithTag("salary-income-type-icon-grid").performScrollToNode(
+            hasTestTag("category-icon-allowance"))
+        compose.onNodeWithTag("category-icon-allowance").assertIsSelected()
+    }
+
     @Test fun openingTheEntryTabShowsIncomeExpenseAndCalculatorControls() {
-        compose.onNodeWithTag("nav-entry").performClick()
+        compose.onNodeWithTag("nav-entry").assertTextContains("记一笔").performClick()
+        compose.onNodeWithTag("page-title").assertTextContains("记一笔")
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithTag("page-title").fetchSemanticsNode().boundsInRoot
+        assertTrue("Entry editor title should be centered", kotlin.math.abs(root.center.x - title.center.x) <= 1f)
         compose.onNodeWithTag("entry-type-expense").assertIsSelected()
         compose.onNodeWithTag("entry-type-income").assertIsNotSelected()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
