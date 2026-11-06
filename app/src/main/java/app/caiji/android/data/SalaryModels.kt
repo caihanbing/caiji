@@ -4,7 +4,7 @@ import java.math.BigInteger
 import java.time.LocalDate
 import java.time.YearMonth
 
-sealed interface SalaryPeriod {
+sealed interface SalaryPeriod : java.io.Serializable {
     data class Month(val year: Int, val month: Int) : SalaryPeriod
     data class Year(val year: Int) : SalaryPeriod
     data object All : SalaryPeriod

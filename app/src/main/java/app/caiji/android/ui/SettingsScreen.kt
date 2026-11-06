@@ -48,7 +48,10 @@ internal fun SettingsScreen(
     onFeedback: () -> Unit = {},
     updateState: UpdateState = UpdateState.Idle,
     onCheckUpdates: () -> Unit = {},
-    onLocalDialogVisibilityChange: (Boolean) -> Unit = {}
+    onLocalDialogVisibilityChange: (Boolean) -> Unit = {},
+    onSalaryImport: () -> Unit = {},
+    onSalaryExport: () -> Unit = {},
+    onSalaryTypes: () -> Unit = {}
 ) {
     var exportPrompt by remember { mutableStateOf(false) }
     if (exportPrompt) BackupPasswordDialog(
@@ -97,6 +100,13 @@ internal fun SettingsScreen(
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
             }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-salary")) {
+            Text("工资", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            SalarySettingsRow("导入 Excel", "导入工资记录，预览后确认", CaijiIconName.IMPORT, onSalaryImport, "settings-salary-import")
+            SalarySettingsRow("导出 Excel", "导出全部记录或指定年份", CaijiIconName.EXPORT, onSalaryExport, "settings-salary-export")
+            SalarySettingsRow("管理收入项", "管理工资、补贴和福利收入项", CaijiIconName.CATEGORY, onSalaryTypes, "settings-salary-types")
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -188,6 +198,23 @@ internal fun SettingsScreen(
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SalarySettingsRow(title: String, subtitle: String, icon: CaijiIconName, onClick: () -> Unit, tag: String) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag(tag),
+        colors = CardDefaults.cardColors(containerColor = CaijiPalette.Surface)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(11.dp)) {
+                CaijiIcon(icon, title, Modifier.padding(9.dp))
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(title, fontWeight = FontWeight.Medium, color = CaijiPalette.Ink)
+                Text(subtitle, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
         }
     }
 }

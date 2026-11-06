@@ -74,6 +74,7 @@ import app.caiji.android.ui.FeedbackListScreen
 import app.caiji.android.ui.ThemePickerScreen
 import app.caiji.android.ui.shareFeedback
 import app.caiji.android.ui.SalaryDraft
+import app.caiji.android.ui.SalaryManagementRoute
 import app.caiji.android.ui.theme.CaijiThemeId
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiTheme
@@ -198,12 +199,13 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var salaryPreview by remember { mutableStateOf<app.caiji.android.data.SalaryImportPreview?>(null) }
     var salaryEditorDraft by remember { mutableStateOf<SalaryDraft?>(null) }
     var salaryEditorEntry by remember { mutableStateOf<SalaryEntry?>(null) }
+    var salaryManagementRoute by rememberSaveable { mutableStateOf(SalaryManagementRoute.HOME) }
     var showSalaryBottomNavigation by remember { mutableStateOf(true) }
-    var salaryExportPeriod by remember { mutableStateOf<app.caiji.android.data.SalaryPeriod?>(null) }
-    var salaryImportGeneration by remember { mutableIntStateOf(0) }
-    var salaryImportRequest by remember { mutableIntStateOf(0) }
+    var salaryExportPeriod by rememberSaveable { mutableStateOf<app.caiji.android.data.SalaryPeriod?>(null) }
+    var salaryImportGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var salaryImportRequest by rememberSaveable { mutableIntStateOf(0) }
     fun navigateMain(target: Page) {
-        if (target == Page.SALARY) showSalaryBottomNavigation = true
+        if (target == Page.SALARY) { showSalaryBottomNavigation = true; salaryManagementRoute = SalaryManagementRoute.HOME }
         if (page == Page.SALARY && target != Page.SALARY) {
             salaryImportGeneration++
             salaryPreview = null
@@ -341,7 +343,13 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 context.contentResolver.openOutputStream(uri, "w")?.use {
                     app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }.export(it, entries, types)
                 } ?: error("无法写入所选文件")
-            } }.onSuccess { pickerError = "工资 Excel 已保存" }
+            } }.onSuccess {
+                pickerError = "工资 Excel 已保存"
+                if (page == Page.SALARY && salaryManagementRoute == SalaryManagementRoute.EXPORT) {
+                    salaryManagementRoute = SalaryManagementRoute.HOME
+                    page = Page.SETTINGS
+                }
+            }
                 .onFailure { pickerError = "导出失败：" + (it.message ?: "请重试") }
         }
     }
@@ -642,6 +650,14 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     onExport = { period ->
                         salaryExportPeriod = period
                         salaryExportPicker.launch("工资明细.xlsx")
+                    },
+                    initialManagementRoute = salaryManagementRoute,
+                    onManagementSuccess = { pickerError = it },
+                    onManagementBack = {
+                        salaryImportGeneration++
+                        salaryPreview = null
+                        salaryManagementRoute = SalaryManagementRoute.HOME
+                        page = Page.SETTINGS
                     }
                 )
                 Page.SETTINGS -> SettingsScreen({ page = Page.CATEGORIES }, { password ->
@@ -651,7 +667,10 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     onTheme = { page = Page.THEMES }, onFeedback = { page = Page.FEEDBACK_LIST },
                     updateState = updateState,
                     onCheckUpdates = { updateManager.check(manual = true) },
-                    onLocalDialogVisibilityChange = { localBlockingDialogOpen = it })
+                    onLocalDialogVisibilityChange = { localBlockingDialogOpen = it },
+                    onSalaryImport = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.IMPORT; salaryPreview = null; page = Page.SALARY },
+                    onSalaryExport = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.EXPORT; pickerError = null; page = Page.SALARY },
+                    onSalaryTypes = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.TYPES; page = Page.SALARY })
                 Page.CATEGORIES -> CategoryManagerScreen(categories, { page = Page.SETTINGS },
                     { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },

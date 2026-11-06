@@ -36,6 +36,7 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("nav-entry").assertIsDisplayed()
         compose.onNodeWithTag("nav-settings").performClick()
         compose.onNodeWithText("分类管理").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasText("加密备份"))
         compose.onNodeWithText("加密备份").assertIsDisplayed()
     }
 

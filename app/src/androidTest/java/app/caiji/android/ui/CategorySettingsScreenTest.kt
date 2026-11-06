@@ -219,12 +219,16 @@ class CategorySettingsScreenTest {
             }
         }
 
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-theme"))
         compose.onNodeWithTag("settings-theme").assertIsDisplayed()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-feedback"))
         compose.onNodeWithTag("settings-feedback").assertIsDisplayed()
         compose.onNodeWithTag("settings-categories").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-export"))
         compose.onNodeWithTag("settings-export").assertIsDisplayed().performClick()
-        compose.onNodeWithText("至少 8 个字符的密码").assertIsDisplayed()
+        compose.onNodeWithText("加密完整备份").assertIsDisplayed()
         compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-import"))
         compose.onNodeWithTag("settings-import").assertIsDisplayed().performClick()
         assertEquals(listOf("categories", "import"), events)
     }

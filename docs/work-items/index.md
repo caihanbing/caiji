@@ -18,4 +18,5 @@
 | [`WORK-20261104-004`](WORK-20261104-004.md) | 财记工资 Excel 导入错误定位修复 | bugfix | high | handoff-ready | salary-records | 2026-11-05 |
 | [`WORK-20261105-001`](WORK-20261105-001.md) | 财记工资 Excel 导出提示与合计公式修复 | bugfix | high | handoff-ready | salary-records | 2026-11-05 |
 | [`WORK-20261105-002`](WORK-20261105-002.md) | 财记 GitHub 检查更新与安装包交付 | feature | high | handoff-ready | app-updates | 2026-11-05 |
+| [`WORK-20261105-003`](WORK-20261105-003.md) | 财记工资浏览与设置入口优化 | change | high | handoff-ready | salary-records | 2026-11-06 |
 <!-- manage-dev-work:index:end -->

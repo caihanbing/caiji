@@ -31,8 +31,9 @@ import java.util.Locale
 import kotlinx.coroutines.*
 
 private enum class SR { HOME, EDIT, TYPES, IMPORT, EXPORT }
-private enum class PM { MONTH, YEAR, ALL }
+private enum class PM { YEAR, ALL }
 private enum class CF { ALL, CASH, NONCASH }
+internal enum class SalaryManagementRoute { HOME, IMPORT, EXPORT, TYPES }
 
 internal data class SalaryDraft(val date:LocalDate,val typeId:String,val gross:String,val union:String,val pension:String,val medical:String,val unemployment:String,val housing:String,val annuity:String,val tax:String) {
  companion object {
@@ -45,42 +46,135 @@ internal data class SalaryDraft(val date:LocalDate,val typeId:String,val gross:S
 internal fun SalaryRootScreen(
  repo:RoomSalaryRepository,preview:SalaryImportPreview?,onImport:()->Unit,onClear:()->Unit,onExport:(SalaryPeriod)->Unit,
  initialDraft:SalaryDraft?=null,initialEntry:SalaryEntry?=null,onDraftSnapshotChange:(SalaryDraft?,SalaryEntry?)->Unit={_,_->},
- onAsyncError:(String)->Unit={},onBottomNavigationVisibility:(Boolean)->Unit={}
+ onAsyncError:(String)->Unit={},onBottomNavigationVisibility:(Boolean)->Unit={},
+ initialManagementRoute:SalaryManagementRoute=SalaryManagementRoute.HOME,onManagementBack:()->Unit={},
+ onManagementSuccess:(String)->Unit={}
 ){
- val scope=rememberCoroutineScope();var page by remember{mutableStateOf(if(initialDraft==null)SR.HOME else SR.EDIT)};var typesOrigin by remember{mutableStateOf(SR.HOME)};var records by remember{mutableStateOf(emptyList<SalaryEntry>())};var duplicates by remember{mutableIntStateOf(0)};var entriesToInsert by remember{mutableStateOf(emptyList<SalaryEntry>())};var types by remember{mutableStateOf(emptyList<SalaryIncomeType>())};var selected by remember{mutableStateOf(initialEntry)};var draft by remember{mutableStateOf(initialDraft)};var message by remember{mutableStateOf<String?>(null)};var mode by remember{mutableStateOf(PM.MONTH)};var month by remember{mutableStateOf(YearMonth.now())};var year by remember{mutableIntStateOf(LocalDate.now().year)}
+ val scope=rememberCoroutineScope();val settingsOrigin=initialManagementRoute!=SalaryManagementRoute.HOME;var page by remember{mutableStateOf(if(settingsOrigin)when(initialManagementRoute){SalaryManagementRoute.IMPORT->SR.IMPORT;SalaryManagementRoute.EXPORT->SR.EXPORT;SalaryManagementRoute.TYPES->SR.TYPES;SalaryManagementRoute.HOME->SR.HOME}else if(initialDraft==null)SR.HOME else SR.EDIT)};var typesOrigin by remember{mutableStateOf(SR.HOME)};var records by remember{mutableStateOf(emptyList<SalaryEntry>())};var duplicates by remember{mutableIntStateOf(0)};var entriesToInsert by remember{mutableStateOf(emptyList<SalaryEntry>())};var types by remember{mutableStateOf(emptyList<SalaryIncomeType>())};var selected by remember{mutableStateOf(initialEntry)};var draft by remember{mutableStateOf(initialDraft)};var message by remember{mutableStateOf<String?>(null)};var mode by remember{mutableStateOf(PM.YEAR)};var year by remember{mutableIntStateOf(LocalDate.now().year)}
  val updateDraft:(SalaryDraft)->Unit={updated->draft=updated;onDraftSnapshotChange(updated,selected)}
  suspend fun refresh(){withContext(Dispatchers.IO){types=repo.incomeTypes();records=repo.entries()}}
  LaunchedEffect(repo){runCatching{refresh()}.onFailure{val text="工资数据暂时无法读取，请重新进入工资页面；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}
- LaunchedEffect(page){onBottomNavigationVisibility(page==SR.HOME||page==SR.IMPORT)}
+ LaunchedEffect(page,settingsOrigin){onBottomNavigationVisibility(!settingsOrigin&&(page==SR.HOME||page==SR.IMPORT))}
  LaunchedEffect(preview){if(preview!=null){page=SR.IMPORT;val delta=withContext(Dispatchers.IO){SalaryReports.importDelta(preview.entries,repo.entries())};duplicates=delta.skippedDuplicateCount;entriesToInsert=delta.entriesToInsert}else{duplicates=0;entriesToInsert=emptyList()}}
- BackHandler(page!=SR.HOME){if(page==SR.TYPES)page=typesOrigin else {if(page==SR.IMPORT)onClear();if(page==SR.EDIT)onDraftSnapshotChange(null,null);page=SR.HOME;selected=null;draft=null}}
+ BackHandler(page!=SR.HOME){if(page==SR.TYPES&&typesOrigin==SR.EDIT){page=SR.EDIT}else if(settingsOrigin&&(page==SR.TYPES||page==SR.IMPORT||page==SR.EXPORT)){if(page==SR.IMPORT)onClear();onManagementBack()}else if(page==SR.TYPES)page=typesOrigin else {if(page==SR.IMPORT)onClear();if(page==SR.EDIT)onDraftSnapshotChange(null,null);page=SR.HOME;selected=null;draft=null}}
  when(page){
- SR.HOME->SalaryHome(records,types,mode,month,year,message,{message=null},{mode=it},{if(mode==PM.MONTH)month=month.minusMonths(1) else year--},{if(mode==PM.MONTH)month=month.plusMonths(1) else year++},{selected=null;val nextDraft=SalaryDraft.blank(types.firstOrNull()?.id.orEmpty());draft=nextDraft;onDraftSnapshotChange(nextDraft,null);page=SR.EDIT},{selected=it;val nextDraft=SalaryDraft.from(it);draft=nextDraft;onDraftSnapshotChange(nextDraft,it);page=SR.EDIT},{typesOrigin=SR.HOME;page=SR.TYPES},{page=SR.IMPORT;onClear();onImport()},{onExport(it);page=SR.HOME})
+ SR.HOME->SalaryHome(records,types,mode,year,message,{message=null},{mode=it},{year=(year-1).coerceAtLeast(1900)},{year=(year+1).coerceAtMost(LocalDate.now().year)},{year=it},{selected=null;val nextDraft=SalaryDraft.blank(types.firstOrNull()?.id.orEmpty());draft=nextDraft;onDraftSnapshotChange(nextDraft,null);page=SR.EDIT},{selected=it;val nextDraft=SalaryDraft.from(it);draft=nextDraft;onDraftSnapshotChange(nextDraft,it);page=SR.EDIT})
  SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(types.firstOrNull()?.id.orEmpty()),updateDraft,{page=SR.HOME;selected=null;draft=null;onDraftSnapshotChange(null,null)},{typesOrigin=SR.EDIT;page=SR.TYPES},{e->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;onDraftSnapshotChange(null,null);page=SR.HOME}.onFailure{val text="工资保存失败，输入内容已保留，请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;onDraftSnapshotChange(null,null);page=SR.HOME}.onFailure{val text="工资删除失败，请重试；记录仍保留。若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}})
- SR.TYPES->SalaryTypesScreen(types,{page=typesOrigin},{n,c->scope.launch{runCatching{withContext(Dispatchers.IO){repo.createIncomeType(n,c)};refresh()}.onSuccess{message="收入项已添加"}.onFailure{val text="收入项未能添加，请检查名称是否重复，然后重试。";message=text;onAsyncError(text)}}})
- SR.IMPORT->SalaryImportScreen(preview,duplicates,entriesToInsert,(SalaryIncomeTypes.defaults+types+preview?.incomeTypesToCreate.orEmpty()).associate{it.id to it.name},{page=SR.HOME;onClear()},{onClear();onImport()}){val p=preview?:return@SalaryImportScreen;if(p.errors.isNotEmpty())return@SalaryImportScreen;scope.launch{runCatching{withContext(Dispatchers.IO){repo.importNew(p.entries,p.incomeTypesToCreate)}.also{refresh()}}.onSuccess{message="导入完成：新增 "+it.insertedCount+" 笔，跳过重复 "+it.skippedDuplicateCount+" 笔";page=SR.HOME;onClear()}.onFailure{val text="工资导入未完成，已有工资记录仍保留。请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}}
- SR.EXPORT->SalaryExportScreen({page=SR.HOME},month,year,mode,{onExport(it);page=SR.HOME})
+ SR.TYPES->SalaryTypesScreen(types,{if(settingsOrigin)onManagementBack() else page=typesOrigin},{n,c->scope.launch{runCatching{withContext(Dispatchers.IO){repo.createIncomeType(n,c)};refresh()}.onSuccess{message="收入项已添加"}.onFailure{val text="收入项未能添加，请检查名称是否重复，然后重试。";message=text;onAsyncError(text)}}})
+ SR.IMPORT->SalaryImportScreen(preview,duplicates,entriesToInsert,(SalaryIncomeTypes.defaults+types+preview?.incomeTypesToCreate.orEmpty()).associate{it.id to it.name},{if(settingsOrigin)onManagementBack() else page=SR.HOME;onClear()},{onClear();onImport()}){val p=preview?:return@SalaryImportScreen;if(p.errors.isNotEmpty())return@SalaryImportScreen;scope.launch{runCatching{withContext(Dispatchers.IO){repo.importNew(p.entries,p.incomeTypesToCreate)}.also{refresh()}}.onSuccess{val success="导入完成：新增 "+it.insertedCount+" 笔，跳过重复 "+it.skippedDuplicateCount+" 笔";message=success;onClear();if(settingsOrigin){onManagementSuccess(success);onManagementBack()}else page=SR.HOME}.onFailure{val text="工资导入未完成，已有工资记录仍保留。请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}}
+ SR.EXPORT->SalaryExportScreen({if(settingsOrigin)onManagementBack() else page=SR.HOME},{period->onExport(period)})
  }
 }
 
-@Composable private fun SalaryHome(records:List<SalaryEntry>,types:List<SalaryIncomeType>,mode:PM,month:YearMonth,year:Int,message:String?,dismiss:()->Unit,setMode:(PM)->Unit,prev:()->Unit,next:()->Unit,add:()->Unit,edit:(SalaryEntry)->Unit,manage:()->Unit,import:()->Unit,exportPeriod:(SalaryPeriod)->Unit){
- var cf by remember{mutableStateOf(CF.ALL)};var menu by remember{mutableStateOf(false)};var exportDialog by remember{mutableStateOf(false)}
- val period=when(mode){PM.MONTH->SalaryPeriod.Month(month.year,month.monthValue);PM.YEAR->SalaryPeriod.Year(year);PM.ALL->SalaryPeriod.All}
- val rows=SalaryReports.filter(records,period);val visible=rows.filter{cf==CF.ALL||(cf==CF.CASH)==it.isCash};val sums=SalaryReports.summarize(rows);val names=types.associate{it.id to it.name}
- Column(Modifier.fillMaxSize().background(CaijiPalette.Background)){
-  Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){Text("工资",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Box{TextButton(onClick={menu=true}){Text("更多")};DropdownMenu(menu,{menu=false}){DropdownMenuItem(text={Text("导入 Excel")},onClick={menu=false;import()});DropdownMenuItem(text={Text("导出 Excel")},onClick={menu=false;exportDialog=true});DropdownMenuItem(text={Text("管理收入项")},onClick={menu=false;manage()})}}}
-  Row(Modifier.fillMaxWidth().padding(horizontal=20.dp).background(CaijiPalette.SurfaceAlt,RoundedCornerShape(12.dp)).padding(4.dp)){listOf(PM.MONTH to "月",PM.YEAR to "年",PM.ALL to "全部").forEach{(p,label)->val sel=mode==p;Surface(color=if(sel)CaijiPalette.Primary else CaijiPalette.SurfaceAlt,shape=RoundedCornerShape(9.dp),modifier=Modifier.weight(1f).clickable{setMode(p)}.testTag("salary-period-"+label)){Text(label,Modifier.padding(vertical=9.dp),color=if(sel)CaijiPalette.OnPrimary else CaijiPalette.SecondaryText,textAlign=TextAlign.Center)}}}
-  Row(Modifier.fillMaxWidth().height(42.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center){if(mode!=PM.ALL)IconButton(onClick=prev){Text("‹",style=MaterialTheme.typography.headlineSmall)};Text(when(mode){PM.MONTH->month.format(DateTimeFormatter.ofPattern("yyyy年M月",Locale.CHINA));PM.YEAR->year.toString()+"年";PM.ALL->"全部记录"},style=MaterialTheme.typography.titleMedium);if(mode!=PM.ALL)IconButton(onClick=next){Text("›",style=MaterialTheme.typography.headlineSmall)}}
-  Surface(color=CaijiPalette.PrimarySoft,shape=RoundedCornerShape(18.dp),modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp)){Column(Modifier.padding(horizontal=18.dp,vertical=13.dp)){Text(when(mode){PM.MONTH->"本月纯收入";PM.YEAR->"本年纯收入";PM.ALL->"累计纯收入"},color=CaijiPalette.SecondaryText,style=MaterialTheme.typography.bodySmall);Text("¥"+formatYuan(sums.netFen),style=MaterialTheme.typography.displaySmall,fontWeight=FontWeight.SemiBold,maxLines=1,modifier=Modifier.testTag("salary-net-total"));Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(18.dp)){Column(Modifier.weight(1f)){Text("毛收入",color=CaijiPalette.SecondaryText);Text("¥"+formatYuan(sums.grossFen))};Column(Modifier.weight(1f)){Text("扣款合计",color=CaijiPalette.SecondaryText);Text("¥"+formatYuan(sums.deductionFen))}};Row(Modifier.fillMaxWidth().padding(top=8.dp),horizontalArrangement=Arrangement.SpaceBetween){Text("现金 ¥"+formatYuan(sums.cashNetFen),style=MaterialTheme.typography.bodySmall);Text("非现金 ¥"+formatYuan(sums.nonCashNetFen),style=MaterialTheme.typography.bodySmall)}}}
-  if(message!=null)TextButton(onClick=dismiss){Text(message,color=CaijiPalette.SecondaryText)}
-  Row(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=7.dp)){Text("收入明细",fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Text(rows.size.toString()+" 笔",color=CaijiPalette.SecondaryText)}
-  Row(Modifier.fillMaxWidth().padding(horizontal=20.dp).background(CaijiPalette.SurfaceAlt,RoundedCornerShape(10.dp))){listOf(CF.ALL to "全部",CF.CASH to "现金",CF.NONCASH to "非现金").forEach{(f,l)->TextButton(onClick={cf=f},modifier=Modifier.weight(1f)){Text(l,color=if(cf==f)CaijiPalette.Primary else CaijiPalette.SecondaryText)}}}
-  if(visible.isEmpty())Column(Modifier.weight(1f).fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Text("还没有工资记录",style=MaterialTheme.typography.titleLarge);Text("记录工资、补贴和福利，或从 Excel 导入。",color=CaijiPalette.SecondaryText,style=MaterialTheme.typography.bodySmall)}
-  else LazyColumn(Modifier.weight(1f)){items(visible, key = { it.id }){e->Row(Modifier.fillMaxWidth().clickable{edit(e)}.padding(horizontal=18.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Surface(color=CaijiPalette.SurfaceAlt,shape=RoundedCornerShape(12.dp),modifier=Modifier.size(40.dp)){Box(contentAlignment=Alignment.Center){Text(if(e.isCash)"¥" else "✦",color=CaijiPalette.Primary)}};Column(Modifier.weight(1f).padding(start=12.dp)){Text(names[e.incomeTypeId]?:e.incomeTypeId);Text(e.occurredOn.format(DateTimeFormatter.ofPattern("M月d日",Locale.CHINA))+" · "+if(e.isCash)"现金" else "非现金",color=CaijiPalette.SecondaryText,style=MaterialTheme.typography.bodySmall)};Text("+¥"+formatYuan(e.netIncomeFen),color=CaijiPalette.Income)};HorizontalDivider(color=CaijiPalette.Divider,modifier=Modifier.padding(start=70.dp,end=18.dp))}}
-  Button(add,Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=7.dp).height(48.dp),colors=ButtonDefaults.buttonColors(containerColor=CaijiPalette.Primary,contentColor=CaijiPalette.OnPrimary),shape=RoundedCornerShape(12.dp)){Text("＋  新增收入")}
-  Text("工资独立统计，不计入记账收支。",Modifier.padding(horizontal=18.dp,vertical=3.dp),color=CaijiPalette.SecondaryText,style=MaterialTheme.typography.bodySmall)
- }
- if(exportDialog)AlertDialog(onDismissRequest={exportDialog=false},title={Text("导出 Excel")},text={Text("选择导出当前期间或全部记录。")},confirmButton={TextButton(onClick={exportDialog=false;exportPeriod(period)}){Text("当前期间")}},dismissButton={Row{TextButton(onClick={exportDialog=false;exportPeriod(SalaryPeriod.All)}){Text("全部记录")};TextButton(onClick={exportDialog=false}){Text("取消")}}})
+@Composable private fun SalaryHome(
+    records: List<SalaryEntry>, types: List<SalaryIncomeType>, mode: PM, year: Int, message: String?,
+    dismiss: () -> Unit, setMode: (PM) -> Unit, previous: () -> Unit, next: () -> Unit, setYear: (Int) -> Unit,
+    add: () -> Unit, edit: (SalaryEntry) -> Unit
+) {
+    var cf by remember { mutableStateOf(CF.ALL) }
+    var yearMenu by remember { mutableStateOf(false) }
+    val period = if (mode == PM.ALL) SalaryPeriod.All else SalaryPeriod.Year(year)
+    val rows = SalaryReports.filter(records, period)
+    val visible = rows.filter { cf == CF.ALL || (cf == CF.CASH) == it.isCash }
+    val sums = SalaryReports.summarize(rows)
+    val names = types.associate { it.id to it.name }
+    val currentYear = LocalDate.now().year
+    Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).background(CaijiPalette.SurfaceAlt, RoundedCornerShape(12.dp)).padding(4.dp)) {
+                listOf(PM.YEAR to "按年", PM.ALL to "全部").forEach { (value, label) ->
+                    val selected = mode == value
+                    Surface(color = if (selected) CaijiPalette.Primary else CaijiPalette.SurfaceAlt,
+                        shape = RoundedCornerShape(9.dp), modifier = Modifier.weight(1f).clickable { setMode(value) }
+                            .testTag(if (value == PM.YEAR) "salary-mode-year" else "salary-mode-all")) {
+                        Text(label, Modifier.padding(vertical = 9.dp), color = if (selected) CaijiPalette.OnPrimary else CaijiPalette.SecondaryText,
+                            textAlign = TextAlign.Center)
+                    }
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            if (mode == PM.ALL) {
+                Text("全部记录", Modifier.testTag("salary-all-records"), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+                    IconButton(onClick = previous, enabled = year > 1900, modifier = Modifier.size(48.dp).testTag("salary-year-previous")) {
+                        Text("‹", style = MaterialTheme.typography.headlineSmall)
+                    }
+                    Box {
+                        TextButton(onClick = { yearMenu = true }, modifier = Modifier.testTag("salary-year-label")) {
+                            Text("$year 年", color = CaijiPalette.Ink, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+                        DropdownMenu(expanded = yearMenu, onDismissRequest = { yearMenu = false }, modifier = Modifier.background(CaijiPalette.Surface).testTag("salary-year-options")) {
+                            (currentYear downTo 1900).forEach { option ->
+                                DropdownMenuItem(text = { Text("$option 年") }, onClick = { yearMenu = false; setYear(option) },
+                                    modifier = Modifier.testTag("salary-year-option-$option"))
+                            }
+                        }
+                    }
+                    IconButton(onClick = next, enabled = year < currentYear, modifier = Modifier.size(48.dp).testTag("salary-year-next")) {
+                        Text("›", style = MaterialTheme.typography.headlineSmall)
+                    }
+                }
+            }
+        }
+        Surface(color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 13.dp)) {
+                Text(if (mode == PM.ALL) "累计纯收入" else "${year}年纯收入", color = CaijiPalette.SecondaryText,
+                    style = MaterialTheme.typography.bodySmall)
+                Text("¥" + formatYuan(sums.netFen), style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.testTag("salary-net-total"))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Column(Modifier.weight(1f)) { Text("毛收入", color = CaijiPalette.SecondaryText); Text("¥" + formatYuan(sums.grossFen)) }
+                    Column(Modifier.weight(1f)) { Text("扣款合计", color = CaijiPalette.SecondaryText); Text("¥" + formatYuan(sums.deductionFen)) }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("现金 ¥" + formatYuan(sums.cashNetFen), style = MaterialTheme.typography.bodySmall)
+                    Text("非现金 ¥" + formatYuan(sums.nonCashNetFen), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        if (message != null) TextButton(onClick = dismiss) { Text(message, color = CaijiPalette.SecondaryText) }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 7.dp)) {
+            Text("收入明细", fontWeight = FontWeight.SemiBold); Spacer(Modifier.weight(1f))
+            Text(rows.size.toString() + " 笔", color = CaijiPalette.SecondaryText)
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).background(CaijiPalette.SurfaceAlt, RoundedCornerShape(10.dp))) {
+            listOf(CF.ALL to "全部", CF.CASH to "现金", CF.NONCASH to "非现金").forEach { (filter, label) ->
+                TextButton(onClick = { cf = filter }, modifier = Modifier.weight(1f)) {
+                    Text(label, color = if (cf == filter) CaijiPalette.Primary else CaijiPalette.SecondaryText)
+                }
+            }
+        }
+        if (visible.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Text("还没有工资记录", style = MaterialTheme.typography.titleLarge)
+            Text("记录工资、补贴和福利，或从 Excel 导入。", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+        } else LazyColumn(Modifier.weight(1f).testTag("salary-record-list")) {
+            items(visible, key = { it.id }) { entry ->
+                Row(Modifier.fillMaxWidth().clickable { edit(entry) }.testTag("salary-entry-row-${entry.id}")
+                    .padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = CaijiPalette.SurfaceAlt, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp)) {
+                        Box(contentAlignment = Alignment.Center) { Text(if (entry.isCash) "¥" else "✦", color = CaijiPalette.Primary) }
+                    }
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text(names[entry.incomeTypeId] ?: entry.incomeTypeId)
+                        val date = if (mode == PM.ALL) entry.occurredOn.format(DateTimeFormatter.ofPattern("yyyy/M/d", Locale.CHINA))
+                            else entry.occurredOn.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
+                        Text(date + " · " + if (entry.isCash) "现金" else "非现金", color = CaijiPalette.SecondaryText,
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("salary-entry-date-${entry.id}"))
+                    }
+                    Text("+¥" + formatYuan(entry.netIncomeFen), color = CaijiPalette.Income)
+                }
+                HorizontalDivider(color = CaijiPalette.Divider, modifier = Modifier.padding(start = 70.dp, end = 18.dp))
+            }
+        }
+        Button(add, Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 7.dp).height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary),
+            shape = RoundedCornerShape(12.dp)) { Text("＋  新增收入") }
+        Text("工资独立统计，不计入记账收支。", Modifier.padding(horizontal = 18.dp, vertical = 3.dp),
+            color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable private fun SalaryEditor(entry:SalaryEntry?,types:List<SalaryIncomeType>,draft:SalaryDraft,change:(SalaryDraft)->Unit,back:()->Unit,manage:()->Unit,save:(SalaryEntry)->Unit,delete:(String)->Unit){
@@ -185,9 +279,47 @@ private fun ImportIssueCard(issue: SalaryImportError, location: String?) {
         }
     }
 }
-@Composable private fun SalaryExportScreen(back:()->Unit,month:YearMonth,year:Int,mode:PM,export:(SalaryPeriod)->Unit){var all by remember{mutableStateOf(true)}
- Column(Modifier.fillMaxSize().background(CaijiPalette.Background)){SalaryHeader("导出 Excel",back);Column(Modifier.weight(1f).padding(18.dp)){Text("文件格式",color=CaijiPalette.SecondaryText);Text(".xlsx · Sheet1 · 11 列，与工资样例一致",Modifier.padding(top=8.dp));HorizontalDivider(Modifier.padding(vertical=16.dp));Row(verticalAlignment=Alignment.CenterVertically){Text("全部记录（推荐备份）",Modifier.weight(1f));RadioButton(all,{all=true})};Row(verticalAlignment=Alignment.CenterVertically){Text("当前查看期间",Modifier.weight(1f));RadioButton(!all,{all=false})};Text("含所有收入、现金收入和非现金收入合计。",Modifier.padding(top=12.dp),color=CaijiPalette.SecondaryText)};Button(onClick={export(if(all)SalaryPeriod.All else when(mode){PM.MONTH->SalaryPeriod.Month(month.year,month.monthValue);PM.YEAR->SalaryPeriod.Year(year);PM.ALL->SalaryPeriod.All})},Modifier.fillMaxWidth().padding(18.dp)){Text("选择保存位置")}}
+@Composable
+private fun SalaryExportScreen(back: () -> Unit, export: (SalaryPeriod) -> Unit) {
+    var all by remember { mutableStateOf(true) }
+    var year by remember { mutableIntStateOf(LocalDate.now().year) }
+    var yearMenu by remember { mutableStateOf(false) }
+    val thisYear = LocalDate.now().year
+    Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
+        SalaryHeader("导出 Excel", back)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp)) {
+            Text("文件格式", color = CaijiPalette.SecondaryText)
+            Text(".xlsx · Sheet1 · 11 列，与工资样例一致", Modifier.padding(top = 8.dp))
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            Row(Modifier.fillMaxWidth().clickable { all = true }, verticalAlignment = Alignment.CenterVertically) {
+                Text("全部记录（推荐备份）", Modifier.weight(1f)); RadioButton(selected = all, onClick = { all = true }, modifier = Modifier.testTag("salary-export-all"))
+            }
+            Row(Modifier.fillMaxWidth().clickable { all = false }, verticalAlignment = Alignment.CenterVertically) {
+                Text("指定年份", Modifier.weight(1f)); RadioButton(selected = !all, onClick = { all = false }, modifier = Modifier.testTag("salary-export-year"))
+            }
+            if (!all) {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("导出年份", Modifier.weight(1f), color = CaijiPalette.SecondaryText)
+                    Box {
+                        TextButton(onClick = { yearMenu = true }, modifier = Modifier.testTag("salary-export-year-label")) { Text("$year 年") }
+                        DropdownMenu(expanded = yearMenu, onDismissRequest = { yearMenu = false }, modifier = Modifier.background(CaijiPalette.Surface).testTag("salary-export-year-options")) {
+                            (thisYear downTo 1900).forEach { option -> DropdownMenuItem(
+                                text = { Text("$option 年") }, onClick = { year = option; yearMenu = false },
+                                modifier = Modifier.testTag("salary-export-year-option-$option")) }
+                        }
+                    }
+                }
+            }
+            Text("含所有收入、现金收入和非现金收入合计。", Modifier.padding(top = 12.dp), color = CaijiPalette.SecondaryText)
+        }
+        Button(onClick = { export(if (all) SalaryPeriod.All else SalaryPeriod.Year(year)) },
+            Modifier.fillMaxWidth().padding(18.dp).testTag("salary-export-save"),
+            colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)) {
+            Text("选择保存位置")
+        }
+    }
 }
+
 @Composable private fun SalaryHeader(title:String,back:()->Unit){Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=back,Modifier.width(60.dp)){Text("‹",style=MaterialTheme.typography.headlineSmall)};Text(title,Modifier.weight(1f),textAlign=TextAlign.Center,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold);Spacer(Modifier.width(60.dp))}}
 private fun inFen(f:Long)=BigDecimal.valueOf(f,2).toPlainString()
 private fun String.money(negative:Boolean):Long{val x=BigDecimal(trim().ifEmpty{"0"});require(x.scale()<=2||x.stripTrailingZeros().scale()<=2){"金额最多保留两位小数"};if(!negative)require(x.signum()>=0){"金额不能为负数"};return x.movePointRight(2).longValueExact()}

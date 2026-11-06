@@ -2,10 +2,22 @@ package app.caiji.android.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
 import java.math.BigInteger
 import java.time.LocalDate
 
 class SalaryReportsTest {
+    @Test fun salaryExportPeriodCanBeRestoredFromAndroidSavedState() {
+        val bytes = ByteArrayOutputStream().also { output ->
+            ObjectOutputStream(output).use { it.writeObject(SalaryPeriod.Year(2025)) }
+        }.toByteArray()
+        val restored = ObjectInputStream(ByteArrayInputStream(bytes)).use { it.readObject() }
+        assertEquals(SalaryPeriod.Year(2025), restored)
+    }
+
     @Test fun netIncomeSubtractsSevenDeductionsInFenIncludingNegativeTax() {
         val entry = salaryEntry(gross = 1_600_000, union = 2_800, pension = 115_200,
             medical = 28_800, unemployment = 708, housing = 172_800, annuity = 0, tax = -10_000)

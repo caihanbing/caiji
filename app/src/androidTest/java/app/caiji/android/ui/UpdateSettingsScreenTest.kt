@@ -23,6 +23,26 @@ import org.junit.runner.RunWith
 class UpdateSettingsScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun settingsExposeSalaryManagementBelowLedgerSection() {
+        var selected = ""
+        compose.setContent {
+            CaijiTheme {
+                SettingsScreen({}, {}, {}, onSalaryImport = { selected = "导入 Excel" },
+                    onSalaryExport = { selected = "导出 Excel" }, onSalaryTypes = { selected = "管理收入项" })
+            }
+        }
+        compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-salary"))
+        compose.onNodeWithTag("settings-salary").assertIsDisplayed()
+        compose.onNodeWithText("账本").assertIsDisplayed()
+        compose.onNodeWithText("工资").assertIsDisplayed()
+        compose.onNodeWithText("导入 Excel").performClick()
+        assertEquals("导入 Excel", selected)
+        compose.onNodeWithText("导出 Excel").performClick()
+        assertEquals("导出 Excel", selected)
+        compose.onNodeWithText("管理收入项").performClick()
+        assertEquals("管理收入项", selected)
+    }
+
     @Test fun settingsExposeManualCheckAndDisableItWhileChecking() {
         var checks = 0
         compose.setContent {
