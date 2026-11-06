@@ -62,5 +62,5 @@
 - [x] 更新版本至 0.5.2/code17；更新账单、工资及本次调整文案涉及的功能档案。
 - [x] 运行 JVM、Lint、API26/API34 回归；完成代码审查与 Feature Docs/Work Item 校验。
 - [x] 构建并核验正式 APK 包名、版本、签名、zipalign 和 SHA-256。
-- [ ] 使用 dms-commit-msg 生成提交与 Release notes；推送 `main` 并发布 `v0.5.2`，标题“财记 0.5.2”，附 APK 和 SHA-256 sidecar。
+- [x] 使用 dms-commit-msg 生成提交与 Release notes；推送 `main` 并发布 `v0.5.2`，标题“财记 0.5.2”，附 APK 和 SHA-256 sidecar。
 - [x] 记录实机回归步骤；无数据库迁移或服务端重启。

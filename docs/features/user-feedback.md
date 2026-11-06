@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机记录体验问题及最多 5 张截图，按用户选择通过 Android 分享面板外发。 -->
 <!-- last-verified: 2026-11-06 -->
-<!-- code-basis: HEAD 8a9f849cb837; worktree-digest sha256:3650d4c05b63d1ce00253dd53b3809a3f51d8f11deff01d6a25a3db6101a38b5 -->
+<!-- code-basis: HEAD cdeeca4da1a4; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
