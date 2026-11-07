@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 管理收支分类、100 个内置图标、顺序和启停；图标目录也供工资收入项管理复用。 -->
 <!-- last-verified: 2026-11-07 -->
-<!-- code-basis: HEAD ded66b517669; worktree-digest sha256:1533d6bc502984610aeebb694dec8933f2c832c30b5de816a568a8f5166d8bde -->
+<!-- code-basis: HEAD 8408b9c4745c; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
