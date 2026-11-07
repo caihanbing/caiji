@@ -137,6 +137,59 @@ class SalaryXlsxCodecTest {
         assertEquals(localCustom.isCash, existingPreview.entries.last().isCash)
     }
 
+    @Test fun v3DirectoryMetadataRestoresInactiveStateAndFullOrderWhileLocalDirectoryWins() {
+        val defaults = SalaryIncomeTypes.defaults
+        val reordered = defaults.map { type ->
+            when (type.id) {
+                "builtin-1" -> type.copy(sortOrder = 1, active = false)
+                "builtin-2" -> type.copy(sortOrder = 0)
+                else -> type.copy(sortOrder = type.sortOrder + 1)
+            }
+        }
+        val custom = SalaryIncomeType("file-inactive", "停用补贴", false, sortOrder = 17,
+            iconKey = "allowance", active = false)
+        val date = LocalDate.of(2026, 7, 1)
+        val rows = listOf(
+            SalaryEntry("builtin-row", date, "builtin-1", 10000, isCash = true, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("custom-row", date, custom.id, 5000, isCash = false, createdAtMillis = 2, updatedAtMillis = 2)
+        )
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val file = ByteArrayOutputStream().also { codec.export(it, rows, reordered + custom) }.toByteArray()
+
+        val blank = codec.importPreview(ByteArrayInputStream(file), defaults, date, restoreDefaultDirectory = true)
+        assertTrue(blank.errors.toString(), blank.errors.isEmpty())
+        val restoredBuiltin = blank.incomeTypesToRestore.associateBy { it.id }.getValue("builtin-1")
+        assertEquals(false, restoredBuiltin.active)
+        assertEquals(1, restoredBuiltin.sortOrder)
+        val restoredCustom = blank.incomeTypesToCreate.single()
+        assertEquals(false, restoredCustom.active)
+        assertEquals(17, restoredCustom.sortOrder)
+        assertEquals(custom.id, blank.entries.last().incomeTypeId)
+
+        val localBuiltin = defaults.first().copy(name = "本机工资名", active = true, sortOrder = 0)
+        val localCustom = custom.copy(name = "本机补贴名", active = true, sortOrder = 30)
+        val local = reordered.map { if (it.id == localBuiltin.id) localBuiltin else it } + localCustom
+        val existing = codec.importPreview(ByteArrayInputStream(file), local, date, restoreDefaultDirectory = false)
+        assertTrue(existing.errors.toString(), existing.errors.isEmpty())
+        assertEquals(false, existing.incomeTypesToRestore.any { it.id == "builtin-1" })
+        assertTrue(existing.incomeTypesToCreate.isEmpty())
+    }
+
+    @Test fun missingV3IncomeTypesAppendAfterExistingLocalDirectory() {
+        val custom = SalaryIncomeType("workbook-new", "工作簿新收入", false, sortOrder = 17,
+            iconKey = "cloud", active = false)
+        val row = SalaryEntry("workbook-new-row", LocalDate.of(2026, 7, 1), custom.id, 5000,
+            isCash = false, createdAtMillis = 1, updatedAtMillis = 1)
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val file = ByteArrayOutputStream().also { codec.export(it, listOf(row), SalaryIncomeTypes.defaults + custom) }.toByteArray()
+        val localTail = SalaryIncomeType("local-last", "本机末项", false, sortOrder = 40)
+        val preview = codec.importPreview(ByteArrayInputStream(file), SalaryIncomeTypes.defaults + localTail,
+            LocalDate.of(2026, 7, 1), restoreDefaultDirectory = false)
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(41, preview.incomeTypesToCreate.single().sortOrder)
+        assertEquals(false, preview.incomeTypesToCreate.single().active)
+    }
+
     @Test fun unknownDirectoryIconFallsBackAndBuiltinCashChangesAreRejected() {
         val unknownIcon = SalaryIncomeType("unknown-icon", "新项目", false, iconKey = "unknown-key")
         val entry = SalaryEntry("unknown-icon-row", LocalDate.of(2026, 11, 1), unknownIcon.id, 10_000,

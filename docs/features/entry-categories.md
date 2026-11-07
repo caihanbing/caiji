@@ -4,9 +4,9 @@
 <!-- feature-title: 账单分类管理 -->
 <!-- feature-aliases: categories, 分类 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 管理收支分类、48 个内置图标、顺序和启停；图标目录也供工资收入项管理复用。 -->
-<!-- last-verified: 2026-11-06 -->
-<!-- code-basis: HEAD d510300c89d9; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- feature-summary: 管理收支分类、100 个内置图标、顺序和启停；图标目录也供工资收入项管理复用。 -->
+<!-- last-verified: 2026-11-07 -->
+<!-- code-basis: HEAD ded66b517669; worktree-digest sha256:1533d6bc502984610aeebb694dec8933f2c832c30b5de816a568a8f5166d8bde -->
 
 ## 快速上下文
 
@@ -25,7 +25,7 @@
 
 - 支出预置：餐饮、购物、交通、住房、日用、娱乐、医疗、学习、通讯、人情、其他。
 - 收入预置：工资、奖金、兼职、理财、其他。
-- 新增分类可选收支类型和 48 个按用途分组的内置图标；编辑时保留分类类型。
+- 新增分类可选收支类型和 100 个按用途分组的内置图标；编辑时保留分类类型。
 - 同类型分类按 `sortOrder` 排列；点击同一行的上/下箭头移动一位，开关控制启停。
 
 ### 范围外
@@ -42,7 +42,7 @@
 ## 业务行为
 
 - 首次初始化在 Room 事务中写入 16 个默认分类；重复初始化不会重复添加。
-- 分类管理页在支出/收入间切换，分类项显示图标、名称、48dp 横排上/下折线箭头和启用开关。
+- 分类管理页在支出/收入间切换，分类项显示图标、名称、48dp 横排上/下折线箭头和启用开关。工资收入项管理复用相同的单行箭头与启用开关。
 - 分类管理页与记账页分类网格支持支出/收入水平滑动切换；点击分段控件同步跳到对应类型。
 - 支出/收入分段背景按 Pager 当前页和拖动偏移连续移动；分类类型仅在页面停稳后提交，避免拖动中触发排序或分类状态变更。
 - 分类开关直接按该类别真实 `active` 状态渲染，不因当前选中页改变外观；Pager 未停稳时的启停、编辑和排序回调均被拦截。
@@ -53,7 +53,7 @@
 - 分类排序写入期间锁定箭头、类型切换、启用开关和新增/编辑入口；成功后调整本地顺序并由 ViewModel 刷新持久化结果，失败时保持旧序并显示错误。
 - 切页目标项开关从出现时就显示真实状态；滑动中误触不会提交，停稳后才执行当前页操作。
 - 编辑分类只显示固定类型；新建分类才允许选类型。
-- 48 个白名单图标选择器可供工资收入项编辑器复用；工资和账单各自持久化其图标键。
+- 100 个白名单图标选择器可供工资收入项编辑器复用；工资和账单各自持久化其图标键。旧 48 个图标键保持稳定。
 - 新增/重名/数据库写入失败时保留输入，并在对话框中显示错误。
 - 记账页入口以当前收支类型打开；从设置打开则默认支出。返回记账页后保留账单草稿。
 - 新分类返回记账页后仅显示、不自动选择；用户需主动点选。
@@ -67,7 +67,7 @@
 - `app/src/main/java/app/caiji/android/ui/SettingsScreen.kt` — 设置页分类入口和备份入口。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — 记账页分类入口、当前类型传递、草稿与停用分类重新选择提示。
 - `app/src/main/java/app/caiji/android/domain/Category.kt` — `Category`、`CategoryCatalog`、默认目录和图标白名单。
-- `app/src/main/java/app/caiji/android/ui/CaijiIcons.kt` — 48 个分类图标键的显示映射。
+- `app/src/main/java/app/caiji/android/ui/CaijiIcons.kt` — 100 个分类图标键的显示映射。
 - `app/src/main/java/app/caiji/android/ui/LedgerViewModel.kt` — 保存、启停和排序调用及错误状态。
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `createCategory`、`renameCategory`、`setCategoryActive`、`reorderCategory` 事务实现。
 - `app/src/main/java/app/caiji/android/data/LedgerDatabase.kt` — Room 分类实体、索引和外键。
@@ -114,12 +114,12 @@
 ## 安全与权限
 
 - 分类和账单均保存在应用私有 Room 数据库；无网络调用和外部权限。
-- `CategoryCatalog.iconKeys()` 提供 48 个内置键；`iconLabel` 为选择器提供可访问标签，`CaijiIcons.kt` 映射应用内 emoji。
+- `CategoryCatalog.iconKeys()` 提供 100 个唯一内置键；`iconLabel` 为选择器提供分组与标签，`CaijiIcons.kt` 映射应用内 emoji。
 - Android 自动备份禁用。
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；当前版本 `0.5.3`、`versionCode=18`；账本 Room schema 1。48 个图标目录也供工资收入项使用，工资图标保存在工资库 schema 2。
+- Android `minSdk=26`、`targetSdk=34`；当前版本 `0.5.5`、`versionCode=20`；账本 Room schema 1。100 个图标目录也供工资收入项使用，工资图标保存在工资库 schema 3。
 - 依赖 Kotlin、Compose Material 3、Room 和 Coroutines；默认分类不依赖后端配置。
 
 ## 可观测性与运维
@@ -132,7 +132,7 @@
 ### 已执行
 
 - `./gradlew --max-workers=2 :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:connectedDebugAndroidTest :app:assembleDebug` — 0.2.1 源码通过；API34 AVD 57 项 instrumentation 全通过。
-- 分类类型切换、48 个唯一图标、图标选择/重名错误、记账页草稿保留、停用分类重新选择、箭头边界/相邻移动/失败回退及排序期间禁用均有仪器用例；0.2.2 运行的 60 项 API34 测试全部通过。
+- 分类类型切换、100 个唯一图标、图标选择/重名错误、记账页草稿保留、停用分类重新选择、箭头边界/相邻移动/失败回退及排序期间禁用均有仪器用例；本轮 `CategoryCatalogTest` 映射单测及 API26/API34 各 162 项全量仪器测试通过，见 WORK-20261107-001。
 - Repository instrumentation 覆盖停用分类仍可持久排序；新图标键可通过格式 2 备份 round-trip。
 - API34 AVD 逐页查看分类列表与新增对话框；长列表可滚动，类型和图标按钮可达。
 
@@ -180,6 +180,30 @@
 - **后续动作**：用户安装后回归分类排序、启停和历史账单显示。
 
 ## 变更记录
+
+### 2026-11-07 — 扩充共享图标目录并支持收入项启停
+
+- **状态**：已完成
+- **变化**：保留旧48个图标键并新增52个领域图标；收入项管理复用分类的上/下箭头和启用开关，工资 schema 3 持久化 `active`。
+- **原因**：扩展分类及工资收入项的图标覆盖，并统一目录控制样式。
+- **兼容性**：账单默认分类、账本 schema 1 与备份格式 2 不变；工资 schema 2→3 将既有收入项设为启用。旧版应用可能无法识别新图标。
+- **验证**：100图标键与映射测试以及 API26/API34 迁移和管理回归通过，见 WORK-20261107-001。
+
+### 2026-11-07 — 扩充共享图标目录并复用收入项管理控制
+
+- **状态**：已完成
+- **变化**：保留旧 48 个图标键，新增 52 个领域图标；收入项列表复用分类的上移/下移箭头和启用开关，工资库 schema 3 保存 `active`。
+- **原因**：扩展工资及账单分类的图标覆盖面，并让收入项目录可维护。
+- **兼容性**：账单分类默认值、Room schema 1 和加密备份格式 2 不变；工资旧项目迁移后启用。旧版应用可能不能识别新增图标。
+- **验证**：图标100键/显示映射及收入项启停排序回归、API26/API34仪器测试见 WORK-20261107-001。
+
+### 2026-11-07 — 扩充共享图标目录至100项
+
+- **状态**：已完成
+- **变化**：保留原 48 个图标键并新增 52 个按领域分组的图标；工资收入项管理复用该目录，工资库增加项目启停和排序能力。
+- **原因**：增加分类和收入项可用图标，并让收入项目录的状态和顺序可由用户管理。
+- **兼容性**：账单分类目录、账本 schema 1 和备份格式 2 不变；工资 schema 2→3 将旧收入项默认启用。旧版应用可能无法识别新图标。
+- **验证**：`CategoryCatalogTest` 核验 100 个唯一图标及旧键；API26/API34 全量测试见 WORK-20261107-001。
 
 ### 2026-11-06 — 复用图标选择器到工资收入项
 

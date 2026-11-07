@@ -16,6 +16,54 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SalaryMigrationTest {
+    @Test fun migratesV2IncomeTypesToActivePreservingRowsAndSortOrder() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "salary-migration-v2-test.db"
+        context.deleteDatabase(databaseName)
+        val legacy = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(databaseName), null)
+        createVersion1Schema(legacy)
+        legacy.execSQL("ALTER TABLE salary_income_types ADD COLUMN iconKey TEXT NOT NULL DEFAULT 'other'")
+        listOf(
+            SalaryIncomeType("builtin-1", SalaryIncomeTypes.defaults.first().name, true, true, 2, "salary"),
+            SalaryIncomeType("custom-v2", "自定义收入", false, false, 8, "custom-icon")
+        ).forEach { type ->
+            legacy.execSQL(
+                "INSERT INTO salary_income_types (id, name, isCash, builtIn, sortOrder, iconKey) VALUES (?, ?, ?, ?, ?, ?)",
+                arrayOf(type.id, type.name, if (type.isCash) 1 else 0, if (type.builtIn) 1 else 0, type.sortOrder, type.iconKey)
+            )
+        }
+        legacy.execSQL(
+            "INSERT INTO salary_entries (id, occurredOn, incomeTypeId, grossFen, unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen, createdAtMillis, updatedAtMillis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            arrayOf("salary-v2", "2025-07-03", "builtin-1", 99000L, 1000L, 0L, 0L, 0L, 0L, 0L, 5000L, 3L, 4L)
+        )
+        legacy.version = 2
+        legacy.close()
+
+        val migrationField = SalaryDatabase::class.java.fields.firstOrNull { it.name == "MIGRATION_2_3" }
+        assertNotNull("SalaryDatabase must expose MIGRATION_2_3", migrationField)
+        val database = Room.databaseBuilder(context, SalaryDatabase::class.java, databaseName)
+            .addMigrations(migrationField!!.get(null) as Migration)
+            .build()
+        try {
+            val repository = RoomSalaryRepository(database)
+            val types = repository.incomeTypes()
+            assertEquals(2, types.size)
+            assertEquals(listOf("builtin-1", "custom-v2"), types.map { it.id })
+            assertTrue(types.all { it.active })
+            assertEquals(listOf(2, 8), types.map { it.sortOrder })
+            val salary = repository.entry("salary-v2")!!
+            assertEquals(99000L, salary.grossFen)
+            assertEquals(5000L, salary.taxFen)
+            assertEquals("custom-icon", types.first { it.id == "custom-v2" }.iconKey)
+            database.openHelper.readableDatabase.query("PRAGMA user_version").use {
+                assertEquals(3, if (it.moveToFirst()) it.getInt(0) else -1)
+            }
+        } finally {
+            database.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
     @Test fun migratesV1IncomeTypesAndSalaryRowsWithoutChangingHistory() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = "salary-migration-v1-test.db"
@@ -43,7 +91,7 @@ class SalaryMigrationTest {
         assertNotNull("SalaryDatabase must expose MIGRATION_1_2", migrationField)
         val migration = migrationField!!.get(null) as Migration
         val database = Room.databaseBuilder(context, SalaryDatabase::class.java, databaseName)
-            .addMigrations(migration)
+            .addMigrations(migration, SalaryDatabase.MIGRATION_2_3)
             .build()
         try {
             val repository = RoomSalaryRepository(database)
@@ -83,7 +131,7 @@ class SalaryMigrationTest {
             assertEquals(11L, entry.createdAtMillis)
             assertEquals(12L, entry.updatedAtMillis)
             val rows = database.openHelper.readableDatabase.query("PRAGMA user_version")
-            rows.use { assertEquals(2, if (it.moveToFirst()) it.getInt(0) else -1) }
+            rows.use { assertEquals(3, if (it.moveToFirst()) it.getInt(0) else -1) }
         } finally {
             database.close()
             context.deleteDatabase(databaseName)
@@ -106,7 +154,7 @@ class SalaryMigrationTest {
         val migrationField = SalaryDatabase::class.java.fields.firstOrNull { it.name == "MIGRATION_1_2" }
         assertNotNull("SalaryDatabase must expose MIGRATION_1_2", migrationField)
         val migrated = Room.databaseBuilder(context, SalaryDatabase::class.java, databaseName)
-            .addMigrations(migrationField!!.get(null) as androidx.room.migration.Migration)
+            .addMigrations(migrationField!!.get(null) as androidx.room.migration.Migration, SalaryDatabase.MIGRATION_2_3)
             .build()
         val failed = runCatching { migrated.openHelper.writableDatabase }.isFailure
         migrated.close()

@@ -24,11 +24,11 @@ class CategoryCatalogTest {
         )))
     }
 
-    @Test fun exposesFortyEightUniqueAccessibleIconsAndRetainsEveryLegacyKey() {
+    @Test fun exposesOneHundredUniqueAccessibleIconsAndRetainsEveryLegacyKey() {
         val icons = CategoryCatalog.iconKeys()
 
-        assertEquals(48, icons.size)
-        assertEquals(48, icons.map { it.key }.toSet().size)
+        assertEquals(100, icons.size)
+        assertEquals(100, icons.map { it.key }.toSet().size)
         assertTrue(icons.all { it.label.isNotBlank() && it.group.isNotBlank() })
         assertTrue(listOf("restaurant", "shopping_bag", "train", "home", "daily", "movie", "medical", "school",
             "phone", "favorite", "salary", "gift", "work", "savings", "other").all(CategoryCatalog::isAllowedIcon))

@@ -16,7 +16,8 @@ data class SalaryIncomeType(
     val isCash: Boolean,
     val builtIn: Boolean = false,
     val sortOrder: Int = 0,
-    val iconKey: String = "other"
+    val iconKey: String = "other",
+    val active: Boolean = true
 )
 
 data class SalaryEntry(

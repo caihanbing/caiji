@@ -12,7 +12,8 @@ data class SalaryIncomeTypeRow(
     val isCash: Boolean,
     val builtIn: Boolean,
     val sortOrder: Int,
-    @ColumnInfo(defaultValue = "'other'") val iconKey: String = "other"
+    @ColumnInfo(defaultValue = "'other'") val iconKey: String = "other",
+    @ColumnInfo(defaultValue = "1") val active: Boolean = true
 )
 
 @Entity(tableName = "salary_entries", indices = [Index(value = ["occurredOn", "createdAtMillis"]), Index(value = ["incomeTypeId"])],
@@ -32,6 +33,12 @@ interface SalaryDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertIncomeTypes(types: List<SalaryIncomeTypeRow>)
     @Query("UPDATE salary_income_types SET name = :name, iconKey = :iconKey WHERE id = :id")
     suspend fun updateIncomeType(id: String, name: String, iconKey: String): Int
+    @Query("UPDATE salary_income_types SET active = :active WHERE id = :id")
+    suspend fun setIncomeTypeActive(id: String, active: Boolean): Int
+    @Query("UPDATE salary_income_types SET name = :name, iconKey = :iconKey, active = :active, sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateIncomeTypeDirectory(id: String, name: String, iconKey: String, active: Boolean, sortOrder: Int): Int
+    @Query("UPDATE salary_income_types SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun setIncomeTypeSortOrder(id: String, sortOrder: Int): Int
     @Query("SELECT e.*, t.isCash AS isCash FROM salary_entries e JOIN salary_income_types t ON e.incomeTypeId = t.id ORDER BY e.occurredOn DESC, e.createdAtMillis DESC, e.id DESC") suspend fun entries(): List<SalaryEntryJoinedRow>
     @Query("SELECT e.*, t.isCash AS isCash FROM salary_entries e JOIN salary_income_types t ON e.incomeTypeId = t.id WHERE e.id = :id LIMIT 1") suspend fun entry(id: String): SalaryEntryJoinedRow?
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertEntry(entry: SalaryEntryRow)
@@ -48,11 +55,18 @@ data class SalaryEntryJoinedRow(
     val annuityFen: Long, val taxFen: Long, val createdAtMillis: Long, val updatedAtMillis: Long, val isCash: Boolean
 )
 
-@Database(entities = [SalaryIncomeTypeRow::class, SalaryEntryRow::class], version = 2, exportSchema = true)
+@Database(entities = [SalaryIncomeTypeRow::class, SalaryEntryRow::class], version = 3, exportSchema = true)
 abstract class SalaryDatabase : RoomDatabase() {
     abstract fun salaryDao(): SalaryDao
 
     companion object {
+        @JvmField
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE salary_income_types ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         @JvmField
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -101,7 +115,7 @@ object SalaryIncomeTypes {
     fun defaultForName(name: String): SalaryIncomeType? = defaults.firstOrNull { it.name == name }
 }
 
-fun SalaryIncomeType.toRow() = SalaryIncomeTypeRow(id, name, isCash, builtIn, sortOrder, iconKey)
-fun SalaryIncomeTypeRow.toDomain() = SalaryIncomeType(id, name, isCash, builtIn, sortOrder, iconKey)
+fun SalaryIncomeType.toRow() = SalaryIncomeTypeRow(id, name, isCash, builtIn, sortOrder, iconKey, active)
+fun SalaryIncomeTypeRow.toDomain() = SalaryIncomeType(id, name, isCash, builtIn, sortOrder, iconKey, active)
 fun SalaryEntryJoinedRow.toDomain() = SalaryEntry(id, LocalDate.parse(occurredOn), incomeTypeId, grossFen, unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen, isCash, createdAtMillis, updatedAtMillis)
 fun SalaryEntry.toRow() = SalaryEntryRow(id, occurredOn.toString(), incomeTypeId, grossFen, unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen, createdAtMillis, updatedAtMillis)

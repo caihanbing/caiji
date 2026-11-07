@@ -50,12 +50,40 @@ class RoomSalaryRepository(private val database: SalaryDatabase) {
         }
     }
 
+    suspend fun setIncomeTypeActive(id: String, active: Boolean): SalaryIncomeType {
+        initialize()
+        return database.withTransaction {
+            val current = dao.incomeType(id)?.toDomain() ?: error("收入项不存在")
+            if (active) require(dao.incomeTypes().none { it.id != id && it.name == current.name }) { "收入项名称已存在" }
+            require(dao.setIncomeTypeActive(id, active) == 1) { "收入项已不存在" }
+            current.copy(active = active)
+        }
+    }
+
+    suspend fun moveIncomeType(id: String, direction: Int): Boolean {
+        initialize()
+        require(direction == -1 || direction == 1) { "移动方向无效" }
+        return database.withTransaction {
+            val ordered = dao.incomeTypes().map { it.toDomain() }.sortedWith(compareBy<SalaryIncomeType> { it.sortOrder }.thenBy { it.name })
+            val index = ordered.indexOfFirst { it.id == id }
+            require(index >= 0) { "收入项不存在" }
+            val target = index + direction
+            if (target !in ordered.indices) return@withTransaction false
+            val reordered = ordered.toMutableList().apply { add(target, removeAt(index)) }
+            reordered.forEachIndexed { order, type ->
+                require(dao.setIncomeTypeSortOrder(type.id, order) == 1) { "更新收入项顺序失败" }
+            }
+            true
+        }
+    }
+
     suspend fun save(entry: SalaryEntry): SalaryEntry {
         initialize()
         entry.validate()
-        require(dao.incomeType(entry.incomeTypeId) != null) { "请选择有效收入项" }
         database.withTransaction {
+            val selectedType = dao.incomeType(entry.incomeTypeId)?.toDomain() ?: error("请选择有效收入项")
             val existing = dao.entry(entry.id)
+            require(selectedType.active || existing?.incomeTypeId == entry.incomeTypeId) { "请选择启用的收入项" }
             val now = System.currentTimeMillis()
             if (existing == null) dao.insertEntry(entry.copy(createdAtMillis = now, updatedAtMillis = now).toRow())
             else require(dao.updateEntry(entry.id, entry.occurredOn.toString(), entry.incomeTypeId, entry.grossFen, entry.unionFen, entry.pensionFen, entry.medicalFen, entry.unemploymentFen, entry.housingFen, entry.annuityFen, entry.taxFen, now) == 1) { "工资记录已删除" }
@@ -115,7 +143,9 @@ class RoomSalaryRepository(private val database: SalaryDatabase) {
                     require(dao.updateIncomeType(type.id, temporary, current.iconKey) == 1) { "内置收入项已不存在" }
                 }
                 typesToRestore.forEach { type ->
-                    require(dao.updateIncomeType(type.id, type.name, type.iconKey) == 1) { "内置收入项已不存在" }
+                    require(dao.updateIncomeTypeDirectory(type.id, type.name, type.iconKey, type.active, type.sortOrder) == 1) {
+                        "内置收入项已不存在"
+                    }
                 }
             }
             newTypes.forEach { type ->
@@ -161,7 +191,7 @@ private fun isDefaultIncomeTypeCatalog(types: List<SalaryIncomeType>): Boolean {
     val byId = types.associateBy { it.id }
     return SalaryIncomeTypes.defaults.all { expected ->
         val actual = byId[expected.id] ?: return@all false
-        actual.name == expected.name && actual.isCash == expected.isCash &&
+        actual.name == expected.name && actual.isCash == expected.isCash && actual.active &&
             actual.builtIn && actual.sortOrder == expected.sortOrder && actual.iconKey == expected.iconKey
     }
 }

@@ -88,21 +88,20 @@ internal fun SettingsScreen(
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
             }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-backup-section")) {
-            SalarySettingsRow("加密备份", "仅备份账单和分类，密码至少 8 位", CaijiIconName.EXPORT,
-                { exportPrompt = true; onLocalDialogVisibilityChange(true) }, "settings-export")
-            SalarySettingsRow("从备份恢复", "恢复将替换当前账单和分类", CaijiIconName.IMPORT, onImport, "settings-import")
-            Text("加密备份仅包含全部账单和分类，不含工资、问题记录或主题设置。密码至少 8 位，忘记后无法打开。已有账单时，恢复前须先保存当前备份。工资请单独导出 Excel。",
-                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-backup-section")) {
+                SalarySettingsRow("加密备份", "仅备份账单和分类，密码至少 8 位", CaijiIconName.EXPORT,
+                    { exportPrompt = true; onLocalDialogVisibilityChange(true) }, "settings-export")
+                SalarySettingsRow("从备份恢复", "恢复将替换当前账单和分类", CaijiIconName.IMPORT, onImport, "settings-import")
+                Text("加密备份仅包含全部账单和分类，不含工资、问题记录或主题设置。密码至少 8 位，忘记后无法打开。已有账单时，恢复前须先保存当前备份。工资请单独导出 Excel。",
+                    color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-salary")) {
             Text("工资", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            SalarySettingsRow("收入项管理", "查看收入项，新增自定义收入项", CaijiIconName.CATEGORY, onSalaryTypes, "settings-salary-types")
             SalarySettingsRow("导入 Excel", "选择 .xlsx 文件，核对后导入工资", CaijiIconName.IMPORT, onSalaryImport, "settings-salary-import")
             SalarySettingsRow("导出 Excel", "将全部或指定年份工资导出为 .xlsx", CaijiIconName.EXPORT, onSalaryExport, "settings-salary-export")
-            SalarySettingsRow("收入项管理", "查看收入项，新增自定义收入项", CaijiIconName.CATEGORY, onSalaryTypes, "settings-salary-types")
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

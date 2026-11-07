@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.ui.theme.CaijiPalette
+import java.math.BigInteger
 
 @Composable
 internal fun PeriodArrowButton(
@@ -86,6 +87,33 @@ internal fun PeriodSummaryCard(
     expenseLabel: String = "支出",
     modifier: Modifier = Modifier
 ) {
+    FinancialSummaryCard(
+        primaryLabel = title,
+        primaryFen = totals.balanceFen,
+        leftLabel = incomeLabel,
+        leftFen = totals.incomeFen,
+        leftColor = CaijiPalette.Income,
+        rightLabel = expenseLabel,
+        rightFen = totals.expenseFen,
+        modifier = modifier,
+        primaryTag = "report-balance"
+    )
+}
+
+@Composable
+internal fun FinancialSummaryCard(
+    primaryLabel: String,
+    primaryFen: BigInteger,
+    leftLabel: String,
+    leftFen: BigInteger,
+    leftColor: androidx.compose.ui.graphics.Color,
+    rightLabel: String,
+    rightFen: BigInteger,
+    modifier: Modifier = Modifier,
+    primaryTag: String? = null,
+    leftTag: String? = null,
+    rightTag: String? = null
+) {
     val balanceScroll = rememberScrollState()
     Surface(
         color = CaijiPalette.PrimarySoft,
@@ -96,12 +124,12 @@ internal fun PeriodSummaryCard(
             .testTag("period-summary-card")
     ) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-            Text(title, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            Text(primaryLabel, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
             Box(Modifier.fillMaxWidth().horizontalScroll(balanceScroll, enabled = balanceScroll.maxValue > 0)
                 .testTag("summary-balance-scroll-area")) {
                 Text(
-                    "${if (totals.balanceFen.signum() < 0) "−" else ""}¥${formatYuan(totals.balanceFen.abs())}",
-                    Modifier.testTag("report-balance"),
+                    "${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}",
+                    if (primaryTag == null) Modifier else Modifier.testTag(primaryTag),
                     style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -110,21 +138,23 @@ internal fun PeriodSummaryCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                SummaryMetric(incomeLabel, totals.incomeFen, CaijiPalette.Income, Modifier.weight(1f))
-                SummaryMetric(expenseLabel, totals.expenseFen, CaijiPalette.Ink, Modifier.weight(1f))
+                SummaryMetric(leftLabel, leftFen, leftColor, Modifier.weight(1f), leftTag)
+                SummaryMetric(rightLabel, rightFen, CaijiPalette.Ink, Modifier.weight(1f), rightTag)
             }
         }
     }
 }
 
 @Composable
-private fun SummaryMetric(label: String, amountFen: java.math.BigInteger, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+private fun SummaryMetric(label: String, amountFen: java.math.BigInteger, color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier, valueTag: String? = null) {
     val amountScroll = rememberScrollState()
     Column(modifier) {
         Text(label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
         Box(Modifier.fillMaxWidth().horizontalScroll(amountScroll, enabled = amountScroll.maxValue > 0)) {
             Text(
                 "¥${formatYuan(amountFen)}",
+                modifier = if (valueTag == null) Modifier else Modifier.testTag(valueTag),
                 color = color,
                 style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                 fontWeight = FontWeight.SemiBold,

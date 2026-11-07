@@ -185,8 +185,9 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     val local = localById ?: error("内置收入项 ID 不存在")
                     require(local.isCash == incoming.isCash) { "工资元数据与本机收入项的现金性质不一致" }
                     if (restoreDefaultDirectory) {
-                        incoming.copy(builtIn = true, sortOrder = local.sortOrder).also { updated ->
-                            if (local.name != updated.name || local.iconKey != updated.iconKey) toRestore += updated
+                        incoming.copy(builtIn = true).also { updated ->
+                            if (local.name != updated.name || local.iconKey != updated.iconKey ||
+                                local.active != updated.active || local.sortOrder != updated.sortOrder) toRestore += updated
                         }
                     } else local
                 }
@@ -198,7 +199,12 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     require(localByName.isCash == incoming.isCash) { "工资元数据与本机收入项的现金性质不一致" }
                     localByName
                 }
-                else -> incoming.copy(id = incoming.id, builtIn = false, sortOrder = nextSort++).also(toCreate::add)
+                else -> {
+                    val directoryType = directory.firstOrNull { it.id == incoming.id }
+                    val sortOrder = if (restoreDefaultDirectory) directoryType?.sortOrder ?: nextSort++ else nextSort++
+                    incoming.copy(builtIn = false, sortOrder = sortOrder,
+                        active = directoryType?.active ?: true).also(toCreate::add)
+                }
             }
             byId[incoming.id] = resolved
         }
@@ -533,14 +539,26 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             property.appendChild(text)
             properties.appendChild(property)
         }
-        add("CaijiSalaryIncomeTypes", "2", types.filterNot { it.builtIn }.joinToString("\n") {
+        val orderedTypes = types.sortedWith(compareBy<SalaryIncomeType> { it.sortOrder })
+        add("CaijiSalaryIncomeTypes", "2", orderedTypes.filterNot { it.builtIn }.joinToString("\n") {
             it.id + "|" + Base64.getEncoder().encodeToString(it.name.toByteArray()) + "|" + if (it.isCash) "1" else "0"
         })
-        val directory = "2\n" + types.sortedBy { it.sortOrder }.joinToString("\n") {
+        val directory = "2\n" + orderedTypes.joinToString("\n") {
             it.id + "|" + Base64.getEncoder().encodeToString(it.name.toByteArray()) + "|" +
                 (if (it.isCash) "1" else "0") + "|" + Base64.getEncoder().encodeToString(it.iconKey.toByteArray())
         }
         add("CaijiSalaryIncomeDirectoryV2", "3", directory)
+        val directoryV3 = "3\n" + orderedTypes.mapIndexed { order, it ->
+            listOf(
+                it.id,
+                Base64.getEncoder().encodeToString(it.name.toByteArray()),
+                if (it.isCash) "1" else "0",
+                Base64.getEncoder().encodeToString(it.iconKey.toByteArray()),
+                if (it.active) "1" else "0",
+                order.toString()
+            ).joinToString("|")
+        }.joinToString("\n")
+        add("CaijiSalaryIncomeDirectoryV3", "4", directoryV3)
         return bytes(d)
     }
     private fun metadata(b:ByteArray?):List<SalaryIncomeType>{
@@ -560,23 +578,27 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         val properties = xml(b).getElementsByTagNameNS(
             "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "property"
         )
-        val value = (0 until properties.length).map { properties.item(it) as Element }
-            .firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV2" }
-            ?.textContent.orEmpty()
+        val directory = (0 until properties.length).map { properties.item(it) as Element }
+        val v3 = directory.firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV3" }?.textContent
+        val isV3 = v3 != null
+        val value = v3 ?: directory.firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV2" }?.textContent.orEmpty()
         if (value.isBlank()) return emptyList()
         val lines = value.lineSequence().toList()
-        require(lines.firstOrNull() == "2") { "工资目录元数据版本不受支持" }
-        return lines.drop(1).filter(String::isNotBlank).map { line ->
+        require(lines.firstOrNull() == if (isV3) "3" else "2") { "工资目录元数据版本不受支持" }
+        val parsed = lines.drop(1).filter(String::isNotBlank).mapIndexed { index, line ->
             val fields = line.split('|')
-            require(fields.size == 4) { "工资目录元数据损坏" }
+            require(fields.size == if (isV3) 6 else 4) { "工资目录元数据损坏（字段数=${fields.size}）" }
             val id = fields[0]
             val name = String(Base64.getDecoder().decode(fields[1]), Charsets.UTF_8)
             val cashFlag = fields[2]
             require(cashFlag in setOf("0", "1")) { "工资目录元数据损坏" }
             val isCash = cashFlag == "1"
             val savedIcon = String(Base64.getDecoder().decode(fields[3]), Charsets.UTF_8)
+            val active = if (isV3) fields[4].also { require(it in setOf("0", "1")) { "工资目录启停状态损坏" } } == "1" else true
+            val sortOrder = if (isV3) fields[5].toIntOrNull()?.also { require(it >= 0) { "工资目录顺序无效" } }
+                ?: error("工资目录顺序无效") else index
             require(id.isNotBlank() && id.length <= 128 && name.isNotBlank() && name == name.trim() && name.length <= 100) {
-                "工资目录元数据损坏"
+                "工资目录元数据损坏（项目名称或ID）"
             }
             val builtIn = SalaryIncomeTypes.defaults.firstOrNull { it.id == id }
             if (builtIn != null) require(builtIn.isCash == isCash) { "工资元数据与内置收入项的现金性质不一致" }
@@ -585,10 +607,15 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                 name = name,
                 isCash = isCash,
                 builtIn = builtIn != null,
-                sortOrder = builtIn?.sortOrder ?: 0,
-                iconKey = if (CategoryCatalog.isAllowedIcon(savedIcon)) savedIcon else "other"
+                sortOrder = sortOrder,
+                iconKey = if (CategoryCatalog.isAllowedIcon(savedIcon)) savedIcon else "other",
+                active = active
             )
         }
+        require(parsed.map { it.id }.distinct().size == parsed.size) { "工资元数据含重复收入项 ID" }
+        require(parsed.map { it.name }.distinct().size == parsed.size) { "工资元数据含重复收入项名称" }
+        if (isV3) require(parsed.map { it.sortOrder }.distinct().size == parsed.size) { "工资目录顺序重复" }
+        return parsed
     }
     private fun relationship(b:ByteArray):ByteArray{val d=xml(b);val r=d.documentElement;val n=(0 until r.childNodes.length).mapNotNull{r.childNodes.item(it) as? Element};if(n.none{it.getAttribute("Type").endsWith("/custom-properties")}){val e=d.createElementNS(r.namespaceURI,"Relationship");e.setAttribute("Id","rIdSalaryCustom");e.setAttribute("Type","http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties");e.setAttribute("Target","docProps/custom.xml");r.appendChild(e)};return bytes(d)}
     private fun contentType(b:ByteArray):ByteArray{val d=xml(b);val r=d.documentElement;val n=(0 until r.childNodes.length).mapNotNull{r.childNodes.item(it) as? Element};if(n.none{it.getAttribute("PartName")=="/docProps/custom.xml"}){val e=d.createElementNS(r.namespaceURI,"Override");e.setAttribute("PartName","/docProps/custom.xml");e.setAttribute("ContentType","application/vnd.openxmlformats-officedocument.custom-properties+xml");r.appendChild(e)};return bytes(d)}

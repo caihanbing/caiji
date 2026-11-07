@@ -149,6 +149,7 @@ private fun CategoryTagGlyph(contentDescription: String?, modifier: Modifier) {
 }
 
 internal fun categoryEmoji(key: String): String = when (key) {
+    "other" -> "✨"
     "restaurant" -> "🍜"; "shopping_bag" -> "🛍️"; "train" -> "🚆"; "home" -> "🏠"; "daily" -> "🧹"
     "movie" -> "🎬"; "medical" -> "✚"; "school" -> "📚"; "phone" -> "📱"; "favorite" -> "💝"
     "salary" -> "💼"; "gift" -> "🎁"; "work" -> "🧰"; "savings" -> "💰"
@@ -157,5 +158,19 @@ internal fun categoryEmoji(key: String): String = when (key) {
     "bus" -> "🚌"; "taxi" -> "🚕"; "car" -> "🚗"; "fuel" -> "⛽"; "parking" -> "🅿️"; "bicycle" -> "🚲"
     "flight" -> "✈️"; "travel" -> "🧳"; "hotel" -> "🏨"; "utilities" -> "💡"; "repair" -> "🛠️"; "furniture" -> "🪑"
     "game" -> "🎮"; "music" -> "🎵"; "fitness" -> "🏋️"; "pet" -> "🐾"; "baby" -> "🍼"; "family" -> "👨‍👩‍👧"
-    "rent_income" -> "🏠"; "interest" -> "📈"; "allowance" -> "💵"; else -> "✨"
+    "rent_income" -> "🏠"; "interest" -> "📈"; "allowance" -> "💵"
+    "breakfast" -> "🍳"; "lunch" -> "🍱"; "dinner" -> "🥘"; "late_night" -> "🍢"
+    "snack" -> "🍿"; "beverage" -> "🍺"; "takeaway" -> "🥡"; "dining_out" -> "🥂"
+    "housekeeping" -> "🧑‍🍳"; "cleaning" -> "🧽"; "laundry" -> "🧺"; "kitchenware" -> "🍴"
+    "bedding" -> "🛏️"; "flower" -> "💐"; "moving" -> "📦"; "delivery" -> "🚚"
+    "motorcycle" -> "🏍️"; "high_speed_rail" -> "🚄"; "subway" -> "🚇"; "ferry" -> "⛴️"
+    "toll" -> "🛣️"; "car_service" -> "🔧"; "driving" -> "🪪"; "shipping" -> "📮"
+    "medicine" -> "💊"; "dental" -> "🦷"; "checkup" -> "🩺"; "glasses" -> "👓"
+    "rehab" -> "🩹"; "books" -> "📖"; "stationery" -> "✏️"; "course" -> "🎓"
+    "office" -> "🖥️"; "meeting" -> "🗓️"; "software" -> "💿"; "subscription" -> "🔑"
+    "cloud" -> "☁️"; "investment" -> "📊"; "securities" -> "📉"; "loan" -> "🏦"
+    "sports" -> "⚽"; "swimming" -> "🏊"; "ball_sports" -> "🏀"; "camping" -> "🏕️"
+    "photography" -> "📸"; "concert" -> "🎤"; "retirement" -> "🧓"; "wedding" -> "💍"
+    "festival" -> "🎆"; "present" -> "🎀"; "donation" -> "🤝"; "volunteer" -> "🫶"
+    else -> "✨"
 }

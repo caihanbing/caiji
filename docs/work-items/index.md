@@ -22,4 +22,5 @@
 | [`WORK-20261106-001`](WORK-20261106-001.md) | 财记账单与工资汇总入口优化 | change | medium | handoff-ready | ledger-entries, entry-categories, salary-records, local-backup, user-feedback, app-updates | 2026-11-06 |
 | [`WORK-20261106-002`](WORK-20261106-002.md) | 财记界面统一与工资收入项编辑 | change | high | handoff-ready | salary-records, ledger-entries, entry-categories | 2026-11-06 |
 | [`WORK-20261106-003`](WORK-20261106-003.md) | 财记 0.5.4 实机反馈界面优化 | change | medium | handoff-ready | ledger-entries, salary-records, local-backup | 2026-11-06 |
+| [`WORK-20261107-001`](WORK-20261107-001.md) | 财记 0.5.5 工资界面与收入项管理优化 | change | high | handoff-ready | salary-records, ledger-entries, entry-categories, local-backup | 2026-11-07 |
 <!-- manage-dev-work:index:end -->

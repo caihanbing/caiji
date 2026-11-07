@@ -16,6 +16,7 @@ import app.caiji.android.update.GitHubRelease
 import app.caiji.android.update.ReleaseVersion
 import app.caiji.android.ui.theme.CaijiTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +35,10 @@ class UpdateSettingsScreenTest {
         }
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-salary"))
         compose.onNodeWithTag("settings-salary").assertIsDisplayed()
+        val incomeTypes = compose.onNodeWithTag("settings-salary-types").fetchSemanticsNode().boundsInRoot
+        val importExcel = compose.onNodeWithTag("settings-salary-import").fetchSemanticsNode().boundsInRoot
+        val exportExcel = compose.onNodeWithTag("settings-salary-export").fetchSemanticsNode().boundsInRoot
+        assertTrue(incomeTypes.top < importExcel.top && importExcel.top < exportExcel.top)
         compose.onNodeWithText("账单").assertIsDisplayed()
         compose.onNodeWithText("工资").assertIsDisplayed()
         compose.onNodeWithText("导入 Excel").performClick()

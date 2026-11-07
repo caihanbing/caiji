@@ -90,14 +90,14 @@ class EverydayLedgerFlowTest {
         }
         compose.onNodeWithTag("nav-salary").performClick()
         compose.onNodeWithText("＋  新增收入").performClick()
-        compose.onNodeWithTag("salary-field-毛收入").performTextClearance()
-        compose.onNodeWithTag("salary-field-毛收入").performTextInput("123.45")
+        compose.onNodeWithTag("salary-field-收入").performTextClearance()
+        compose.onNodeWithTag("salary-field-收入").performTextInput("123.45")
 
         compose.activityRule.scenario.recreate()
         compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("salary-field-毛收入").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithTag("salary-field-收入").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("salary-field-毛收入").assertTextContains("123.45", substring = true)
+        compose.onNodeWithTag("salary-field-收入").assertTextContains("123.45", substring = true)
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
@@ -245,6 +245,7 @@ class EverydayLedgerFlowTest {
         compose.waitUntil(timeoutMillis = 5_000) {
             compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
+        compose.onNodeWithTag("nav-ledger").performClick()
 
         val month = java.time.YearMonth.now()
         compose.onNodeWithTag("ledger-open-bills").performClick()

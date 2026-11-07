@@ -32,6 +32,7 @@ import app.caiji.android.domain.CategoryCatalog
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Rule
 import org.junit.Test
@@ -169,7 +170,7 @@ class CategorySettingsScreenTest {
 
         compose.onNodeWithTag("category-add").performClick()
         compose.onNodeWithTag("category-editor-type-EXPENSE").assertIsSelected()
-        assertEquals(48, CategoryCatalog.iconKeys().size)
+        assertEquals(100, CategoryCatalog.iconKeys().size)
         CategoryCatalog.iconKeys().forEach { icon -> compose.onAllNodesWithTag("category-icon-${icon.key}").assertCountEquals(1) }
         compose.onNodeWithText("分类名称").performTextInput("自定义分类")
         compose.onNodeWithTag("category-editor-type-INCOME").performClick()

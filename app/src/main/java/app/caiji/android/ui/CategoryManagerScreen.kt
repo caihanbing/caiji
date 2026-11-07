@@ -246,8 +246,8 @@ private fun CategoryRow(
                 )
                 if (!category.active) Text("已停用", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.labelSmall)
             }
-            ReorderButton("上移分类 ${category.name}", "category-move-up-${category.id}", canMoveUp, onMoveUp)
-            ReorderButton("下移分类 ${category.name}", "category-move-down-${category.id}", canMoveDown, onMoveDown)
+            ManagementReorderButton("上移分类 ${category.name}", "category-move-up-${category.id}", canMoveUp, onMoveUp)
+            ManagementReorderButton("下移分类 ${category.name}", "category-move-down-${category.id}", canMoveDown, onMoveDown)
             Switch(
                 checked = category.active,
                 onCheckedChange = { onActive(category.id, it) },
@@ -260,7 +260,7 @@ private fun CategoryRow(
 }
 
 @Composable
-private fun ReorderButton(label: String, tag: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun ManagementReorderButton(label: String, tag: String, enabled: Boolean, onClick: () -> Unit) {
     Surface(
         color = Color.Transparent,
         modifier = Modifier.size(48.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick)

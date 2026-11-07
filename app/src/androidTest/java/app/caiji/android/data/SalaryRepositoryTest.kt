@@ -62,6 +62,41 @@ class SalaryRepositoryTest {
         assertEquals(renamed, repo.incomeTypes().first { it.id == custom.id })
     }
 
+    @Test fun incomeTypesCanBeDisabledReorderedAndReenabledTransactionally() = runBlocking {
+        val types = repo.incomeTypes()
+        val first = types.first { it.id == "builtin-1" }
+        val second = types.first { it.id == "builtin-2" }
+        repo.setIncomeTypeActive(first.id, false)
+        assertEquals(false, repo.incomeTypes().first { it.id == first.id }.active)
+        assertEquals(false, repo.moveIncomeType(first.id, -1))
+
+        val custom = repo.createIncomeType("积分奖励", isCash = false, iconKey = "gift")
+        assertEquals(true, repo.incomeTypes().last { it.id == custom.id }.active)
+        assertEquals(true, repo.moveIncomeType(custom.id, -1))
+        val reordered = repo.incomeTypes()
+        assertEquals(reordered.size - 2, reordered.indexOfFirst { it.id == custom.id })
+        assertEquals(reordered.indices.toList(), reordered.map { it.sortOrder })
+
+        repo.setIncomeTypeActive(first.id, true)
+        assertEquals(true, repo.incomeTypes().first { it.id == first.id }.active)
+    }
+
+    @Test fun disabledIncomeTypeCannotBeSelectedForNewSalaryButCanRemainOnHistory() = runBlocking {
+        val type = repo.incomeTypes().first { it.id == "builtin-1" }
+        val now = System.currentTimeMillis()
+        val existing = SalaryEntry("salary-before-disable", LocalDate.now(), type.id, 20000,
+            isCash = type.isCash, createdAtMillis = now, updatedAtMillis = now)
+        repo.save(existing)
+        repo.setIncomeTypeActive(type.id, false)
+        repo.save(existing.copy(grossFen = 25000))
+        assertEquals(25000L, repo.entry(existing.id)!!.grossFen)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repo.save(existing.copy(id = "new-after-disable", grossFen = 30000)) }
+        }
+        assertEquals(1, repo.entries().size)
+    }
+
     @Test fun repositoryPreparesImportPolicyAndAtomicallyAppliesDirectoryUpdates() {
         val methods = RoomSalaryRepository::class.java.declaredMethods
         org.junit.Assert.assertNotNull(
