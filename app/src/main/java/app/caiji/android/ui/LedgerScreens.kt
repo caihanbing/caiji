@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,6 +57,42 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
+
+@Composable
+internal fun FinancialGroupHeader(
+    title: String,
+    headerTag: String,
+    titleTag: String,
+    summaryTag: String,
+    modifier: Modifier = Modifier,
+    summary: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = modifier.fillMaxWidth()
+            .padding(start = 20.dp, end = 18.dp, top = 13.dp, bottom = 7.dp)
+            .testTag(headerTag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            title,
+            modifier = Modifier.weight(0.9f).testTag(titleTag),
+            color = CaijiPalette.Ink,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Box(Modifier.weight(1.1f), contentAlignment = Alignment.CenterEnd) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()).testTag(summaryTag)
+                    .semantics(mergeDescendants = true) {},
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = summary
+            )
+        }
+    }
+}
 
 @Composable
 internal fun LedgerHome(
@@ -116,37 +153,28 @@ internal fun LedgerHome(
                         val expense = dailyTotal(dayEntries, EntryType.EXPENSE)
                         val income = dailyTotal(dayEntries, EntryType.INCOME)
                         val hasSummary = expense.signum() > 0 || income.signum() > 0
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 20.dp, end = 18.dp, top = 13.dp, bottom = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        if (hasSummary) {
+                            FinancialGroupHeader(
+                                title = day.format(DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA)),
+                                headerTag = "daily-header-$day",
+                                titleTag = "daily-date-$day",
+                                summaryTag = "daily-summary-$day"
+                            ) {
+                                    if (income.signum() > 0) Text("收入 ¥${formatYuan(income)}", color = CaijiPalette.SecondaryText,
+                                        style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                                    if (expense.signum() > 0) Text("支出 ¥${formatYuan(expense)}", color = CaijiPalette.SecondaryText,
+                                        style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+                            }
+                        } else {
                             Text(
                                 day.format(DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA)),
-                                modifier = Modifier.weight(if (hasSummary) 0.9f else 1f).testTag("daily-date-$day"),
+                                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 18.dp, top = 13.dp, bottom = 7.dp)
+                                    .testTag("daily-date-$day"),
                                 color = CaijiPalette.Ink,
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            if (hasSummary) Box(
-                                modifier = Modifier.weight(1.1f),
-                                contentAlignment = Alignment.CenterEnd
-                            ) {
-                                Row(
-                                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                                        .testTag("daily-summary-$day").semantics(mergeDescendants = true) {},
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (income.signum() > 0) Text("收入 ¥${formatYuan(income)}", color = CaijiPalette.SecondaryText,
-                                        style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
-                                    if (expense.signum() > 0) Text("支出 ¥${formatYuan(expense)}", color = CaijiPalette.SecondaryText,
-                                        style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
-                                }
-                            }
                         }
                     }
                     items(dayEntries, key = { it.id }) { entry ->

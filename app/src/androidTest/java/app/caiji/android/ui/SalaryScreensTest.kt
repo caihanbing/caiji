@@ -11,13 +11,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onNodeWithTag
@@ -39,6 +43,9 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.caiji.android.data.RoomSalaryRepository
 import app.caiji.android.data.SalaryDatabase
+import app.caiji.android.data.LedgerEntry
+import app.caiji.android.domain.Category
+import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiTheme
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiThemeId
@@ -84,7 +91,7 @@ class SalaryScreensTest {
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
-    @Test fun salarySummaryGroupsSameMonthByYearAndShowsFilteredNetSubtotals() {
+    @Test fun salaryMonthlyHeadersShowCashAndNonCashNetIncomeAndOneDividerPerMonth() {
         val type = runBlocking { repository.incomeTypes().first { it.isCash } }
         val nonCashType = runBlocking { repository.incomeTypes().first { !it.isCash } }
         val now = java.time.LocalDate.now()
@@ -104,13 +111,58 @@ class SalaryScreensTest {
         compose.onNodeWithTag(olderGroup).assertIsDisplayed()
         assertTrue(compose.onNodeWithTag(newerGroup).fetchSemanticsNode().boundsInRoot.top <
             compose.onNodeWithTag(olderGroup).fetchSemanticsNode().boundsInRoot.top)
-        compose.onNodeWithTag("salary-summary-filter-CASH").performClick()
-        compose.onNodeWithTag("salary-detail-total").assertTextContains("2笔", substring = true)
-        compose.onNodeWithTag("salary-detail-total").assertTextContains("￥280.00", substring = true)
-        compose.onNodeWithTag("salary-group-total-${now.year}-${now.monthValue.toString().padStart(2, '0')}", useUnmergedTree = true)
-            .assertTextContains("1笔", substring = true).assertTextContains("￥80.00", substring = true)
+        val currentMonth = "${now.year}-${now.monthValue.toString().padStart(2, '0')}"
+        val previousMonth = "${now.year - 1}-${now.monthValue.toString().padStart(2, '0')}"
+        compose.onNodeWithTag("salary-group-cash-total-$currentMonth", useUnmergedTree = true).assertTextEquals("现金 ¥80.00")
+        compose.onNodeWithTag("salary-group-noncash-total-$currentMonth", useUnmergedTree = true).assertTextEquals("非现金 ¥50.00")
+        compose.onNodeWithTag("salary-group-cash-total-$previousMonth", useUnmergedTree = true).assertTextEquals("现金 ¥200.00")
+        compose.onNodeWithTag("salary-group-noncash-total-$previousMonth", useUnmergedTree = true).assertTextEquals("非现金 ¥0.00")
+        compose.onAllNodesWithTag("salary-month-divider-$currentMonth").assertCountEquals(1)
+        compose.onAllNodesWithTag("salary-month-divider-$previousMonth").assertCountEquals(1)
+        compose.onAllNodesWithText("收入明细").assertCountEquals(0)
+        compose.onAllNodesWithTag("salary-detail-total").assertCountEquals(0)
+        compose.onAllNodesWithTag("salary-home-filter-ALL").assertCountEquals(0)
+        compose.onAllNodesWithTag("salary-summary-filter-CASH").assertCountEquals(0)
         compose.onNodeWithTag("salary-month-title-${now.year}-${now.monthValue}", useUnmergedTree = true)
             .assertTextEquals("${now.year}年${now.monthValue}月")
+    }
+
+    @Test fun monthlyCashSummariesUseBigIntegerAndStayRightAlignedAtLargeFont() {
+        val types = runBlocking { repository.incomeTypes() }
+        val cash = types.first { it.isCash }
+        val nonCash = types.first { !it.isCash }
+        val now = java.time.LocalDate.now()
+        runBlocking {
+            repository.save(app.caiji.android.data.SalaryEntry("large-cash-a", now, cash.id, Long.MAX_VALUE,
+                isCash = true, createdAtMillis = 1L, updatedAtMillis = 1L))
+            repository.save(app.caiji.android.data.SalaryEntry("large-cash-b", now, cash.id, Long.MAX_VALUE,
+                isCash = true, createdAtMillis = 2L, updatedAtMillis = 2L))
+            repository.save(app.caiji.android.data.SalaryEntry("large-noncash", now, nonCash.id, Long.MAX_VALUE,
+                isCash = false, createdAtMillis = 3L, updatedAtMillis = 3L))
+        }
+        val width = 320.dp
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.3f)) {
+                CaijiTheme {
+                    Box(Modifier.width(width).height(760.dp)) {
+                        SalaryRootScreen(repository, null, {}, {}, {})
+                    }
+                }
+            }
+        }
+        val monthKey = "${now.year}-${now.monthValue.toString().padStart(2, '0')}"
+        val title = compose.onNodeWithTag("salary-month-title-${now.year}-${now.monthValue}", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val summary = compose.onNodeWithTag("salary-month-summary-$monthKey", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val list = compose.onNodeWithTag("salary-record-list").fetchSemanticsNode().boundsInRoot
+        val expectedRight = with(compose.density) { list.right - 18.dp.toPx() }
+        assertTrue("Monthly summary should not overlap the month label", title.right <= summary.left)
+        assertTrue("Monthly summary should keep an 18dp right inset", kotlin.math.abs(summary.right - expectedRight) <= 1f)
+        compose.onNodeWithTag("salary-group-cash-total-$monthKey", useUnmergedTree = true)
+            .assertTextEquals("现金 ¥${formatYuan(java.math.BigInteger.valueOf(Long.MAX_VALUE).multiply(java.math.BigInteger.valueOf(2)))}")
+        compose.onNodeWithTag("salary-group-noncash-total-$monthKey", useUnmergedTree = true)
+            .assertTextEquals("非现金 ¥${formatYuan(java.math.BigInteger.valueOf(Long.MAX_VALUE))}")
     }
 
     @Test fun salaryRowsSwipeToConfirmDeleteAndRefreshTotals() {
@@ -131,12 +183,15 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-list-confirm-delete").performClick()
         compose.waitUntil(5_000) { runBlocking { repository.entries().isEmpty() } }
         compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
-        compose.onNodeWithTag("salary-detail-total").assertTextContains("0笔 | ￥0.00", substring = true)
+        compose.onNodeWithTag("salary-net-total").assertTextContains("0.00", substring = true)
     }
 
     @Test fun incomeTypeManagementUsesCategoryControlsAndPersistsActiveOrder() {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {},
             initialManagementRoute = SalaryManagementRoute.TYPES) } }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("salary-income-type-move-up-builtin-1").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("salary-income-type-move-up-builtin-1").assertIsNotEnabled()
         compose.onAllNodesWithContentDescription("编辑收入项").assertCountEquals(0)
         compose.onNodeWithTag("salary-income-type-move-down-builtin-1").performClick()
@@ -606,7 +661,7 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-field-工会费").assertIsDisplayed()
     }
 
-    @Test fun homeAndSummaryKeepIndependentCashFilters() {
+    @Test fun annualHomeAndAllYearsSummaryShowAllRowsWithoutCashFilters() {
         val types = runBlocking { repository.incomeTypes() }
         val cashItem = types.first { it.isCash }
         val nonCashItem = types.first { !it.isCash }
@@ -619,26 +674,66 @@ class SalaryScreensTest {
         }
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("salary-entry-row-home-cash").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("salary-home-filter-NONCASH").performClick()
-        compose.onNodeWithTag("salary-detail-total").assertTextContains("0笔 | ￥0.00", substring = true)
-        compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
+        compose.onNodeWithTag("salary-entry-row-home-cash").assertIsDisplayed()
+        compose.onAllNodesWithTag("salary-entry-row-summary-noncash").assertCountEquals(0)
+        val monthKey = "${today.year}-${today.monthValue.toString().padStart(2, '0')}"
+        compose.onNodeWithTag("salary-group-cash-total-$monthKey", useUnmergedTree = true).assertTextEquals("现金 ¥100.00")
+        compose.onNodeWithTag("salary-group-noncash-total-$monthKey", useUnmergedTree = true).assertTextEquals("非现金 ¥0.00")
+        compose.onAllNodesWithText("收入明细").assertCountEquals(0)
+        compose.onAllNodesWithTag("salary-home-filter-ALL").assertCountEquals(0)
 
         compose.onNodeWithTag("salary-open-summary").performClick()
         compose.onNodeWithTag("salary-net-total").assertTextContains("150.00", substring = true)
         compose.onNodeWithTag("salary-record-list").assertIsDisplayed()
-        compose.onNodeWithTag("salary-summary-filter-NONCASH").performClick()
-        compose.onNodeWithTag("salary-detail-total").assertTextContains("1笔 | ￥50.00", substring = true)
+        val priorMonthKey = "${today.minusYears(1).year}-${today.minusYears(1).monthValue.toString().padStart(2, '0')}"
+        compose.onNodeWithTag("salary-group-cash-total-$priorMonthKey", useUnmergedTree = true).assertTextEquals("现金 ¥0.00")
+        compose.onNodeWithTag("salary-group-noncash-total-$priorMonthKey", useUnmergedTree = true).assertTextEquals("非现金 ¥50.00")
         compose.onNodeWithTag("salary-record-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-entry-row-summary-noncash"))
         compose.onNodeWithTag("salary-entry-row-summary-noncash").assertIsDisplayed()
+        compose.onAllNodesWithTag("salary-summary-filter-CASH").assertCountEquals(0)
         compose.onNodeWithTag("salary-header-back").performClick()
-        compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
+        compose.onNodeWithTag("salary-entry-row-home-cash").assertIsDisplayed()
 
         compose.onNodeWithTag("salary-open-summary").performClick()
-        compose.onNodeWithTag("salary-detail-total").assertTextContains("1笔 | ￥50.00", substring = true)
+        compose.onNodeWithTag("salary-net-total").assertTextContains("150.00", substring = true)
         compose.onNodeWithTag("salary-record-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-entry-row-summary-noncash"))
         compose.onNodeWithTag("salary-entry-row-summary-noncash").assertIsDisplayed()
+    }
+
+    @Test fun salarySummaryButtonMatchesLedgerHomePosition() {
+        val viewportWidth = 393.dp
+        val viewportHeight = 820.dp
+        var showLedger by mutableStateOf(true)
+        compose.setContent {
+            CaijiTheme {
+                Box(Modifier.width(viewportWidth).height(viewportHeight)) {
+                    if (showLedger) {
+                        LedgerHome(
+                            month = java.time.YearMonth.now(), expenseFen = java.math.BigInteger.ZERO,
+                            incomeFen = java.math.BigInteger.ZERO, entries = emptyList(), categories = emptyList(),
+                            onPrevious = {}, onNext = {}, onEdit = {}, onCreateEntry = {}
+                        )
+                    } else {
+                        SalaryRootScreen(repository, null, {}, {}, {})
+                    }
+                    TextButton(
+                        onClick = { showLedger = false },
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).testTag("salary-compare-screen")
+                    ) { Text("切换") }
+                }
+            }
+        }
+        compose.onNodeWithTag("ledger-open-bills").assertIsDisplayed()
+        val ledgerBounds = compose.onNodeWithTag("ledger-open-bills").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("salary-compare-screen").performClick()
+        compose.onNodeWithTag("salary-open-summary").assertIsDisplayed()
+        val salaryBounds = compose.onNodeWithTag("salary-open-summary").fetchSemanticsNode().boundsInRoot
+        assertTrue("Salary summary button should align horizontally with ledger", kotlin.math.abs(ledgerBounds.left - salaryBounds.left) <= 1f)
+        assertTrue("Salary summary button should align vertically with ledger", kotlin.math.abs(ledgerBounds.top - salaryBounds.top) <= 1f)
+        assertTrue("Salary summary button should match ledger button size",
+            kotlin.math.abs(ledgerBounds.width - salaryBounds.width) <= 1f && kotlin.math.abs(ledgerBounds.height - salaryBounds.height) <= 1f)
     }
 
     @Test fun settingsExportOffersAllOrIndependentYearWithoutUsingHomePeriod() {

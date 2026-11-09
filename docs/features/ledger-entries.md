@@ -5,14 +5,14 @@
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告。 -->
-<!-- last-verified: 2026-11-07 -->
-<!-- code-basis: HEAD 8408b9c4745c; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- last-verified: 2026-11-09 -->
+<!-- code-basis: HEAD 3677470031e2; worktree-digest sha256:d227ef0c5ff95cb3d4c2c050e1218b9776563c9e8e7bc5d112fb2177f7bb4d35 -->
 
 ## 快速上下文
 
 财记底部导航依次为“账单、图表、记一笔、工资、设置”；图表入口仅为占位，工资功能在独立数据库中记录并统计，不属于账单收支。账单首页左上角“汇总”入口进入月/年汇总表，页面标题为“汇总”。记一笔编辑器标题与入口相同且位于屏幕中心；月汇总年份选择器位于“汇总”标题右侧，和账单月份、工资年份控件共用 14sp 半粗文字。年度总表继续显示全部年份。记账 Pager 覆盖金额与分类内容；分类网格按可用高度布局并在网格内滚动。未溢出的账单金额/表格关闭子滚动手势，超宽表格优先滚动并在边界把剩余手势交给 Pager。年月报告一次读取同一期间汇总和支出/收入双排行，切页直接使用已加载数据；账单月/年总表进入时按年份读取两类数据，页签切换不重查或清空汇总；年份变化和重试统一刷新双列表，渲染时按所选年份过滤月度数据。期间变化及账单/分类写入会失效旧报告快照。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。
 
-金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。工资摘要卡复用期间报告的 `FinancialSummaryCard`，工资年月标题沿用账单日期字号与间距，工资行左滑复用账单删除动作样式。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
+金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。账单每日摘要和工资月分组标题复用 `FinancialGroupHeader`，采用相同的 20dp/18dp 内容边距、标题比例、文本样式和右侧横向滚动区域。工资摘要卡复用期间报告的 `FinancialSummaryCard`，工资收入行金额最大宽度 140dp，左滑复用账单删除动作。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
 ## 目标与边界
 
@@ -69,7 +69,7 @@
 ## 架构与代码地图
 
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
-- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、月度汇总、每日分组、账单行和空状态。
+- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、`FinancialGroupHeader`、月度汇总、每日分组、账单行和空状态。
 - `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
 - `app/src/main/java/app/caiji/android/ui/PeriodControls.kt` — 明细和报告共用的期间箭头及结余汇总卡。
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
@@ -142,7 +142,7 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；当前版本 `0.5.5`、`versionCode=20`；账本 Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.6`、`versionCode=21`；账本 Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room；期间双排行同一快照读取，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
@@ -208,6 +208,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-09 — 与工资主页共用分组标题布局
+
+- **状态**：已完成
+- **变化**：抽取 `FinancialGroupHeader` 供账单每日摘要和工资月分组共享，统一边距、标题比例、滚动摘要及字级。
+- **原因**：避免工资和账单主页的同类标题、摘要位置出现偏差。
+- **兼容性**：账单金额、每日分组行为、Room schema 1 和备份格式 2 不变。
+- **验证**：API26/API34 各 164 项仪器测试通过，含账单窄屏每日摘要定位与工资现金分类月汇总。
 
 ### 2026-11-07 — 工资页面复用账单摘要与明细交互
 
