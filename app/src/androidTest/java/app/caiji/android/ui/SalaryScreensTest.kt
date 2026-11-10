@@ -7,6 +7,9 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,6 +71,20 @@ class SalaryScreensTest {
         runBlocking { repository.initialize() }
     }
     @After fun tearDown() { database.close() }
+
+    private fun assertContainsPaletteColor(tag: String, expected: Color) {
+        val pixels = compose.onNodeWithTag(tag, useUnmergedTree = true).captureToImage().toPixelMap()
+        val red = (expected.red * 255).toInt()
+        val green = (expected.green * 255).toInt()
+        val blue = (expected.blue * 255).toInt()
+        val found = (0 until pixels.height).any { y -> (0 until pixels.width).any { x ->
+            val pixel = pixels[x, y]
+            pixel.alpha > 0.5f && kotlin.math.abs((pixel.red * 255).toInt() - red) <= 8 &&
+                kotlin.math.abs((pixel.green * 255).toInt() - green) <= 8 &&
+                kotlin.math.abs((pixel.blue * 255).toInt() - blue) <= 8
+        } }
+        assertTrue("$tag should render with the expected palette color", found)
+    }
 
     @Test fun savesSalaryAndShowsItsIndependentSummary() {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
@@ -156,8 +173,9 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-year-row-${now.year}").performClick()
         compose.onNodeWithTag("page-title").assertTextEquals("${now.year}年报告")
         compose.onNodeWithTag("salary-report-net-total").assertTextContains("14,500.00", substring = true)
-        compose.onNodeWithTag("salary-income-ranking-${cash.id}").assertTextContains("¥9,000.00")
-        compose.onNodeWithTag("salary-income-ranking-${nonCash.id}").assertTextContains("¥5,500.00")
+        compose.onNodeWithTag("salary-income-ranking-${cash.id}").assertTextContains("+¥9,000.00")
+        compose.onNodeWithTag("salary-income-ranking-${nonCash.id}").assertTextContains("+¥5,500.00")
+        assertContainsPaletteColor("salary-income-ranking-${cash.id}-amount", CaijiPalette.Income)
     }
 
     @Test fun salaryAnnualTableScrollsWideAmountsAtCompactLargeFont() {
@@ -254,6 +272,8 @@ class SalaryScreensTest {
             isCash = true, createdAtMillis = 1L, updatedAtMillis = 1L)
         runBlocking {
             repository.save(current)
+            repository.save(app.caiji.android.data.SalaryEntry("detail-prior-month", now.minusMonths(1), cash.id, 25_000,
+                isCash = true, createdAtMillis = 4L, updatedAtMillis = 4L))
             repository.save(app.caiji.android.data.SalaryEntry("detail-other-year", now.minusYears(1), cash.id, 300_000,
                 isCash = true, createdAtMillis = 2L, updatedAtMillis = 2L))
             repository.save(app.caiji.android.data.SalaryEntry("detail-other-type", now, nonCash.id, 50_000,
@@ -262,14 +282,24 @@ class SalaryScreensTest {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.onNodeWithTag("salary-open-summary").performClick()
         compose.onNodeWithTag("salary-year-row-${now.year}").performClick()
-        compose.onNodeWithTag("salary-income-ranking-${cash.id}").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("salary-income-ranking-${cash.id}").assertIsDisplayed()
+        compose.onNodeWithTag("salary-income-ranking-${cash.id}").performClick()
 
-        compose.onNodeWithTag("salary-income-detail-title").assertTextEquals(cash.name)
-        compose.onNodeWithTag("salary-net-total").assertTextContains("1,400.00", substring = true)
+        compose.onNodeWithTag("salary-income-detail-title", useUnmergedTree = true).assertTextEquals(cash.name)
+        compose.onNodeWithTag("salary-net-total").assertTextContains("1,650.00", substring = true)
         compose.onAllNodesWithText("该收入项暂无工资记录").assertCountEquals(0)
         compose.onNodeWithTag("salary-record-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-entry-row-detail-current"))
         compose.onNodeWithTag("salary-entry-row-detail-current").assertIsDisplayed()
+        assertContainsPaletteColor("salary-entry-amount-detail-current", CaijiPalette.Income)
+        compose.onNodeWithTag("salary-entry-date-detail-current", useUnmergedTree = true)
+            .assertTextEquals("${now.monthValue}月${now.dayOfMonth}日 · 现金")
+        compose.onNodeWithTag("salary-entry-row-detail-prior-month").assertIsDisplayed()
+        val currentMonthKey = "${now.year}-${now.monthValue.toString().padStart(2, '0')}"
+        val previousMonth = now.minusMonths(1)
+        val previousMonthKey = "${previousMonth.year}-${previousMonth.monthValue.toString().padStart(2, '0')}"
+        compose.onAllNodesWithTag("salary-month-group-$currentMonthKey").assertCountEquals(0)
+        compose.onAllNodesWithTag("salary-month-group-$previousMonthKey").assertCountEquals(0)
         compose.onAllNodesWithTag("salary-entry-row-detail-other-year").assertCountEquals(0)
         compose.onAllNodesWithTag("salary-entry-row-detail-other-type").assertCountEquals(0)
 
@@ -277,8 +307,11 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-field-收入").performTextClearance()
         compose.onNodeWithTag("salary-field-收入").performTextInput("1200.00")
         compose.onNodeWithText("保存收入").performClick()
-        compose.onNodeWithTag("salary-income-detail-title").assertTextEquals(cash.name)
-        compose.onNodeWithTag("salary-net-total").assertTextContains("1,600.00", substring = true)
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("salary-income-detail-title", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("salary-income-detail-title", useUnmergedTree = true).assertTextEquals(cash.name)
+        compose.onNodeWithTag("salary-net-total").assertTextContains("1,850.00", substring = true)
         compose.onNodeWithTag("salary-record-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-entry-row-detail-current"))
         compose.onNodeWithTag("salary-entry-row-detail-current").assertTextContains("+¥1,100.00", substring = true)
@@ -287,11 +320,11 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-delete-detail-current").performClick()
         compose.onNodeWithTag("salary-list-confirm-delete").performClick()
         compose.waitUntil(5_000) { runBlocking { repository.entries().none { it.id == current.id } } }
-        compose.onNodeWithText("该收入项暂无工资记录").assertIsDisplayed()
+        compose.onNodeWithTag("salary-entry-row-detail-prior-month").assertIsDisplayed()
         compose.onNodeWithTag("salary-header-back").performClick()
-        compose.onAllNodesWithTag("salary-income-ranking-${cash.id}").assertCountEquals(0)
+        compose.onNodeWithTag("salary-income-ranking-${cash.id}").assertIsDisplayed()
         compose.onNodeWithTag("salary-header-back").performClick()
-        compose.onNodeWithTag("salary-year-row-${now.year}").assertTextContains("¥500.00")
+        compose.onNodeWithTag("salary-year-row-${now.year}").assertTextContains("¥750.00")
         compose.onNodeWithTag("salary-header-back").performClick()
         compose.onNodeWithTag("salary-year-label").assertTextEquals("${now.year}年")
     }
@@ -467,7 +500,7 @@ class SalaryScreensTest {
         compose.onNodeWithText("回到工资页").performClick()
         compose.onNodeWithTag("salary-field-收入").assertTextContains("235.50", substring = true)
         compose.onNodeWithText("保存收入").performClick()
-        compose.onNodeWithTag("salary-net-total").assertTextContains("235.50", substring = true)
+        compose.onNodeWithTag("salary-net-total", useUnmergedTree = true).assertTextContains("235.50", substring = true)
     }
 
     @Test fun editorHidesBottomNavigationAndBackToHomeRestoresIt() {
@@ -776,7 +809,7 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-year-row-${now.year - 1}").performClick()
         compose.onNodeWithTag("page-title").assertTextEquals("${now.year - 1}年报告")
         compose.onNodeWithTag("salary-report-net-total").assertTextContains("200.00", substring = true)
-        compose.onNodeWithTag("salary-income-ranking-${item.id}").assertTextContains("¥200.00").performClick()
+        compose.onNodeWithTag("salary-income-ranking-${item.id}").assertTextContains("+¥200.00").performClick()
         compose.onNodeWithTag("salary-entry-row-summary-prior").assertIsDisplayed()
         compose.onNodeWithTag("salary-entry-row-summary-prior").performClick()
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
@@ -816,7 +849,7 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-entry-row-summary-cancel").assertIsDisplayed()
         compose.onNodeWithTag("salary-entry-row-summary-cancel").performClick()
         compose.onNodeWithTag("salary-header-back").performClick()
-        compose.onNodeWithTag("salary-income-detail-title").assertTextEquals(cash.name)
+        compose.onNodeWithTag("salary-income-detail-title", useUnmergedTree = true).assertTextEquals(cash.name)
         compose.onNodeWithTag("salary-header-back").performClick()
         compose.onNodeWithTag("salary-report-net-total").assertTextContains("100.00", substring = true)
 

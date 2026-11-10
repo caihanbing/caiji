@@ -28,6 +28,13 @@ class MainActivityClipboardTest {
             activity.getSharedPreferences("clipboard_transaction_imports", Context.MODE_PRIVATE).edit().clear().commit()
             (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                 .setPrimaryClip(ClipData.newPlainText("bank transaction", clip))
+        }
+        var hasWindowFocus = false
+        compose.waitUntil(10_000) {
+            compose.activityRule.scenario.onActivity { activity -> hasWindowFocus = activity.hasWindowFocus() }
+            hasWindowFocus
+        }
+        compose.activityRule.scenario.onActivity { activity ->
             activity.readClipboardForForeground()
         }
         compose.waitForIdle()

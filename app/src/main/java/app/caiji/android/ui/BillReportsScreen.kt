@@ -125,7 +125,7 @@ internal fun BillReportsScreen(
                     PeriodAmountTableRow("${yearValue}年", billAmounts(totals), "year-row-$yearValue") { onOpenYear(yearValue) }
                     }
                     Column(Modifier.fillMaxSize()) {
-                        PeriodSummaryCard("全部账单总结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出")
+                        PeriodSummaryCard("累计结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出")
                         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                             PeriodAmountTable("年份", listOf("收入", "支出", "结余"), tableRows,
                                 "bill-table-scroll", listOf("bill-table-header-income", "bill-table-header-expense", "bill-table-header-balance"))
@@ -212,7 +212,9 @@ internal fun BillPeriodReportScreen(
                     rankingCategories.forEach { total ->
                         FinancialRankingRow(
                             icon = categoryEmoji(total.category.iconKey), label = total.category.name,
-                            amountFen = total.amountFen, tag = "report-category-${total.category.id}"
+                            amountFen = total.amountFen, amountSign = if (pageType == EntryType.INCOME) "+" else "−",
+                            amountColor = if (pageType == EntryType.INCOME) CaijiPalette.Income else CaijiPalette.Ink,
+                            tag = "report-category-${total.category.id}"
                         ) { onSelectCategory(total.category.id) }
                     }
                     if (rankingDataReady && !loading && error == null && rankingCategories.isEmpty()) {
@@ -225,23 +227,16 @@ internal fun BillPeriodReportScreen(
             val selectedCategory = visibleReport?.categories?.firstOrNull { it.category.id == selectedCategoryId }?.category
             Text(selectedCategory?.name.orEmpty(), Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 visibleReport?.entries.orEmpty().forEach { entry ->
                     val category = selectedCategory
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onEditEntry(entry) }
-                            .testTag("report-entry-${entry.id}").padding(horizontal = 8.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(category?.name ?: "账单", color = CaijiPalette.Ink)
-                            Text("${entry.occurredOn.monthValue}月${entry.occurredOn.dayOfMonth}日${entry.note?.let { " · $it" }.orEmpty()}",
-                                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Text("${if (entry.type == EntryType.EXPENSE) "−" else "+"}¥${formatYuan(entry.amountFen)}",
-                            style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
-                    }
-                    HorizontalDivider(color = CaijiPalette.Divider)
+                    FinancialDetailRow(
+                        icon = categoryEmoji(category?.iconKey ?: "other"), title = category?.name ?: "已停用分类",
+                        subtitle = "${entry.occurredOn.monthValue}月${entry.occurredOn.dayOfMonth}日${entry.note?.let { " · $it" }.orEmpty()}",
+                        amount = "${if (entry.type == EntryType.EXPENSE) "−" else "+"}¥${formatYuan(entry.amountFen)}",
+                        amountColor = if (entry.type == EntryType.INCOME) CaijiPalette.Income else CaijiPalette.Ink,
+                        tag = "report-entry-${entry.id}", iconTag = "report-entry-icon-${entry.id}"
+                    ) { onEditEntry(entry) }
                 }
                 if (!loading && error == null && visibleReport?.entries.isNullOrEmpty()) {
                     Text("该分类暂无账单", Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)

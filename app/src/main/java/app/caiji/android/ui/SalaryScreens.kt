@@ -301,7 +301,7 @@ private fun SalaryHome(
         )
         if (message != null) TextButton(onClick = dismiss) { Text(message, color = CaijiPalette.SecondaryText) }
         summarySubtitle?.let {
-            Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp).testTag("salary-income-detail-title"),
+            Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).testTag("salary-income-detail-title"),
                 color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -315,43 +315,55 @@ private fun SalaryHome(
             Text(if (detailEmptyState) "返回年度报告查看其他收入项。" else "记录工资、补贴和福利，或从 Excel 导入。", color = CaijiPalette.SecondaryText,
                 style = MaterialTheme.typography.bodySmall)
         } else LazyColumn(Modifier.weight(1f).testTag("salary-record-list"), state = listState) {
-            val grouped = periodRows.groupBy { YearMonth.from(it.occurredOn) }.toSortedMap(reverseOrder())
-            grouped.forEach { (month, entries) ->
-                val cashFen = entries.asSequence().filter { it.isCash }
-                    .fold(BigInteger.ZERO) { total, entry -> total + BigInteger.valueOf(entry.netIncomeFen) }
-                val nonCashFen = entries.asSequence().filterNot { it.isCash }
-                    .fold(BigInteger.ZERO) { total, entry -> total + BigInteger.valueOf(entry.netIncomeFen) }
-                val monthKey = "${month.year}-${month.monthValue.toString().padStart(2, '0')}"
-                item(key = "salary-month-${month.year}-${month.monthValue}") {
-                    FinancialGroupHeader(
-                        title = "${month.year}年${month.monthValue}月",
-                        headerTag = "salary-month-group-$monthKey",
-                        titleTag = "salary-month-title-${month.year}-${month.monthValue}",
-                        summaryTag = "salary-month-summary-$monthKey"
-                    ) {
-                        Text("现金 ¥${formatYuan(cashFen)}", color = CaijiPalette.SecondaryText,
-                            style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false,
-                            modifier = Modifier.testTag("salary-group-cash-total-$monthKey"))
-                        Text("非现金 ¥${formatYuan(nonCashFen)}", color = CaijiPalette.SecondaryText,
-                            style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false,
-                            modifier = Modifier.testTag("salary-group-noncash-total-$monthKey"))
-                    }
-                }
-                items(entries.sortedWith(compareByDescending<SalaryEntry> { it.occurredOn }
+            if (summarySubtitle != null) {
+                items(periodRows.sortedWith(compareByDescending<SalaryEntry> { it.occurredOn }
                     .thenByDescending { it.updatedAtMillis }), key = { it.id }) { entry ->
                     SalaryEntryRow(entry, typesById[entry.incomeTypeId]?.name ?: entry.incomeTypeId,
-                        typesById[entry.incomeTypeId]?.iconKey ?: "other", summary,
+                        typesById[entry.incomeTypeId]?.iconKey ?: "other", summary = false, incomeTypeDetail = true,
                         deleteRevealed = openSwipeEntryId == entry.id,
                         onSwipeChanged = { setSwipeEntryId(if (it) entry.id else null) },
                         onClick = { if (openSwipeEntryId == entry.id) setSwipeEntryId(null) else edit(entry) },
                         onDelete = { setSwipeEntryId(null); deleteCandidate = entry.id })
                 }
-                item(key = "salary-divider-${month.year}-${month.monthValue}") {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(top = 3.dp).testTag("salary-month-divider-$monthKey"),
-                        color = CaijiPalette.Divider,
-                        thickness = 1.dp
-                    )
+            } else {
+                val grouped = periodRows.groupBy { YearMonth.from(it.occurredOn) }.toSortedMap(reverseOrder())
+                grouped.forEach { (month, entries) ->
+                    val cashFen = entries.asSequence().filter { it.isCash }
+                        .fold(BigInteger.ZERO) { total, entry -> total + BigInteger.valueOf(entry.netIncomeFen) }
+                    val nonCashFen = entries.asSequence().filterNot { it.isCash }
+                        .fold(BigInteger.ZERO) { total, entry -> total + BigInteger.valueOf(entry.netIncomeFen) }
+                    val monthKey = "${month.year}-${month.monthValue.toString().padStart(2, '0')}"
+                    item(key = "salary-month-${month.year}-${month.monthValue}") {
+                        FinancialGroupHeader(
+                            title = "${month.year}年${month.monthValue}月",
+                            headerTag = "salary-month-group-$monthKey",
+                            titleTag = "salary-month-title-${month.year}-${month.monthValue}",
+                            summaryTag = "salary-month-summary-$monthKey"
+                        ) {
+                            Text("现金 ¥${formatYuan(cashFen)}", color = CaijiPalette.SecondaryText,
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false,
+                                modifier = Modifier.testTag("salary-group-cash-total-$monthKey"))
+                            Text("非现金 ¥${formatYuan(nonCashFen)}", color = CaijiPalette.SecondaryText,
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false,
+                                modifier = Modifier.testTag("salary-group-noncash-total-$monthKey"))
+                        }
+                    }
+                    items(entries.sortedWith(compareByDescending<SalaryEntry> { it.occurredOn }
+                        .thenByDescending { it.updatedAtMillis }), key = { it.id }) { entry ->
+                        SalaryEntryRow(entry, typesById[entry.incomeTypeId]?.name ?: entry.incomeTypeId,
+                            typesById[entry.incomeTypeId]?.iconKey ?: "other", summary,
+                            deleteRevealed = openSwipeEntryId == entry.id,
+                            onSwipeChanged = { setSwipeEntryId(if (it) entry.id else null) },
+                            onClick = { if (openSwipeEntryId == entry.id) setSwipeEntryId(null) else edit(entry) },
+                            onDelete = { setSwipeEntryId(null); deleteCandidate = entry.id })
+                    }
+                    item(key = "salary-divider-${month.year}-${month.monthValue}") {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(top = 3.dp).testTag("salary-month-divider-$monthKey"),
+                            color = CaijiPalette.Divider,
+                            thickness = 1.dp
+                        )
+                    }
                 }
             }
         }
@@ -448,17 +460,18 @@ private fun SalaryYearReportScreen(
             rightLabel = "${year}年扣款", rightFen = totals.deductionFen,
             primaryTag = "salary-report-net-total", leftTag = "salary-report-gross-total"
         )
-        Text("收入项排行", Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            color = CaijiPalette.Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(listState).padding(horizontal = 16.dp)
             .testTag("salary-year-report-ranking-list")) {
+            Text("收入项排行", Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
+                color = CaijiPalette.Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (ranking.isEmpty()) {
                 Text("该年暂无工资记录", Modifier.fillMaxWidth().padding(24.dp).testTag("salary-year-report-empty"),
                     color = CaijiPalette.SecondaryText)
             } else ranking.forEach { item ->
                 FinancialRankingRow(
                     icon = categoryEmoji(item.incomeType.iconKey), label = item.incomeType.name,
-                    amountFen = item.netFen, tag = "salary-income-ranking-${item.incomeType.id}"
+                    amountFen = item.netFen, amountSign = "+", amountColor = CaijiPalette.Income,
+                    tag = "salary-income-ranking-${item.incomeType.id}"
                 ) { onOpenIncomeType(item.incomeType.id) }
             }
         }
@@ -474,6 +487,7 @@ private fun SalaryEntryRow(
     name: String,
     iconKey: String,
     summary: Boolean,
+    incomeTypeDetail: Boolean = false,
     deleteRevealed: Boolean,
     onSwipeChanged: (Boolean) -> Unit,
     onClick: () -> Unit,
@@ -527,14 +541,16 @@ private fun SalaryEntryRow(
             Column(Modifier.weight(1f)) {
                 Text(name, color = CaijiPalette.Ink, style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val date = if (summary) entry.occurredOn.format(DateTimeFormatter.ofPattern("yyyy/M/d", Locale.CHINA))
+                val date = if (summary && !incomeTypeDetail) entry.occurredOn.format(DateTimeFormatter.ofPattern("yyyy/M/d", Locale.CHINA))
                     else entry.occurredOn.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
                 Text(date + " · " + if (entry.isCash) "现金" else "非现金", color = CaijiPalette.SecondaryText,
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("salary-entry-date-${entry.id}"))
             }
-            Text("+¥" + formatYuan(entry.netIncomeFen), Modifier.widthIn(max = 140.dp), color = CaijiPalette.Income,
-                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
-                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.widthIn(max = 140.dp).testTag("salary-entry-amount-${entry.id}"), contentAlignment = Alignment.CenterEnd) {
+                Text("+¥" + formatYuan(entry.netIncomeFen), color = CaijiPalette.Income,
+                    style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

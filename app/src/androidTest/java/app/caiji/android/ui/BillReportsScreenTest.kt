@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasParent
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -17,12 +18,14 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
@@ -44,6 +47,7 @@ import app.caiji.android.data.LedgerEntry
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiTheme
+import app.caiji.android.ui.theme.CaijiPalette
 import java.math.BigInteger
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicReference
@@ -80,7 +84,7 @@ class BillReportsScreenTest {
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithText("汇总").assertIsDisplayed()
         compose.onNodeWithText("账单").assertDoesNotExist()
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
         compose.onNodeWithTag("report-balance").assertTextContains("−¥44.44")
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { swipeRight() }
         compose.onNodeWithText("2026年结余").assertIsDisplayed()
@@ -110,7 +114,7 @@ class BillReportsScreenTest {
         compose.onAllNodesWithTag("report-balance").assertCountEquals(2)
         compose.onNodeWithTag("bill-mode-pager").performTouchInput { up() }
         compose.mainClock.advanceTimeBy(800)
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
         compose.onNodeWithTag("report-balance").assertTextContains("−¥70.00")
         compose.mainClock.autoAdvance = true
     }
@@ -183,7 +187,7 @@ class BillReportsScreenTest {
             }
         }
         compose.onNodeWithTag("month-row-10").performTouchInput { swipeLeft() }
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
     }
 
     @Test fun summaryCardSwipeBeyondThePagerThresholdPassesThroughItsNonOverflowingAmounts() {
@@ -205,7 +209,7 @@ class BillReportsScreenTest {
             up()
         }
         compose.mainClock.advanceTimeBy(800)
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
         compose.mainClock.autoAdvance = true
     }
 
@@ -292,6 +296,8 @@ class BillReportsScreenTest {
                 )
             }
         }
+        compose.onNodeWithTag("report-category-food").assertTextContains("−¥1.00")
+        assertContainsPaletteColor("report-category-food-amount", CaijiPalette.Ink)
         compose.onNodeWithTag("report-ranking-pager").performTouchInput {
             val start = center
             down(start)
@@ -300,9 +306,97 @@ class BillReportsScreenTest {
         compose.mainClock.advanceTimeByFrame()
         compose.onNodeWithTag("report-type-INCOME").assertIsSelected()
         compose.onAllNodesWithTag("report-category-salary").assertCountEquals(1)
+        compose.onNodeWithTag("report-category-salary").assertTextContains("+¥9.00")
         compose.onNodeWithTag("period-summary-card").assertIsDisplayed()
         compose.onNodeWithText("2026年结余").assertIsDisplayed()
         compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun categoryDetailsShowTheCategoryIconAndSignedAmountInTheSharedLedgerRowLayout() {
+        val category = Category("restaurant-detail", EntryType.EXPENSE, "吃饭-店里", "restaurant")
+        val entry = LedgerEntry("detail-food", EntryType.EXPENSE, 2_950, category.id,
+            java.time.LocalDate.of(2026, 11, 10), "午饭")
+        val editedEntry = AtomicReference<String>()
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(2_950, 0),
+                        listOf(CategoryPeriodTotal(category, BigInteger.valueOf(2_950))), listOf(entry)
+                    ),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE,
+                    selectedCategoryId = category.id, onBack = {}, onRetry = {}, onSelectType = {},
+                    onSelectCategory = {}, onEditEntry = { editedEntry.set(it.id) }
+                )
+            }
+        }
+        compose.onNodeWithTag("report-entry-icon-detail-food", useUnmergedTree = true).assertTextEquals("🍜")
+        compose.onNodeWithTag("report-entry-detail-food").assertTextContains("吃饭-店里")
+            .assertTextContains("11月10日 · 午饭").assertTextContains("−¥29.50")
+        val iconBounds = compose.onNodeWithTag("report-entry-detail-food-icon-container", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val iconSizePx = with(compose.density) { 40.dp.toPx() }
+        assertTrue("Category icon tile should be 40dp square", kotlin.math.abs(iconBounds.width - iconSizePx) <= 1f &&
+            kotlin.math.abs(iconBounds.height - iconSizePx) <= 1f)
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val expectedInset = with(compose.density) { 18.dp.toPx() }
+        val amountBounds = compose.onNodeWithTag("report-entry-detail-food-amount", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("Detail amount should end at the 18dp content edge", kotlin.math.abs(amountBounds.right - (root.right - expectedInset)) <= 1f)
+        compose.onNodeWithTag("report-entry-detail-food").performClick()
+        assertEquals("detail-food", editedEntry.get())
+    }
+
+    @Test fun categoryDetailsUseTheOtherIconWhenCategoryIsUnavailable() {
+        val entry = LedgerEntry("detail-missing-category", EntryType.EXPENSE, 500, "missing-category",
+            java.time.LocalDate.of(2026, 11, 9), null)
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(500, 0),
+                        emptyList(), listOf(entry)
+                    ),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE,
+                    selectedCategoryId = "missing-category", onBack = {}, onRetry = {}, onSelectType = {},
+                    onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("report-entry-icon-detail-missing-category", useUnmergedTree = true).assertTextEquals("✨")
+        compose.onNodeWithTag("report-entry-detail-missing-category").assertTextContains("已停用分类")
+    }
+
+    @Test fun financialRowsConstrainLongAmountsAtCompactLargeFont() {
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                CaijiTheme {
+                    Column(Modifier.width(320.dp)) {
+                        FinancialRankingRow(
+                            icon = "🍜", label = "A very long restaurant category", amountFen = BigInteger("12345678901234567890"),
+                            amountSign = "−", amountColor = CaijiPalette.Ink, tag = "large-ranking-row", onClick = {}
+                        )
+                        FinancialDetailRow(
+                            icon = "🍜", title = "A very long restaurant category", subtitle = "11月10日 · 备注很长",
+                            amount = "−¥123,456,789,012,345,678.90", amountColor = CaijiPalette.Ink,
+                            tag = "large-detail-row", onClick = {}
+                        )
+                    }
+                }
+            }
+        }
+        val viewport = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val amountWidthLimit = with(compose.density) { 140.dp.toPx() }
+        listOf("large-ranking-row-amount", "large-detail-row-amount").forEach { tag ->
+            val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue("$tag should stay within the 140dp amount column", bounds.width <= amountWidthLimit + 1f)
+            assertTrue("$tag should remain inside the viewport", bounds.left >= viewport.left && bounds.right <= viewport.right)
+        }
+        compose.onNodeWithTag("large-ranking-row").assertTextContains("A very long restaurant category")
+        compose.onNodeWithTag("large-detail-row").assertTextContains("A very long restaurant category")
     }
 
     @Test fun reportDoesNotRenderSnapshotOrSummaryFromAnotherPeriod() {
@@ -356,7 +450,7 @@ class BillReportsScreenTest {
         assertEquals("2026-10", opened.get())
         compose.onNodeWithTag("bill-tab-year").performClick()
         compose.onAllNodesWithTag("bill-selected-year").assertCountEquals(0)
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
         compose.onNodeWithText("2025年").assertIsDisplayed().performClick()
         assertEquals("year-2025", opened.get())
     }
@@ -404,7 +498,7 @@ class BillReportsScreenTest {
         compose.onNodeWithTag("month-row-10").assertIsDisplayed().performClick()
         assertEquals("month-10", opened.get())
         compose.onNodeWithTag("bill-table-scroll").performTouchInput { swipeLeft() }
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
     }
 
     @Test fun monthlyBalanceTextEndsAtTheEighteenDpContentEdge() {
@@ -589,9 +683,23 @@ class BillReportsScreenTest {
         compose.onNodeWithTag("bill-tab-year").assertIsDisplayed()
         compose.onNodeWithTag("year-row-2026").assertIsDisplayed()
         compose.onAllNodesWithText("历史总结余").assertCountEquals(0)
-        compose.onNodeWithText("全部账单总结余").assertIsDisplayed()
+        compose.onNodeWithText("累计结余").assertIsDisplayed()
         compose.onAllNodesWithText("123,456,789,012,345,678.91", substring = true).assertCountEquals(2)
     }
 
     private fun totals(expense: Long, income: Long) = LedgerPeriodTotals(BigInteger.valueOf(expense), BigInteger.valueOf(income))
+
+    private fun assertContainsPaletteColor(tag: String, expected: Color) {
+        val pixels = compose.onNodeWithTag(tag, useUnmergedTree = true).captureToImage().toPixelMap()
+        val red = (expected.red * 255).toInt()
+        val green = (expected.green * 255).toInt()
+        val blue = (expected.blue * 255).toInt()
+        val found = (0 until pixels.height).any { y -> (0 until pixels.width).any { x ->
+            val pixel = pixels[x, y]
+            pixel.alpha > 0.5f && kotlin.math.abs((pixel.red * 255).toInt() - red) <= 8 &&
+                kotlin.math.abs((pixel.green * 255).toInt() - green) <= 8 &&
+                kotlin.math.abs((pixel.blue * 255).toInt() - blue) <= 8
+        } }
+        assertTrue("$tag should render with the expected palette color", found)
+    }
 }

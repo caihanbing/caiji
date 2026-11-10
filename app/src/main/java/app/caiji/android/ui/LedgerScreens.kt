@@ -99,6 +99,8 @@ internal fun FinancialRankingRow(
     icon: String,
     label: String,
     amountFen: BigInteger,
+    amountSign: String,
+    amountColor: androidx.compose.ui.graphics.Color,
     tag: String,
     onClick: () -> Unit
 ) {
@@ -109,10 +111,52 @@ internal fun FinancialRankingRow(
     ) {
         Text(icon, Modifier.padding(end = 10.dp), style = MaterialTheme.typography.titleMedium)
         Text(label, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("¥${formatYuan(amountFen)}", color = CaijiPalette.Ink,
-            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+        Box(Modifier.widthIn(max = 140.dp).testTag("$tag-amount"), contentAlignment = Alignment.CenterEnd) {
+            Text("$amountSign¥${formatYuan(amountFen)}", color = amountColor,
+                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        }
     }
     HorizontalDivider(color = CaijiPalette.Divider)
+}
+
+@Composable
+internal fun FinancialDetailRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    amount: String,
+    amountColor: androidx.compose.ui.graphics.Color,
+    tag: String,
+    iconTag: String? = null,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag)
+            .padding(horizontal = 18.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp)
+    ) {
+        Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.SurfaceAlt,
+            modifier = Modifier.size(40.dp).testTag("$tag-icon-container")) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(icon, style = MaterialTheme.typography.titleMedium,
+                    modifier = if (iconTag == null) Modifier else Modifier.testTag(iconTag))
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, color = CaijiPalette.Ink, style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(amount, color = amountColor,
+            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 140.dp).testTag("$tag-amount"))
+    }
+    HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = CaijiPalette.Divider)
 }
 
 @Composable
