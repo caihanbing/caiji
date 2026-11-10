@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.*
 import app.caiji.android.ui.theme.CaijiPalette
@@ -40,7 +41,7 @@ import java.util.Locale
 import kotlinx.coroutines.*
 import kotlin.math.roundToInt
 
-private enum class SR { HOME, SUMMARY, EDIT, TYPES, IMPORT, EXPORT }
+private enum class SR { HOME, SUMMARY, YEAR_REPORT, INCOME_DETAILS, EDIT, TYPES, IMPORT, EXPORT }
 internal enum class SalaryManagementRoute { HOME, IMPORT, EXPORT, TYPES }
 
 internal data class SalaryDraft(val date:LocalDate,val typeId:String,val gross:String,val union:String,val pension:String,val medical:String,val unemployment:String,val housing:String,val annuity:String,val tax:String) : java.io.Serializable {
@@ -56,7 +57,7 @@ internal fun SalaryRootScreen(
  initialDraft:SalaryDraft?=null,initialEntry:SalaryEntry?=null,onDraftSnapshotChange:(SalaryDraft?,SalaryEntry?)->Unit={_,_->},
  onAsyncError:(String)->Unit={},onBottomNavigationVisibility:(Boolean)->Unit={},
  initialManagementRoute:SalaryManagementRoute=SalaryManagementRoute.HOME,onManagementBack:()->Unit={},
- onManagementSuccess:(String)->Unit={}
+ onManagementSuccess:(String)->Unit={},homeYear:Int?=null,onHomeYearChange:(Int)->Unit={}
 ){
  val scope = rememberCoroutineScope()
  val settingsOrigin = initialManagementRoute != SalaryManagementRoute.HOME
@@ -80,13 +81,36 @@ internal fun SalaryRootScreen(
  var draft by remember { mutableStateOf(initialDraft) }
  var message by remember { mutableStateOf<String?>(null) }
  var typeSelectionNotice by remember { mutableStateOf<String?>(null) }
- var year by rememberSaveable { mutableIntStateOf(LocalDate.now().year) }
+ var localHomeYear by rememberSaveable { mutableIntStateOf(homeYear ?: LocalDate.now().year) }
+ val selectedHomeYear = homeYear ?: localHomeYear
+ val changeHomeYear:(Int)->Unit={updated->if(homeYear==null)localHomeYear=updated;onHomeYearChange(updated)}
+ var reportYear by rememberSaveable { mutableIntStateOf(selectedHomeYear) }
+ var selectedIncomeTypeId by rememberSaveable { mutableStateOf<String?>(null) }
  var deductionsExpanded by rememberSaveable { mutableStateOf(false) }
  var chooseFirstActiveTypeWhenLoaded by rememberSaveable { mutableStateOf(false) }
  var homeSwipeId by rememberSaveable { mutableStateOf<String?>(null) }
- var summarySwipeId by rememberSaveable { mutableStateOf<String?>(null) }
+ var detailSwipeId by rememberSaveable { mutableStateOf<String?>(null) }
  val homeListState = rememberLazyListState()
- val summaryListState = rememberLazyListState()
+ val detailListState = rememberLazyListState()
+ val annualTableVerticalState = rememberScrollState()
+ val annualTableHorizontalState = rememberScrollState()
+ val yearReportRankingState = rememberScrollState()
+ var lastScrollReportYear by rememberSaveable { mutableIntStateOf(reportYear) }
+ var lastDetailReportYear by rememberSaveable { mutableIntStateOf(reportYear) }
+ var lastDetailIncomeTypeId by rememberSaveable { mutableStateOf(selectedIncomeTypeId) }
+ LaunchedEffect(reportYear) {
+  if (lastScrollReportYear != reportYear) {
+   yearReportRankingState.scrollTo(0)
+   lastScrollReportYear = reportYear
+  }
+ }
+ LaunchedEffect(reportYear, selectedIncomeTypeId) {
+  if (lastDetailReportYear != reportYear || lastDetailIncomeTypeId != selectedIncomeTypeId) {
+   detailListState.scrollToItem(0)
+   lastDetailReportYear = reportYear
+   lastDetailIncomeTypeId = selectedIncomeTypeId
+  }
+ }
  val updateDraft:(SalaryDraft)->Unit={updated->draft=updated;if(updated.typeId.isNotEmpty())typeSelectionNotice=null;onDraftSnapshotChange(updated,selected)}
  suspend fun refresh(){withContext(Dispatchers.IO){types=repo.incomeTypes();records=repo.entries()}}
  val deleteFromList:(String,(String?)->Unit)->Unit={id,done->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";done(null)}.onFailure{val text="工资删除失败，记录仍保留，请重试。";message=text;onAsyncError(text);done(text)}}}
@@ -111,6 +135,8 @@ internal fun SalaryRootScreen(
  BackHandler(page != SR.HOME) {
   when (page) {
    SR.SUMMARY -> page = SR.HOME
+   SR.YEAR_REPORT -> page = SR.SUMMARY
+   SR.INCOME_DETAILS -> page = SR.YEAR_REPORT
    SR.TYPES -> when { typesOrigin == SR.EDIT -> page = SR.EDIT; settingsOrigin -> onManagementBack(); else -> page = typesOrigin }
    SR.IMPORT, SR.EXPORT -> if (settingsOrigin) { if (page == SR.IMPORT) onClear(); onManagementBack() } else { if (page == SR.IMPORT) onClear(); page = SR.HOME }
    SR.EDIT -> { onDraftSnapshotChange(null, null); selected = null; draft = null; page = editOrigin }
@@ -119,9 +145,9 @@ internal fun SalaryRootScreen(
  }
  when(page){
  SR.HOME->SalaryHome(
-  records = records, types = types, year = year, summary = false, message = message,
-  dismiss = { message = null }, previous = { year = (year - 1).coerceAtLeast(1900); homeSwipeId = null },
-  next = { year = (year + 1).coerceAtMost(LocalDate.now().year); homeSwipeId = null }, setYear = { year = it; homeSwipeId = null },
+  records = records, types = types, year = selectedHomeYear, summary = false, message = message,
+  dismiss = { message = null }, previous = { changeHomeYear((selectedHomeYear - 1).coerceAtLeast(1900)); homeSwipeId = null },
+  next = { changeHomeYear((selectedHomeYear + 1).coerceAtMost(LocalDate.now().year)); homeSwipeId = null }, setYear = { changeHomeYear(it); homeSwipeId = null },
   openSummary = { page = SR.SUMMARY }, backToYear = {}, listState = homeListState,
   openSwipeEntryId = homeSwipeId, setSwipeEntryId = { homeSwipeId = it },
   delete = deleteFromList,
@@ -132,14 +158,36 @@ internal fun SalaryRootScreen(
   edit = { entry -> selected = entry; editOrigin = SR.HOME; deductionsExpanded = false; homeSwipeId = null; typeSelectionNotice = null; chooseFirstActiveTypeWhenLoaded = false
    val nextDraft = SalaryDraft.from(entry); draft = nextDraft; onDraftSnapshotChange(nextDraft, entry); page = SR.EDIT }
  )
- SR.SUMMARY->SalaryHome(
-  records = records, types = types, year = year, summary = true, message = message,
-  dismiss = { message = null }, previous = {}, next = {}, setYear = {}, openSummary = {}, backToYear = { page = SR.HOME },
-  listState = summaryListState,
-  openSwipeEntryId = summarySwipeId, setSwipeEntryId = { summarySwipeId = it }, delete = deleteFromList, add = {},
-  edit = { entry -> selected = entry; editOrigin = SR.SUMMARY; deductionsExpanded = false; summarySwipeId = null; typeSelectionNotice = null; chooseFirstActiveTypeWhenLoaded = false
-   val nextDraft = SalaryDraft.from(entry); draft = nextDraft; onDraftSnapshotChange(nextDraft, entry); page = SR.EDIT }
+ SR.SUMMARY->SalaryAnnualSummaryScreen(
+  records = records, tableVerticalState = annualTableVerticalState, tableHorizontalState = annualTableHorizontalState,
+  onBack = { page = SR.HOME },
+  onOpenYear = { selectedYear -> reportYear = selectedYear; page = SR.YEAR_REPORT }
  )
+ SR.YEAR_REPORT->SalaryYearReportScreen(
+  year = reportYear, records = SalaryReports.filter(records, SalaryPeriod.Year(reportYear)), types = types,
+  listState = yearReportRankingState,
+  onBack = { page = SR.SUMMARY },
+  onOpenIncomeType = { id -> selectedIncomeTypeId = id; detailSwipeId = null; page = SR.INCOME_DETAILS }
+ )
+ SR.INCOME_DETAILS -> {
+  val yearEntries = SalaryReports.filter(records, SalaryPeriod.Year(reportYear))
+  val visibleEntries = yearEntries.filter { it.incomeTypeId == selectedIncomeTypeId }
+  val incomeTypeName = types.firstOrNull { it.id == selectedIncomeTypeId }?.name ?: selectedIncomeTypeId.orEmpty()
+  SalaryHome(
+   records = visibleEntries, types = types, year = reportYear, summary = true, message = message,
+   dismiss = { message = null }, previous = {}, next = {}, setYear = {}, openSummary = {},
+   backToYear = { page = SR.YEAR_REPORT }, listState = detailListState,
+   openSwipeEntryId = detailSwipeId, setSwipeEntryId = { detailSwipeId = it }, delete = deleteFromList, add = {},
+   edit = { entry ->
+    selected = entry; editOrigin = SR.INCOME_DETAILS; deductionsExpanded = false
+    detailSwipeId = null; typeSelectionNotice = null; chooseFirstActiveTypeWhenLoaded = false
+    val nextDraft = SalaryDraft.from(entry); draft = nextDraft; onDraftSnapshotChange(nextDraft, entry); page = SR.EDIT
+   },
+   summaryHeaderTitle = "收入项明细", summaryYear = reportYear,
+   summaryTotals = SalaryReports.summarize(yearEntries), summarySubtitle = incomeTypeName,
+   detailEmptyState = true, summaryHeaderBackStartPadding = 4.dp
+  )
+ }
  SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(types.firstOrNull { it.active }?.id.orEmpty()),deductionsExpanded,{deductionsExpanded=it},updateDraft,{page=editOrigin;selected=null;draft=null;onDraftSnapshotChange(null,null)},{e->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资保存失败，输入内容已保留，请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资删除失败，请重试；记录仍保留。若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},typeSelectionNotice)
  SR.TYPES->SalaryTypesScreen(
   types = types,
@@ -192,7 +240,13 @@ private fun SalaryHome(
     setSwipeEntryId: (String?) -> Unit,
     delete: (String, (String?) -> Unit) -> Unit,
     add: () -> Unit,
-    edit: (SalaryEntry) -> Unit
+    edit: (SalaryEntry) -> Unit,
+    summaryHeaderTitle: String = "汇总",
+    summaryYear: Int? = null,
+    summaryTotals: SalaryTotals? = null,
+    summarySubtitle: String? = null,
+    detailEmptyState: Boolean = false,
+    summaryHeaderBackStartPadding: Dp = 0.dp
 ) {
     var yearMenu by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<String?>(null) }
@@ -200,11 +254,11 @@ private fun SalaryHome(
     var deleteMessage by remember { mutableStateOf<String?>(null) }
     val currentYear = LocalDate.now().year
     val periodRows = if (summary) records else SalaryReports.filter(records, SalaryPeriod.Year(year))
-    val sums = SalaryReports.summarize(periodRows)
+    val sums = summaryTotals ?: SalaryReports.summarize(periodRows)
     val typesById = types.associateBy { it.id }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         if (summary) {
-            SalaryHeader("汇总", backToYear)
+            SalaryHeader(summaryHeaderTitle, backToYear, backStartPadding = summaryHeaderBackStartPadding)
         } else {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = openSummary, modifier = Modifier.testTag("salary-open-summary")) {
@@ -235,25 +289,30 @@ private fun SalaryHome(
             }
         }
         FinancialSummaryCard(
-            primaryLabel = if (summary) "累计纯收入" else "本年纯收入",
+            primaryLabel = when { summaryYear != null -> "${summaryYear}年纯收入"; summary -> "累计纯收入"; else -> "本年纯收入" },
             primaryFen = sums.netFen,
-            leftLabel = if (summary) "累计收入" else "本年收入",
+            leftLabel = when { summaryYear != null -> "${summaryYear}年收入"; summary -> "累计收入"; else -> "本年收入" },
             leftFen = sums.grossFen,
             leftColor = CaijiPalette.Income,
-            rightLabel = if (summary) "累计扣款" else "本年扣款",
+            rightLabel = when { summaryYear != null -> "${summaryYear}年扣款"; summary -> "累计扣款"; else -> "本年扣款" },
             rightFen = sums.deductionFen,
             primaryTag = "salary-net-total",
             leftTag = "salary-gross-total"
         )
         if (message != null) TextButton(onClick = dismiss) { Text(message, color = CaijiPalette.SecondaryText) }
+        summarySubtitle?.let {
+            Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp).testTag("salary-income-detail-title"),
+                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         deleteMessage?.let {
             Text(it, Modifier.padding(horizontal = 18.dp, vertical = 2.dp).testTag("salary-list-delete-error"),
                 color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall)
         }
         if (periodRows.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
-            Text("还没有工资记录", style = MaterialTheme.typography.titleLarge)
-            Text("记录工资、补贴和福利，或从 Excel 导入。", color = CaijiPalette.SecondaryText,
+            Text(if (detailEmptyState) "该收入项暂无工资记录" else "还没有工资记录", style = MaterialTheme.typography.titleLarge)
+            Text(if (detailEmptyState) "返回年度报告查看其他收入项。" else "记录工资、补贴和福利，或从 Excel 导入。", color = CaijiPalette.SecondaryText,
                 style = MaterialTheme.typography.bodySmall)
         } else LazyColumn(Modifier.weight(1f).testTag("salary-record-list"), state = listState) {
             val grouped = periodRows.groupBy { YearMonth.from(it.occurredOn) }.toSortedMap(reverseOrder())
@@ -328,6 +387,86 @@ private fun SalaryHome(
         )
     }
 }
+
+@Composable
+private fun SalaryAnnualSummaryScreen(
+    records: List<SalaryEntry>,
+    tableVerticalState: androidx.compose.foundation.ScrollState,
+    tableHorizontalState: androidx.compose.foundation.ScrollState,
+    onBack: () -> Unit,
+    onOpenYear: (Int) -> Unit
+) {
+    val currentYear = LocalDate.now().year
+    val allTotals = SalaryReports.summarize(records)
+    val totalsByYear = records.groupBy { it.occurredOn.year }
+        .mapValues { (_, entries) -> SalaryReports.summarize(entries) }
+    val firstYear = totalsByYear.keys.minOrNull() ?: currentYear
+    val rows = (firstYear..currentYear).toList().asReversed().map { year ->
+        val totals = totalsByYear[year] ?: SalaryTotals()
+        PeriodAmountTableRow(
+            label = "${year}年",
+            amounts = listOf(yuanAmount(totals.grossFen), yuanAmount(totals.deductionFen), yuanAmount(totals.netFen)),
+            tag = "salary-year-row-$year",
+            onClick = { onOpenYear(year) }
+        )
+    }
+    Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
+        SalaryHeader("汇总", onBack, backStartPadding = 4.dp)
+        FinancialSummaryCard(
+            primaryLabel = "累计纯收入", primaryFen = allTotals.netFen,
+            leftLabel = "累计收入", leftFen = allTotals.grossFen, leftColor = CaijiPalette.Income,
+            rightLabel = "累计扣款", rightFen = allTotals.deductionFen,
+            primaryTag = "salary-net-total", leftTag = "salary-gross-total"
+        )
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(tableVerticalState).padding(horizontal = 16.dp)) {
+            PeriodAmountTable(
+                heading = "年份", amountHeadings = listOf("收入", "扣款", "纯收入"), rows = rows,
+                scrollTag = "salary-year-table-scroll",
+                headerTags = listOf("salary-year-table-header-income", "salary-year-table-header-deduction", "salary-year-table-header-net"),
+                horizontalScrollState = tableHorizontalState
+            )
+        }
+    }
+}
+
+@Composable
+private fun SalaryYearReportScreen(
+    year: Int,
+    records: List<SalaryEntry>,
+    types: List<SalaryIncomeType>,
+    listState: androidx.compose.foundation.ScrollState,
+    onBack: () -> Unit,
+    onOpenIncomeType: (String) -> Unit
+) {
+    val totals = SalaryReports.summarize(records)
+    val ranking = SalaryReports.incomeTypeTotals(records, types)
+    Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
+        SalaryHeader("${year}年报告", onBack, backStartPadding = 4.dp)
+        FinancialSummaryCard(
+            primaryLabel = "${year}年纯收入", primaryFen = totals.netFen,
+            leftLabel = "${year}年收入", leftFen = totals.grossFen, leftColor = CaijiPalette.Income,
+            rightLabel = "${year}年扣款", rightFen = totals.deductionFen,
+            primaryTag = "salary-report-net-total", leftTag = "salary-report-gross-total"
+        )
+        Text("收入项排行", Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            color = CaijiPalette.Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(listState).padding(horizontal = 16.dp)
+            .testTag("salary-year-report-ranking-list")) {
+            if (ranking.isEmpty()) {
+                Text("该年暂无工资记录", Modifier.fillMaxWidth().padding(24.dp).testTag("salary-year-report-empty"),
+                    color = CaijiPalette.SecondaryText)
+            } else ranking.forEach { item ->
+                FinancialRankingRow(
+                    icon = categoryEmoji(item.incomeType.iconKey), label = item.incomeType.name,
+                    amountFen = item.netFen, tag = "salary-income-ranking-${item.incomeType.id}"
+                ) { onOpenIncomeType(item.incomeType.id) }
+            }
+        }
+    }
+}
+
+private fun yuanAmount(value: BigInteger): String =
+    if (value.signum() < 0) "−¥${formatYuan(value.abs())}" else "¥${formatYuan(value)}"
 
 @Composable
 private fun SalaryEntryRow(
@@ -823,12 +962,18 @@ private fun SalaryExportScreen(back: () -> Unit, export: (SalaryPeriod) -> Unit)
 }
 
 @Composable
-private fun SalaryHeader(title: String, back: () -> Unit, action: (@Composable () -> Unit)? = null) {
+private fun SalaryHeader(
+    title: String,
+    back: () -> Unit,
+    action: (@Composable () -> Unit)? = null,
+    backStartPadding: Dp = 0.dp
+) {
     CaijiPageTopBar(
         title = title,
         onBack = back,
         backTag = "salary-header-back",
         actionTag = "salary-header-action",
+        backStartPadding = backStartPadding,
         action = action
     )
 }

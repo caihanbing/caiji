@@ -95,6 +95,27 @@ internal fun FinancialGroupHeader(
 }
 
 @Composable
+internal fun FinancialRankingRow(
+    icon: String,
+    label: String,
+    amountFen: BigInteger,
+    tag: String,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag)
+            .padding(horizontal = 8.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(icon, Modifier.padding(end = 10.dp), style = MaterialTheme.typography.titleMedium)
+        Text(label, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("¥${formatYuan(amountFen)}", color = CaijiPalette.Ink,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+    }
+    HorizontalDivider(color = CaijiPalette.Divider)
+}
+
+@Composable
 internal fun LedgerHome(
     month: YearMonth,
     expenseFen: BigInteger,

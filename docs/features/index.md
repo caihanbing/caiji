@@ -8,8 +8,8 @@
 | [`app-appearance`](app-appearance.md) | 应用主题外观 | themes, 换肤 | active | 在设置页选择五套配色，并跨重启应用到全部账本页面和系统栏。 | 2026-11-05 |
 | [`app-updates`](app-updates.md) | 应用版本更新 | 检查更新, 版本更新, GitHub Release | active | 设置页可手动检查 GitHub 正式 Release，应用每次进入前台自动检查并提示高于当前安装版本的更新。 | 2026-11-06 |
 | [`entry-categories`](entry-categories.md) | 账单分类管理 | categories, 分类 | active | 管理收支分类、100 个内置图标、顺序和启停；图标目录也供工资收入项管理复用。 | 2026-11-07 |
-| [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告。 | 2026-11-09 |
+| [`ledger-entries`](ledger-entries.md) | 收支账单与月度明细 | ledger, 账单, 月度汇总 | active | 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告。 | 2026-11-10 |
 | [`local-backup`](local-backup.md) | 本地加密备份与恢复 | backup, 恢复, 加密备份 | active | 以用户选择的本地加密文件完整导出或事务性恢复账单和分类。 | 2026-11-07 |
-| [`salary-records`](salary-records.md) | 工资收入记录 | salary, 工资, 工资明细 | active | 独立工资库按年浏览与跨年汇总；收入项支持改名、图标、启停和排序；100图标目录共用；XLSX迁移目录设置。 | 2026-11-09 |
+| [`salary-records`](salary-records.md) | 工资收入记录 | salary, 工资, 工资明细 | active | 独立工资库按年浏览和跨年汇总；年度表可进入纯收入排行与收入项明细；收入项支持改名、图标、启停和排序；XLSX迁移目录设置。 | 2026-11-10 |
 | [`user-feedback`](user-feedback.md) | 本机问题反馈 | feedback, 问题反馈, 截图分享 | active | 在本机记录体验问题及最多 5 张截图，按用户选择通过 Android 分享面板外发。 | 2026-11-06 |
 <!-- manage-feature-docs:index:end -->

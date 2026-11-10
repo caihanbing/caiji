@@ -197,6 +197,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var pickerError by remember { mutableStateOf<String?>(null) }
     var restoreSessionActive by remember { mutableStateOf(false) }
     var salaryPreview by remember { mutableStateOf<app.caiji.android.data.SalaryImportPreview?>(null) }
+    var salaryHomeYear by rememberSaveable { mutableIntStateOf(LocalDate.now().year) }
     var salaryEditorDraft by rememberSaveable { mutableStateOf<SalaryDraft?>(null) }
     var salaryEditorEntry by rememberSaveable { mutableStateOf<SalaryEntry?>(null) }
     var salaryManagementRoute by rememberSaveable { mutableStateOf(SalaryManagementRoute.HOME) }
@@ -636,6 +637,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.SALARY -> app.caiji.android.ui.SalaryRootScreen(
                     repo = (context.applicationContext as CaijiApplication).salaryRepository,
                     preview = salaryPreview,
+                    homeYear = salaryHomeYear,
+                    onHomeYearChange = { salaryHomeYear = it },
                     initialDraft = salaryEditorDraft,
                     initialEntry = salaryEditorEntry,
                     onDraftSnapshotChange = { draft, entry -> salaryEditorDraft = draft; salaryEditorEntry = entry },

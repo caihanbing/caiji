@@ -1,6 +1,6 @@
-# 财记 0.5.6 macOS 构建与安装
+# 财记 0.5.7 macOS 构建与安装
 
-财记 0.5.6 使用 applicationId `app.caiji.android`、`versionCode=21`、`minSdk=26` 和 `targetSdk=34`。账本 Room schema 保持 1，加密账单备份格式保持 2；工资数据库 schema 为 3。0.5.6 不含数据库迁移。问题反馈、工资、主题偏好和更新提示抑制状态继续各自独立。正式构建入口为 `scripts/build-release-macos.sh`。
+财记 0.5.7 使用 applicationId `app.caiji.android`、`versionCode=22`、`minSdk=26` 和 `targetSdk=34`。账本 Room schema 保持 1，加密账单备份格式保持 2；工资数据库 schema 为 3。0.5.7 不含数据库迁移。问题反馈、工资、主题偏好和更新提示抑制状态继续各自独立。正式构建入口为 `scripts/build-release-macos.sh`。
 
 正式签名材料位于 Git 忽略的 `private-signing/caiji-release.jks` 和 `private-signing/signing.properties`，不得提交或分享。沿用现有正式签名以支持覆盖升级。
 
@@ -14,8 +14,8 @@
 
 默认产物：
 
-    app/build/outputs/apk/release/caiji-0.5.6-release.apk
-    app/build/outputs/apk/release/caiji-0.5.6-release.apk.sha256
+    app/build/outputs/apk/release/caiji-0.5.7-release.apk
+    app/build/outputs/apk/release/caiji-0.5.7-release.apk.sha256
 
 每次发布新版本时，将同一正式 APK 和 SHA-256 sidecar 附到匹配的 `v<version>` GitHub Release。
 
@@ -27,7 +27,7 @@
 4. 若发现更新，检查版本号与 Release 说明后点击“下载更新”；系统浏览器打开 APK，安装仍由用户确认。
 5. 离线时更新检查失败不影响本机账本、工资、反馈与备份功能。
 
-0.5.6 不改变账本 Room schema、工资 Room schema 或加密账单备份格式。正式 APK 沿用现有签名，可覆盖升级并保留本机数据。发布若需回滚，使用更高 versionCode 的兼容修正版，不运行 destructive migration。
+0.5.7 不改变账本 Room schema、工资 Room schema 或加密账单备份格式。正式 APK 沿用现有签名，可覆盖升级并保留本机数据。发布若需回滚，使用更高 versionCode 的兼容修正版，不运行 destructive migration。
 
 ## 回退
 

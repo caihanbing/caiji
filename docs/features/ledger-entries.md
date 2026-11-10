@@ -5,14 +5,14 @@
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告。 -->
-<!-- last-verified: 2026-11-09 -->
-<!-- code-basis: HEAD 3677470031e2; worktree-digest sha256:d227ef0c5ff95cb3d4c2c050e1218b9776563c9e8e7bc5d112fb2177f7bb4d35 -->
+<!-- last-verified: 2026-11-10 -->
+<!-- code-basis: HEAD 999b239c0d2d; worktree-digest sha256:afaf9116dcb0de53954403342ed987378e659ebddeb58302ee47a28474ea608c -->
 
 ## 快速上下文
 
 财记底部导航依次为“账单、图表、记一笔、工资、设置”；图表入口仅为占位，工资功能在独立数据库中记录并统计，不属于账单收支。账单首页左上角“汇总”入口进入月/年汇总表，页面标题为“汇总”。记一笔编辑器标题与入口相同且位于屏幕中心；月汇总年份选择器位于“汇总”标题右侧，和账单月份、工资年份控件共用 14sp 半粗文字。年度总表继续显示全部年份。记账 Pager 覆盖金额与分类内容；分类网格按可用高度布局并在网格内滚动。未溢出的账单金额/表格关闭子滚动手势，超宽表格优先滚动并在边界把剩余手势交给 Pager。年月报告一次读取同一期间汇总和支出/收入双排行，切页直接使用已加载数据；账单月/年总表进入时按年份读取两类数据，页签切换不重查或清空汇总；年份变化和重试统一刷新双列表，渲染时按所选年份过滤月度数据。期间变化及账单/分类写入会失效旧报告快照。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。
 
-金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。账单每日摘要和工资月分组标题复用 `FinancialGroupHeader`，采用相同的 20dp/18dp 内容边距、标题比例、文本样式和右侧横向滚动区域。工资摘要卡复用期间报告的 `FinancialSummaryCard`，工资收入行金额最大宽度 140dp，左滑复用账单删除动作。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
+金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。账单每日摘要和工资月分组标题复用 `FinancialGroupHeader`，账单月/年表与工资跨年汇总复用 `PeriodAmountTable`，统一列宽、标题行、金额右对齐、分隔线及超宽滚动行为。工资收入项排行和账单分类排行复用 `FinancialRankingRow`。工资摘要卡复用期间报告的 `FinancialSummaryCard`，工资收入行金额最大宽度 140dp，左滑复用账单删除动作。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
 ## 目标与边界
 
@@ -71,6 +71,8 @@
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
 - `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、`FinancialGroupHeader`、月度汇总、每日分组、账单行和空状态。
 - `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
+- `app/src/main/java/app/caiji/android/ui/PeriodAmountTable.kt` — 账单期间表和工资年度表共用的三金额列及横向滚动布局。
+- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `FinancialRankingRow` 供账单分类排行和工资收入项排行共用。
 - `app/src/main/java/app/caiji/android/ui/PeriodControls.kt` — 明细和报告共用的期间箭头及结余汇总卡。
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `PeriodRankingSnapshot` 双排行聚合的同一 Room 只读事务读取。
@@ -142,7 +144,7 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.6`、`versionCode=21`；账本 Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.7`、`versionCode=22`；账本 Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room；期间双排行同一快照读取，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
@@ -208,6 +210,22 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-10 — 工资报告复用账单汇总表格和排行布局
+
+- **状态**：已完成
+- **变化**：账单年汇总与工资年度汇总共用四列期间金额表格，工资收入项排行复用账单分类排行行；年度报告统一返回按钮和摘要卡布局。
+- **原因**：依据工资年度报告设计统一同类报表的列宽、对齐、行高、分隔线、滚动和排行交互。
+- **兼容性**：只抽取展示组件；账单金额与分类下钻行为、Room schema 1、备份格式 2 不变。
+- **验证**：账单共享表格测试及 JVM、Lint、API26/API34 各 170 项全量仪器回归通过；正式覆盖升级、工资年表和年报告页面检查见 WORK-20261109-002。
+
+### 2026-11-09 — 与工资共用年度金额表和排行行
+
+- **状态**：已完成
+- **变化**：账单年汇总和工资年度总表复用 `PeriodAmountTable`；分类排行和工资收入项排行复用 `FinancialRankingRow`；汇总标题栏采用相同返回位置。
+- **原因**：统一账单与工资年度统计页面的金额列及可点击排行样式。
+- **兼容性**：账单汇总数据、分类下钻、数据库 schema 1 和备份格式 2 不变。
+- **验证**：账单年表格与排行现有测试及 API26/API34 各 170 项全量仪器测试通过，见 WORK-20261109-002。
 
 ### 2026-11-09 — 与工资主页共用分组标题布局
 

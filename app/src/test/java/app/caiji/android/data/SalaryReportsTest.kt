@@ -35,6 +35,35 @@ class SalaryReportsTest {
         assertEquals(BigInteger.valueOf(123), summary.nonCashNetFen)
     }
 
+    @Test fun incomeTypeYearTotalsUseNetIncomeIncludeDisabledHistoryAndSortTiesStably() {
+        val types = listOf(
+            SalaryIncomeType("alpha", "Z工资", isCash = false, sortOrder = 1, active = false),
+            SalaryIncomeType("beta", "A津贴", isCash = true, sortOrder = 1),
+            SalaryIncomeType("priority", "Y津贴", isCash = false, sortOrder = 0),
+            SalaryIncomeType("huge", "巨额", isCash = true, sortOrder = 3),
+            SalaryIncomeType("zero", "零收入", isCash = false, sortOrder = 0)
+        )
+        val date = LocalDate.of(2026, 11, 1)
+        val entries = listOf(
+            SalaryEntry("a", date, "alpha", 100_000, unionFen = 10_000, isCash = false, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("b", date, "beta", 100_000, unionFen = 10_000, isCash = true, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("priority", date, "priority", 100_000, unionFen = 10_000, isCash = false, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("huge-a", date, "huge", Long.MAX_VALUE, isCash = true, createdAtMillis = 1, updatedAtMillis = 1),
+            SalaryEntry("huge-b", date, "huge", Long.MAX_VALUE, isCash = true, createdAtMillis = 2, updatedAtMillis = 2),
+            SalaryEntry("zero", date, "zero", 100_000, unionFen = 100_000, isCash = false, createdAtMillis = 1, updatedAtMillis = 1)
+        )
+
+        val totals = SalaryReports.incomeTypeTotals(entries, types)
+
+        assertEquals(listOf("huge", "priority", "beta", "alpha", "zero"), totals.map { it.incomeType.id })
+        assertEquals(BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.valueOf(2)), totals.first().netFen)
+        assertEquals(BigInteger.valueOf(90_000), totals[1].netFen)
+        assertEquals(BigInteger.valueOf(90_000), totals[2].netFen)
+        assertEquals(BigInteger.valueOf(90_000), totals[3].netFen)
+        assertEquals(BigInteger.ZERO, totals.last().netFen)
+        assertEquals(false, totals.single { it.incomeType.id == "alpha" }.incomeType.active)
+    }
+
     @Test fun filtersRecordsByCalendarMonthAndYear() {
         val entries = listOf(salaryEntry(day = 1), salaryEntry(date = LocalDate.of(2025, 12, 31), day = 31))
         assertEquals(1, SalaryReports.filter(entries, SalaryPeriod.Month(2026, 11)).size)

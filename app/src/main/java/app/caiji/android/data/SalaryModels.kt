@@ -83,6 +83,8 @@ data class SalaryTotals(
     val entryCount: Int = 0
 )
 
+internal data class SalaryIncomeTypeTotal(val incomeType: SalaryIncomeType, val netFen: BigInteger)
+
 data class SalaryImportDelta(val entriesToInsert: List<SalaryEntry>, val skippedDuplicateCount: Int)
 
 data class SalaryImportCatalog(
@@ -119,6 +121,21 @@ object SalaryReports {
             cashNetFen = if (entry.isCash) sum.cashNetFen + net else sum.cashNetFen,
             nonCashNetFen = if (!entry.isCash) sum.nonCashNetFen + net else sum.nonCashNetFen,
             entryCount = sum.entryCount + 1
+        )
+    }
+
+    internal fun incomeTypeTotals(entries: List<SalaryEntry>, incomeTypes: List<SalaryIncomeType>): List<SalaryIncomeTypeTotal> {
+        val typesById = incomeTypes.associateBy { it.id }
+        val totals = entries.groupBy { it.incomeTypeId }.mapNotNull { (incomeTypeId, rows) ->
+            val type = typesById[incomeTypeId] ?: return@mapNotNull null
+            val net = rows.fold(BigInteger.ZERO) { total, entry -> total + BigInteger.valueOf(entry.netIncomeFen) }
+            SalaryIncomeTypeTotal(type, net)
+        }
+        return totals.sortedWith(
+            compareByDescending<SalaryIncomeTypeTotal> { it.netFen }
+                .thenBy { it.incomeType.sortOrder }
+                .thenBy { it.incomeType.name }
+                .thenBy { it.incomeType.id }
         )
     }
 }

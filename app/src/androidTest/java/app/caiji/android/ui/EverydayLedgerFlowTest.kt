@@ -72,13 +72,69 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("nav-salary").performClick()
         compose.onNodeWithTag("salary-open-summary").performClick()
         compose.onNodeWithText("累计纯收入").assertIsDisplayed()
+        compose.onNodeWithText("年份").assertIsDisplayed()
 
         compose.activityRule.scenario.recreate()
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText("累计纯收入").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("累计纯收入").assertIsDisplayed()
-        compose.onNodeWithText("还没有工资记录").assertIsDisplayed()
+        compose.onNodeWithTag("salary-year-row-${java.time.LocalDate.now().year}").assertTextContains("¥0.00")
+    }
+
+    @Test fun salaryHomeYearSurvivesMainNavigationAndActivityRecreation() {
+        repeat(5) {
+            if (compose.onAllNodesWithTag("nav-salary").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                compose.waitForIdle()
+            }
+        }
+        val priorYear = java.time.LocalDate.now().year - 1
+        compose.onNodeWithTag("nav-salary").performClick()
+        compose.onNodeWithTag("salary-year-label").performClick()
+        compose.onNodeWithTag("salary-year-option-$priorYear").performClick()
+        compose.onNodeWithTag("salary-year-label").assertTextEquals("${priorYear}年")
+
+        compose.onNodeWithTag("nav-ledger").performClick()
+        compose.onNodeWithTag("nav-chart").performClick()
+        compose.onNodeWithTag("nav-settings").performClick()
+        compose.onNodeWithTag("nav-salary").performClick()
+        compose.onNodeWithTag("salary-year-label").assertTextEquals("${priorYear}年")
+
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("salary-year-label").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("salary-year-label").assertTextEquals("${priorYear}年")
+
+        val reportYear = java.time.LocalDate.now().year
+        compose.onNodeWithTag("salary-open-summary").performClick()
+        compose.onNodeWithTag("salary-year-row-$reportYear").performClick()
+        compose.onNodeWithTag("page-title").assertTextEquals("${reportYear}年报告")
+        compose.onNodeWithTag("salary-header-back").performClick()
+        compose.onNodeWithTag("salary-header-back").performClick()
+        compose.onNodeWithTag("salary-year-label").assertTextEquals("${priorYear}年")
+    }
+
+    @Test fun salaryAndBillAnnualSummaryBackControlsShareTheSameBounds() {
+        repeat(5) {
+            if (compose.onAllNodesWithTag("nav-ledger").fetchSemanticsNodes().isEmpty()) {
+                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                compose.waitForIdle()
+            }
+        }
+        compose.onNodeWithTag("nav-ledger").performClick()
+        compose.onNodeWithTag("ledger-open-bills").performClick()
+        val billBack = compose.onNodeWithTag("bills-back").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("bills-back").performClick()
+
+        compose.onNodeWithTag("nav-salary").performClick()
+        compose.onNodeWithTag("salary-open-summary").performClick()
+        val salaryBack = compose.onNodeWithTag("salary-header-back").fetchSemanticsNode().boundsInRoot
+        assertTrue("Salary and bill summary back buttons should match horizontally", kotlin.math.abs(billBack.left - salaryBack.left) <= 1f)
+        assertTrue("Salary and bill summary back buttons should match vertically", kotlin.math.abs(billBack.top - salaryBack.top) <= 1f)
+        assertTrue("Salary and bill summary back targets should have the same size",
+            kotlin.math.abs(billBack.width - salaryBack.width) <= 1f && kotlin.math.abs(billBack.height - salaryBack.height) <= 1f)
     }
 
     @Test fun salaryEditorDraftSurvivesActivityRecreation() {
@@ -221,6 +277,9 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-income-0"))
         compose.onNodeWithTag("entry-category-seed-income-0").performClick()
         compose.onNodeWithTag("entry-key-save").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("+¥1.23").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(note).assertTextContains("+¥1.23")
 
         compose.onNodeWithText(note).performClick()

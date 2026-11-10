@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.lerp
 import app.caiji.android.ui.theme.CaijiPalette
@@ -45,11 +46,12 @@ internal fun CaijiPageTopBar(
     backTag: String,
     actionTag: String,
     backEnabled: Boolean = true,
+    backStartPadding: Dp = 0.dp,
     action: (@Composable () -> Unit)? = null
 ) {
     Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
         Box(
-            Modifier.align(Alignment.CenterStart).size(48.dp)
+            Modifier.align(Alignment.CenterStart).padding(start = backStartPadding).size(48.dp)
                 .clickable(enabled = backEnabled, onClick = onBack)
                 .semantics { contentDescription = "返回" }
                 .testTag(backTag),
