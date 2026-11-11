@@ -4,15 +4,15 @@
 <!-- feature-title: 收支账单与月度明细 -->
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
-<!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告。 -->
-<!-- last-verified: 2026-11-10 -->
-<!-- code-basis: HEAD 05a1a7c3b659; worktree-digest sha256:2cbdc9662bea3911b36f1dd8050be7c49cfe4953e0387669344fa953429a22d5 -->
+<!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告，分类明细支持编辑和左滑删除。 -->
+<!-- last-verified: 2026-11-11 -->
+<!-- code-basis: HEAD bd5dedf03a41; worktree-digest sha256:6e01f21d2486322154f53043d6d6d4489cff9c2c7607daba2e147aa59a88ac66 -->
 
 ## 快速上下文
 
 财记底部导航依次为“账单、图表、记一笔、工资、设置”；图表入口仅为占位，工资功能在独立数据库中记录并统计，不属于账单收支。账单首页左上角“汇总”入口进入月/年汇总表，页面标题为“汇总”。记一笔编辑器标题与入口相同且位于屏幕中心；月汇总年份选择器位于“汇总”标题右侧，和账单月份、工资年份控件共用 14sp 半粗文字。年度总表继续显示全部年份。记账 Pager 覆盖金额与分类内容；分类网格按可用高度布局并在网格内滚动。未溢出的账单金额/表格关闭子滚动手势，超宽表格优先滚动并在边界把剩余手势交给 Pager。年月报告一次读取同一期间汇总和支出/收入双排行，切页直接使用已加载数据；排行榜金额以首页明细金额字号显示，收入使用正号和收入色、支出使用负号和正文色；年账单累计卡标题为“累计结余”；账单月/年总表进入时按年份读取两类数据，页签切换不重查或清空汇总；年份变化和重试统一刷新双列表，渲染时按所选年份过滤月度数据。期间变化及账单/分类写入会失效旧报告快照。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。
 
-金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。账单每日摘要和工资月分组标题复用 `FinancialGroupHeader`，账单月/年表与工资跨年汇总复用 `PeriodAmountTable`，统一列宽、标题行、金额右对齐、分隔线及超宽滚动行为。工资收入项排行和账单分类排行复用 `FinancialRankingRow`；分类明细行显示分类图标（缺失分类回退“其他”），与首页使用相同的40dp图标底、圆角、字号、金额颜色及内边距，行间分隔线两侧各内缩12dp；排行榜和分类明细的金额列最大140dp，长金额单行省略且不挤压名称。工资摘要卡复用期间报告的 `FinancialSummaryCard`，工资收入行金额最大宽度 140dp，左滑复用账单删除动作。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
+金额以正整数分保存，汇总用 `BigInteger`；日期以本地 `LocalDate` 存储。账单每日摘要和工资月分组标题复用 `FinancialGroupHeader`，账单月/年表与工资跨年汇总复用 `PeriodAmountTable`，统一列宽、标题行、金额右对齐、分隔线及超宽滚动行为。工资收入项排行和账单分类排行复用 `FinancialRankingRow`；`FinancialSwipeDeleteContainer` 统一首页账单行和分类明细左滑删除；分类明细行显示分类图标（缺失分类回退“其他”），与首页使用相同的40dp图标底、圆角、字号、金额颜色及内边距，不显示逐笔分隔线；删除需确认，成功后重载当前期间/类型/分类报告，失败提示只保留在当前筛选条件下。排行榜和分类明细的金额列最大140dp，长金额单行省略且不挤压名称。工资摘要卡复用期间报告的 `FinancialSummaryCard`，工资收入行金额最大宽度 140dp，左滑复用账单删除动作。UI 金额格式化会加千位分组并保留两位小数，不参与金额计算。
 
 ## 目标与边界
 
@@ -39,7 +39,8 @@
 - 分段选中背景与文字颜色跟随 `PagerState.currentPageOffsetFraction` 连续变化；类型副作用及报表查询仍在 `settledPage` 更新。
 - 月/年报告在同一期间缓存汇总和收支双排行；类型切换不触发新查询、不清空汇总。期间变化不显示旧数据，账单/分类成功写入与恢复账本后清除快照。
 - 月/年总表进入后由 `BillReportsScreen` 按所选年份统一加载月、年列表；只切换 Pager 页签不会再次查询或清空月度结果。月度汇总和月份行只使用年份与当前选择相同的数据，过滤请求完成前的旧年份结果。切换年份和点击重试都会重载两类列表；离开后返回账单页会重新加载以反映报告编辑。
-- 账单行可左滑展开删除，点击后仍需二次确认；同一时间只展开一行。
+- 首页账单行与分类明细账单均可左滑展开删除，使用100dp宽动作区和40%展开阈值，点击后需二次确认；同一页面同一时间只展开一行。展开行点击会收起，关闭行点击编辑。
+- 分类明细不显示逐笔分隔线。确认删除期间禁用重复操作；取消保留账单，失败显示错误并保留账单，切换期间/类型/分类后清空旧提示；成功后刷新原期间/收支类型/分类报告。删除最后一笔仍留在所选分类并显示空状态；返回排行、总表或首页时显示更新金额。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
 ### 范围外
@@ -69,10 +70,10 @@
 ## 架构与代码地图
 
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
-- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、`FinancialGroupHeader`、月度汇总、每日分组、账单行和空状态。
+- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、`FinancialGroupHeader`、`FinancialSwipeDeleteContainer`、`FinancialDetailRow`、月度汇总和账单行。
 - `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
 - `app/src/main/java/app/caiji/android/ui/PeriodAmountTable.kt` — 账单期间表和工资年度表共用的三金额列及横向滚动布局。
-- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `FinancialRankingRow` 供账单分类排行和工资收入项排行共用。
+- `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `FinancialRankingRow` 供账单分类排行和工资收入项排行共用；`FinancialSwipeDeleteContainer` 供首页账单行和分类明细共用。
 - `app/src/main/java/app/caiji/android/ui/PeriodControls.kt` — 明细和报告共用的期间箭头及结余汇总卡。
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `PeriodRankingSnapshot` 双排行聚合的同一 Room 只读事务读取。
@@ -144,7 +145,7 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.8`、`versionCode=23`；账本 Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.9`、`versionCode=24`；账本 Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room；期间双排行同一快照读取，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
@@ -157,6 +158,7 @@
 
 ### 已执行
 
+- 0.5.9/code24 本轮回归：`:app:testDebugUnitTest`、`:app:lintDebug`通过；API26、API34全量仪器测试各178/178通过。分类明细覆盖行间分隔线、左滑/右滑、单行互斥、确认/取消/失败重试/末条空状态、失败提示按筛选清空及删除后报告和月/年汇总刷新。API34正式签名 AVD 将 0.5.8 覆盖升级到 0.5.9 后保留原账单记录；签名、zipalign、SHA-256证据见 `WORK-20261110-002`。
 - `:app:testDebugUnitTest :app:connectedDebugAndroidTest` — JVM 和 API34 AVD 94 项仪器测试通过；覆盖分类切页开关状态、非溢出账单摘要横滑、短/长表格边界交接、双排行中途显示/摘要稳定及期间隔离。
 - `./scripts/build-release-macos.sh` — Lint、JVM 和正式构建通过；0.3.2/code9 包身份、正式签名、zipalign 与 SHA-256 见 `WORK-20261103-001`。
 - API34 AVD 用 0.3.1 正式包写入 ¥12.34 支出、调换分类顺序、选择青竹主题并保存带截图反馈；覆盖安装 0.3.2 并重启后四项均保留。
@@ -211,14 +213,23 @@
 
 ## 变更记录
 
+### 2026-11-11 — 分类明细左滑删除
+
+- **状态**：已完成
+- **变化**：分类明细逐笔行移除分隔线，左滑显示首页同款删除操作；确认后通过既有账单删除事务，并重新读取当前期间、收支类型和分类报告。取消/失败保留账单，删除末条仍展示当前分类空状态。
+- **原因**：让用户在分类明细内完成与工资逐笔记录一致的滑动删除操作，并在删除后留在原筛选上下文。
+- **兼容性**：仅内部 Compose 展示和删除后报告刷新；账本 schema 1、工资 schema 3、备份格式 2 不变。
+- **验证**：API26/API34全量仪器测试各178项，JVM、Lint通过；覆盖互斥滑动、取消/失败/确认、分类切换后的提示清空、删除末条、报告和月/年汇总刷新。发布证据见 `WORK-20261110-002`。
+
+
+
 ### 2026-11-10 — 统一分类明细和报告金额表达
 
 - **状态**：已完成
 - **变化**：“全部账单总结余”改为“累计结余”；年报告分类金额改为带“−”的首页同字号正文色；分类明细补齐图标并采用与首页一致的图标记录行。
 - **原因**：按用户实机页面对照统一同类账单页面中的金额语义和逐笔视觉样式。
 - **兼容性**：仅 Compose 展示变化；账本 Room schema 1、加密备份格式 2 和账单数据不变。
-- **验证**：API26 全量172项通过；API34账单报告完整25项通过，新增图标/回退用例通过；JVM与Lint通过。API34全量另有1项剪贴板测试因系统预览浮层焦点限制失败，记录见 WORK-20261110-001。
-
+- **验证**：API26/API34全量仪器测试各177项、JVM与Lint通过；分类图标与报告金额用例通过，见 WORK-20261110-001。
 
 ### 2026-11-10 — 工资报告复用账单汇总表格和排行布局
 

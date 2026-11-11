@@ -129,13 +129,15 @@ internal fun FinancialDetailRow(
     amountColor: androidx.compose.ui.graphics.Color,
     tag: String,
     iconTag: String? = null,
+    deleteRevealed: Boolean = false,
+    onSwipeChanged: (Boolean) -> Unit = {},
+    onRequestDelete: () -> Unit = {},
     onClick: () -> Unit
 ) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag)
-            .padding(horizontal = 18.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp)
+    FinancialSwipeDeleteContainer(
+        entryId = tag.removePrefix("report-entry-"), containerTag = "$tag-container", rowTag = tag,
+        deleteRevealed = deleteRevealed, onSwipeChanged = onSwipeChanged,
+        onClick = onClick, onRequestDelete = onRequestDelete
     ) {
         Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.SurfaceAlt,
             modifier = Modifier.size(40.dp).testTag("$tag-icon-container")) {
@@ -156,7 +158,61 @@ internal fun FinancialDetailRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 140.dp).testTag("$tag-amount"))
     }
-    HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = CaijiPalette.Divider)
+}
+
+@Composable
+internal fun FinancialSwipeDeleteContainer(
+    entryId: String,
+    containerTag: String,
+    rowTag: String,
+    deleteRevealed: Boolean,
+    onSwipeChanged: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    onRequestDelete: () -> Unit,
+    content: @Composable RowScope.() -> Unit
+) {
+    val actionWidth = 100.dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val actionWidthPx = with(density) { actionWidth.toPx() }
+    var offsetX by remember(entryId) { mutableFloatStateOf(0f) }
+    LaunchedEffect(deleteRevealed) { offsetX = if (deleteRevealed) -actionWidthPx else 0f }
+    Box(Modifier.fillMaxWidth().clipToBounds().testTag(containerTag)) {
+        Surface(color = CaijiPalette.DangerSoft, shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.align(Alignment.CenterEnd).size(width = actionWidth, height = 48.dp)
+                .clickable(onClick = onRequestDelete)
+                .then(if (deleteRevealed) Modifier.testTag("ledger-delete-$entryId") else Modifier)) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center) {
+                CaijiIcon(CaijiIconName.DELETE, "删除账单", Modifier.size(18.dp))
+                Text("删除", Modifier.padding(start = 4.dp), color = CaijiPalette.Danger,
+                    style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        Row(Modifier.fillMaxWidth().offset { IntOffset(offsetX.roundToInt(), 0) }
+            .pointerInput(entryId, deleteRevealed) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        offsetX = (offsetX + dragAmount).coerceIn(-actionWidthPx, 0f)
+                    },
+                    onDragEnd = {
+                        val reveal = offsetX < -actionWidthPx * .4f
+                        offsetX = if (reveal) -actionWidthPx else 0f
+                        onSwipeChanged(reveal)
+                    },
+                    onDragCancel = {
+                        offsetX = if (deleteRevealed) -actionWidthPx else 0f
+                        onSwipeChanged(deleteRevealed)
+                    }
+                )
+            }
+            .clickable(onClick = { if (deleteRevealed) onSwipeChanged(false) else onClick() })
+            .background(CaijiPalette.Background)
+            .testTag(rowTag)
+            .padding(horizontal = 18.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp), content = content)
+    }
 }
 
 @Composable
@@ -353,50 +409,11 @@ private fun EntryRow(
     onSwipeChanged: (Boolean) -> Unit,
     onRequestDelete: () -> Unit
 ) {
-    val actionWidth = 100.dp
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val actionWidthPx = with(density) { actionWidth.toPx() }
-    var offsetX by remember(entry.id) { mutableFloatStateOf(0f) }
-    LaunchedEffect(deleteRevealed) { offsetX = if (deleteRevealed) -actionWidthPx else 0f }
-    Box(Modifier.fillMaxWidth().clipToBounds().testTag("entry-row-${entry.id}")) {
-        Surface(
-            color = CaijiPalette.DangerSoft,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.align(Alignment.CenterEnd).size(width = actionWidth, height = 48.dp)
-                .clickable(onClick = onRequestDelete).testTag("ledger-delete-${entry.id}")
-        ) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center) {
-                CaijiIcon(CaijiIconName.DELETE, "删除账单", Modifier.size(18.dp))
-                Text("删除", Modifier.padding(start = 4.dp), color = CaijiPalette.Danger, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().offset { IntOffset(offsetX.roundToInt(), 0) }
-                .pointerInput(entry.id, deleteRevealed) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            offsetX = (offsetX + dragAmount).coerceIn(-actionWidthPx, 0f)
-                        },
-                        onDragEnd = {
-                            val reveal = offsetX < -actionWidthPx * 0.4f
-                            offsetX = if (reveal) -actionWidthPx else 0f
-                            onSwipeChanged(reveal)
-                        },
-                        onDragCancel = {
-                            offsetX = if (deleteRevealed) -actionWidthPx else 0f
-                            onSwipeChanged(deleteRevealed)
-                        }
-                    )
-                }
-                .clickable(onClick = { if (deleteRevealed) onSwipeChanged(false) else onClick() })
-                .background(CaijiPalette.Background)
-                .testTag("entry-row-content-${entry.id}")
-                .padding(horizontal = 18.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp)
-        ) {
+    FinancialSwipeDeleteContainer(
+        entryId = entry.id, containerTag = "entry-row-${entry.id}", rowTag = "entry-row-content-${entry.id}",
+        deleteRevealed = deleteRevealed, onSwipeChanged = onSwipeChanged,
+        onClick = onClick, onRequestDelete = onRequestDelete
+    ) {
             Surface(shape = RoundedCornerShape(12.dp), color = CaijiPalette.SurfaceAlt, modifier = Modifier.size(40.dp)) {
                 Box(contentAlignment = Alignment.Center) { Text(categoryEmoji(iconKey), style = MaterialTheme.typography.titleMedium) }
             }
@@ -411,7 +428,6 @@ private fun EntryRow(
                 color = if (entry.type == EntryType.INCOME) CaijiPalette.Income else CaijiPalette.Ink,
                 style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                 fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
     }
 }
 

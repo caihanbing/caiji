@@ -15,20 +15,23 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerPeriodTotals
 import app.caiji.android.data.MonthLedgerTotal
@@ -155,15 +158,23 @@ internal fun BillPeriodReportScreen(
     onSelectType: (EntryType) -> Unit,
     onSelectCategory: (String?) -> Unit,
     onEditEntry: (app.caiji.android.data.LedgerEntry) -> Unit,
-    rankingSnapshot: PeriodRankingSnapshot? = null
+    rankingSnapshot: PeriodRankingSnapshot? = null,
+    onDeleteEntry: (app.caiji.android.data.LedgerEntry, (Boolean) -> Unit) -> Unit = { _, complete -> complete(false) },
+    onModalVisibilityChange: (Boolean) -> Unit = {}
 ) {
     val startInclusive = if (monthValue == 0) java.time.LocalDate.of(year, 1, 1) else YearMonth.of(year, monthValue).atDay(1)
     val endExclusive = if (monthValue == 0) java.time.LocalDate.of(year + 1, 1, 1) else YearMonth.of(year, monthValue).plusMonths(1).atDay(1)
     val visibleSnapshot = rankingSnapshot?.takeIf { it.startInclusive == startInclusive && it.endExclusive == endExclusive }
     val visibleReport = report?.takeIf { it.startInclusive == startInclusive && it.endExclusive == endExclusive }
     val summaryTotals = visibleSnapshot?.totals ?: visibleReport?.totals
+    var openSwipeEntryId by remember(year, monthValue, selectedCategoryId) { mutableStateOf<String?>(null) }
+    var deleteCandidate by remember { mutableStateOf<app.caiji.android.data.LedgerEntry?>(null) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember(year, monthValue, selectedType, selectedCategoryId) { mutableStateOf<String?>(null) }
     val rankingPager = rememberPagerState(initialPage = if (selectedType == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
     val rankingPagerScope = rememberCoroutineScope()
+    LaunchedEffect(deleteCandidate) { onModalVisibilityChange(deleteCandidate != null) }
+    DisposableEffect(onModalVisibilityChange) { onDispose { onModalVisibilityChange(false) } }
     LaunchedEffect(selectedType) {
         val page = if (selectedType == EntryType.EXPENSE) 0 else 1
         if (rankingPager.currentPage != page) rankingPager.animateScrollToPage(page)
@@ -225,8 +236,13 @@ internal fun BillPeriodReportScreen(
             }
         } else {
             val selectedCategory = visibleReport?.categories?.firstOrNull { it.category.id == selectedCategoryId }?.category
-            Text(selectedCategory?.name.orEmpty(), Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            Text(selectedCategory?.name.orEmpty(), Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                .testTag("report-category-detail-title"),
                 color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
+            deleteError?.let {
+                Text(it, Modifier.padding(horizontal = 18.dp, vertical = 2.dp).testTag("report-list-delete-error"),
+                    color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall)
+            }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 visibleReport?.entries.orEmpty().forEach { entry ->
                     val category = selectedCategory
@@ -235,8 +251,15 @@ internal fun BillPeriodReportScreen(
                         subtitle = "${entry.occurredOn.monthValue}月${entry.occurredOn.dayOfMonth}日${entry.note?.let { " · $it" }.orEmpty()}",
                         amount = "${if (entry.type == EntryType.EXPENSE) "−" else "+"}¥${formatYuan(entry.amountFen)}",
                         amountColor = if (entry.type == EntryType.INCOME) CaijiPalette.Income else CaijiPalette.Ink,
-                        tag = "report-entry-${entry.id}", iconTag = "report-entry-icon-${entry.id}"
-                    ) { onEditEntry(entry) }
+                        tag = "report-entry-${entry.id}", iconTag = "report-entry-icon-${entry.id}",
+                        deleteRevealed = openSwipeEntryId == entry.id,
+                        onSwipeChanged = { reveal ->
+                            openSwipeEntryId = if (reveal) entry.id else null
+                            deleteError = null
+                        },
+                        onRequestDelete = { openSwipeEntryId = null; deleteError = null; deleteCandidate = entry },
+                        onClick = { onEditEntry(entry) }
+                    )
                 }
                 if (!loading && error == null && visibleReport?.entries.isNullOrEmpty()) {
                     Text("该分类暂无账单", Modifier.fillMaxWidth().padding(24.dp), color = CaijiPalette.SecondaryText)
@@ -244,6 +267,37 @@ internal fun BillPeriodReportScreen(
             }
         }
         ReportLoadState(loading, error, onRetry)
+    }
+    deleteCandidate?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { if (!deleting) deleteCandidate = null },
+            modifier = Modifier.testTag("report-list-delete-dialog"),
+            title = { Text("删除这笔账单？") },
+            text = { Text("删除后会立即从账单汇总中移除。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!deleting) {
+                        deleting = true
+                        onDeleteEntry(entry) { success ->
+                            deleting = false
+                            deleteCandidate = null
+                            if (success) {
+                                openSwipeEntryId = null
+                                deleteError = null
+                            } else {
+                                deleteError = "删除账单失败，记录仍保留，请重试。"
+                            }
+                        }
+                    }
+                }, enabled = !deleting, modifier = Modifier.testTag("report-confirm-delete")) {
+                    Text(if (deleting) "删除中" else "删除", color = CaijiPalette.Danger)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate = null }, enabled = !deleting,
+                    modifier = Modifier.testTag("report-cancel-delete")) { Text("取消") }
+            }
+        )
     }
 }
 

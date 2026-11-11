@@ -3,6 +3,7 @@ package app.caiji.android.ui
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
@@ -367,6 +368,169 @@ class BillReportsScreenTest {
         }
         compose.onNodeWithTag("report-entry-icon-detail-missing-category", useUnmergedTree = true).assertTextEquals("✨")
         compose.onNodeWithTag("report-entry-detail-missing-category").assertTextContains("已停用分类")
+    }
+
+    @Test fun categoryDetailRowsSwipeToRevealOnlyOneDeleteActionAndSwipeRightToClose() {
+        val category = Category("swipe-food", EntryType.EXPENSE, "餐饮", "restaurant")
+        val first = LedgerEntry("detail-swipe-first", EntryType.EXPENSE, 1_000, category.id,
+            java.time.LocalDate.of(2026, 11, 10), null)
+        val second = LedgerEntry("detail-swipe-second", EntryType.EXPENSE, 2_000, category.id,
+            java.time.LocalDate.of(2026, 11, 9), null)
+        var editCount = 0
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(3_000, 0),
+                        listOf(CategoryPeriodTotal(category, BigInteger.valueOf(3_000))), listOf(first, second)
+                    ),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE,
+                    selectedCategoryId = category.id, onBack = {}, onRetry = {}, onSelectType = {},
+                    onSelectCategory = {}, onEditEntry = { editCount++ }
+                )
+            }
+        }
+        compose.onNodeWithTag("report-entry-detail-swipe-first").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-detail-swipe-first").assertIsDisplayed()
+        compose.onNodeWithTag("report-entry-detail-swipe-first").performClick()
+        compose.onAllNodesWithTag("ledger-delete-detail-swipe-first").assertCountEquals(0)
+        assertEquals(0, editCount)
+        compose.onNodeWithTag("report-entry-detail-swipe-first").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-detail-swipe-first").assertIsDisplayed()
+        compose.onNodeWithTag("report-entry-detail-swipe-second").performTouchInput { swipeLeft() }
+        compose.onAllNodesWithTag("ledger-delete-detail-swipe-first").assertCountEquals(0)
+        compose.onNodeWithTag("ledger-delete-detail-swipe-second").assertIsDisplayed()
+        compose.onNodeWithTag("report-entry-detail-swipe-second").performTouchInput { swipeRight() }
+        compose.onAllNodesWithTag("ledger-delete-detail-swipe-second").assertCountEquals(0)
+    }
+
+    @Test fun categoryDetailDeleteSupportsCancelFailureRetryAndLastItemEmptyState() {
+        val category = Category("delete-food", EntryType.EXPENSE, "餐饮", "restaurant")
+        val first = LedgerEntry("detail-delete-first", EntryType.EXPENSE, 1_000, category.id,
+            java.time.LocalDate.of(2026, 11, 10), null)
+        val second = LedgerEntry("detail-delete-second", EntryType.EXPENSE, 2_000, category.id,
+            java.time.LocalDate.of(2026, 11, 9), null)
+        var entries by mutableStateOf(listOf(first, second))
+        var failDelete = true
+        var editCount = 0
+        compose.setContent {
+            val report = PeriodLedgerReport(
+                java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1),
+                totals(entries.sumOf { it.amountFen }, 0),
+                listOf(CategoryPeriodTotal(category, BigInteger.valueOf(entries.sumOf { it.amountFen }))), entries
+            )
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0, report = report, loading = false, error = null,
+                    selectedType = EntryType.EXPENSE, selectedCategoryId = category.id,
+                    onBack = {}, onRetry = {}, onSelectType = {}, onSelectCategory = {},
+                    onEditEntry = { editCount++ }, onDeleteEntry = { entry, complete ->
+                        if (failDelete) complete(false) else { entries = entries.filterNot { it.id == entry.id }; complete(true) }
+                    }
+                )
+            }
+        }
+        fun revealDelete(entryId: String) {
+            compose.onNodeWithTag("report-entry-$entryId").performTouchInput { swipeLeft() }
+            compose.onNodeWithTag("ledger-delete-$entryId").performClick()
+        }
+
+        revealDelete(first.id)
+        compose.onNodeWithTag("report-list-delete-dialog").assertIsDisplayed()
+        compose.onNodeWithTag("report-cancel-delete").performClick()
+        compose.onAllNodesWithTag("report-list-delete-dialog").assertCountEquals(0)
+        compose.onNodeWithTag("report-entry-${first.id}").assertIsDisplayed()
+
+        revealDelete(first.id)
+        compose.onNodeWithTag("report-confirm-delete").performClick()
+        compose.onNodeWithText("删除账单失败，记录仍保留，请重试。").assertIsDisplayed()
+        compose.onNodeWithTag("report-entry-${first.id}").assertIsDisplayed()
+
+        failDelete = false
+        revealDelete(second.id)
+        compose.onNodeWithTag("report-confirm-delete").performClick()
+        compose.waitUntil(5_000) { entries.size == 1 }
+        compose.onAllNodesWithTag("report-entry-${second.id}").assertCountEquals(0)
+        compose.onNodeWithTag("report-balance").assertTextContains("−¥10.00")
+        compose.onNodeWithTag("report-entry-${first.id}").assertIsDisplayed()
+
+        revealDelete(first.id)
+        compose.onNodeWithTag("report-confirm-delete").performClick()
+        compose.waitUntil(5_000) { entries.isEmpty() }
+        compose.onNodeWithText("该分类暂无账单").assertIsDisplayed()
+        compose.onNodeWithText("餐饮").assertIsDisplayed()
+        assertEquals(0, editCount)
+    }
+
+    @Test fun categoryDetailDeleteErrorClearsWhenSwitchingCategories() {
+        val firstCategory = Category("stale-error-food", EntryType.EXPENSE, "餐饮", "restaurant")
+        val secondCategory = Category("stale-error-transport", EntryType.EXPENSE, "交通", "taxi")
+        val firstEntry = LedgerEntry("stale-error-first", EntryType.EXPENSE, 1_000, firstCategory.id,
+            java.time.LocalDate.of(2026, 11, 10), null)
+        val secondEntry = LedgerEntry("stale-error-second", EntryType.EXPENSE, 2_000, secondCategory.id,
+            java.time.LocalDate.of(2026, 11, 9), null)
+        compose.setContent {
+            var selectedCategoryId by remember { mutableStateOf<String?>(firstCategory.id) }
+            val visibleEntries = when (selectedCategoryId) {
+                firstCategory.id -> listOf(firstEntry)
+                secondCategory.id -> listOf(secondEntry)
+                else -> emptyList()
+            }
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(3_000, 0),
+                        listOf(
+                            CategoryPeriodTotal(firstCategory, BigInteger.valueOf(1_000)),
+                            CategoryPeriodTotal(secondCategory, BigInteger.valueOf(2_000))
+                        ), visibleEntries
+                    ),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE,
+                    selectedCategoryId = selectedCategoryId,
+                    onBack = { selectedCategoryId = null }, onRetry = {}, onSelectType = {},
+                    onSelectCategory = { selectedCategoryId = it }, onEditEntry = {},
+                    onDeleteEntry = { _, complete -> complete(false) }
+                )
+            }
+        }
+        compose.onNodeWithTag("report-entry-${firstEntry.id}").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-${firstEntry.id}").performClick()
+        compose.onNodeWithTag("report-confirm-delete").performClick()
+        compose.onNodeWithText("删除账单失败，记录仍保留，请重试。").assertIsDisplayed()
+
+        compose.onNodeWithTag("period-report-back").performClick()
+        compose.onNodeWithTag("report-category-${secondCategory.id}").performClick()
+        compose.onNodeWithText("删除账单失败，记录仍保留，请重试。").assertDoesNotExist()
+        compose.onNodeWithTag("report-entry-${secondEntry.id}").assertIsDisplayed()
+    }
+
+    @Test fun categoryDetailDeleteDisablesRepeatConfirmationWhileRequestIsPending() {
+        val category = Category("pending-delete-food", EntryType.EXPENSE, "餐饮", "restaurant")
+        val entry = LedgerEntry("pending-delete-entry", EntryType.EXPENSE, 1_000, category.id,
+            java.time.LocalDate.of(2026, 11, 10), null)
+        var finishDelete: ((Boolean) -> Unit)? = null
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 0,
+                    report = PeriodLedgerReport(
+                        java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2027, 1, 1), totals(1_000, 0),
+                        listOf(CategoryPeriodTotal(category, BigInteger.valueOf(1_000))), listOf(entry)
+                    ),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE,
+                    selectedCategoryId = category.id, onBack = {}, onRetry = {}, onSelectType = {},
+                    onSelectCategory = {}, onEditEntry = {}, onDeleteEntry = { _, done -> finishDelete = done }
+                )
+            }
+        }
+        compose.onNodeWithTag("report-entry-pending-delete-entry").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-pending-delete-entry").performClick()
+        compose.onNodeWithTag("report-confirm-delete").performClick()
+        compose.onNodeWithTag("report-confirm-delete").assertIsNotEnabled()
+        compose.runOnIdle { finishDelete?.invoke(true) }
+        compose.onAllNodesWithTag("report-list-delete-dialog").assertCountEquals(0)
     }
 
     @Test fun financialRowsConstrainLongAmountsAtCompactLargeFont() {

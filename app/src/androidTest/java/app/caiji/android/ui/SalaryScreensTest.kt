@@ -94,7 +94,7 @@ class SalaryScreensTest {
         compose.onAllNodesWithText("收入性质").assertCountEquals(0)
         compose.onAllNodesWithText("收入项管理").assertCountEquals(0)
         compose.onNodeWithText("保存收入").performClick()
-        compose.onNodeWithTag("salary-net-total").assertTextContains("100.00", substring = true)
+        compose.onNodeWithTag("salary-net-total", useUnmergedTree = true).assertTextContains("100.00", substring = true)
         compose.onNodeWithText("本年纯收入").assertIsDisplayed()
     }
 

@@ -14,16 +14,24 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToLog
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.caiji.android.MainActivity
+import app.caiji.android.CaijiApplication
+import app.caiji.android.data.RoomLedgerRepository
+import java.math.BigInteger
+import java.time.YearMonth
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -153,7 +161,7 @@ class EverydayLedgerFlowTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithTag("salary-field-收入").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("salary-field-收入").assertTextContains("123.45", substring = true)
+        compose.onNodeWithTag("salary-field-收入", useUnmergedTree = true).assertTextContains("123.45", substring = true)
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
@@ -308,7 +316,8 @@ class EverydayLedgerFlowTest {
 
         val month = java.time.YearMonth.now()
         compose.onNodeWithTag("ledger-open-bills").performClick()
-        compose.onNodeWithTag("month-row-${month.monthValue}").performClick()
+        compose.onNodeWithTag("bill-tab-month").performClick()
+        compose.onNodeWithTag("month-row-${month.monthValue}", useUnmergedTree = true).performClick()
         compose.onNodeWithTag("report-category-seed-expense-0").performClick()
         compose.waitUntil(timeoutMillis = 5_000) {
             compose.onAllNodesWithText("分类明细").fetchSemanticsNodes().isNotEmpty()
@@ -334,6 +343,87 @@ class EverydayLedgerFlowTest {
         }
         compose.onNodeWithText(note, substring = true).assertTextContains("−¥19.00")
         compose.onNodeWithText("分类明细").assertIsDisplayed()
+    }
+
+    @Test fun deletingFromCategoryDetailsKeepsTheFilterAndRefreshesTheReportTotals() {
+        lateinit var repository: RoomLedgerRepository
+        compose.activityRule.scenario.onActivity { activity ->
+            repository = (activity.application as CaijiApplication).ledgerRepository
+        }
+        val note = "分类明细删除-${System.currentTimeMillis()}"
+        compose.onNodeWithTag("nav-entry").performClick()
+        compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-key-3").performClick()
+        compose.onNodeWithTag("entry-note").performTextInput(note)
+        compose.onNodeWithTag("entry-note").performImeAction()
+        compose.onNodeWithTag("entry-key-save").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        val entry = runBlocking { repository.allEntries().single { it.note == note } }
+        val month = YearMonth.from(entry.occurredOn)
+        val balanceBefore = runBlocking { repository.monthTotals(month) }
+            .let { it.incomeFen.subtract(it.expenseFen) }
+        fun yearBalance(): BigInteger = runBlocking {
+            repository.allEntries().filter { it.occurredOn.year == month.year }.fold(BigInteger.ZERO) { total, row ->
+                total + if (row.type == app.caiji.android.domain.EntryType.INCOME) BigInteger.valueOf(row.amountFen)
+                else BigInteger.valueOf(row.amountFen).negate()
+            }
+        }
+        val yearBalanceBefore = yearBalance()
+
+        compose.onNodeWithTag("nav-ledger").performClick()
+        compose.onNodeWithTag("ledger-open-bills").performClick()
+        compose.onNodeWithTag("bill-tab-month").performClick()
+        compose.onNodeWithTag("month-row-${month.monthValue}").performClick()
+        compose.onNodeWithTag("report-category-seed-expense-0").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("report-entry-${entry.id}").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("report-entry-${entry.id}").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("ledger-delete-${entry.id}").performClick()
+        compose.onNodeWithTag("report-confirm-delete").performClick()
+        compose.waitUntil(5_000) { runBlocking { repository.allEntries().none { it.id == entry.id } } }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("report-entry-${entry.id}").fetchSemanticsNodes().isEmpty()
+        }
+        compose.onNodeWithText("分类明细").assertIsDisplayed()
+        compose.onNodeWithTag("report-category-detail-title").assertTextEquals("餐饮")
+        val balanceAfter = runBlocking { repository.monthTotals(month) }
+            .let { it.incomeFen.subtract(it.expenseFen) }
+        val yearBalanceAfter = yearBalance()
+        assertEquals(balanceBefore + BigInteger.valueOf(300L), balanceAfter)
+        assertEquals(yearBalanceBefore + BigInteger.valueOf(300L), yearBalanceAfter)
+        compose.onNodeWithTag("report-balance").assertTextContains(formatYuan(balanceAfter.abs()), substring = true)
+        compose.onNodeWithTag("period-report-back").performClick()
+        val remainingCategoryFen = runBlocking { repository.allEntries() }
+            .filter { it.categoryId == entry.categoryId && it.type == app.caiji.android.domain.EntryType.EXPENSE && YearMonth.from(it.occurredOn) == month }
+            .fold(BigInteger.ZERO) { total, row -> total + BigInteger.valueOf(row.amountFen) }
+        compose.waitUntil(5_000) {
+            val categoryRankings = compose.onAllNodesWithTag("report-category-seed-expense-0").fetchSemanticsNodes()
+            if (remainingCategoryFen.signum() > 0) {
+                categoryRankings.isNotEmpty() && runCatching {
+                    compose.onNodeWithTag("report-category-seed-expense-0")
+                        .assertTextContains("−¥${formatYuan(remainingCategoryFen)}")
+                }.isSuccess
+            } else compose.onAllNodesWithText("此期间暂无支出").fetchSemanticsNodes().isNotEmpty()
+        }
+        if (remainingCategoryFen.signum() == 0) compose.onAllNodesWithTag("report-category-seed-expense-0").assertCountEquals(0)
+        compose.onNodeWithTag("period-report-back").performClick()
+        compose.onNodeWithText("汇总").assertIsDisplayed()
+        compose.onNodeWithTag("bill-tab-month").performClick()
+        val expectedMonthBalance = (if (balanceAfter.signum() < 0) "−" else "") + "¥" + formatYuan(balanceAfter.abs())
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("month-row-${month.monthValue}", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("month-row-${month.monthValue}").assertTextContains(expectedMonthBalance)
+        compose.onNodeWithTag("bill-tab-year").performClick()
+        val expectedYearBalance = (if (yearBalanceAfter.signum() < 0) "−" else "") + "¥" + formatYuan(yearBalanceAfter.abs())
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("year-row-${month.year}", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("year-row-${month.year}").assertTextContains(expectedYearBalance)
     }
 
     @Test fun rejectedCategorySaveKeepsTheDialogOpenForCorrection() {

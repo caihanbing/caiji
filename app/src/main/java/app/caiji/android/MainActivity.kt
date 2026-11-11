@@ -600,7 +600,13 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     }, onSelectType = { reportTypeName = it.name; reportCategoryId = null },
                     onSelectCategory = { reportCategoryId = it }, onEditEntry = { entry ->
                         editEntry = entry; editEntryId = entry.id; editorReturnPage = Page.PERIOD_REPORT.name; page = Page.EDITOR
-                    }
+                    }, onDeleteEntry = { entry, complete ->
+                        model.deleteEntry(entry.id, onDeleted = {
+                            model.loadPeriodReport(reportYear, reportMonthValue, EntryType.valueOf(reportTypeName),
+                                reportCategoryId ?: entry.categoryId)
+                            complete(true)
+                        }, onFailed = { complete(false) })
+                    }, onModalVisibilityChange = { localBlockingDialogOpen = it }
                 )
                 Page.EDITOR -> if (editEntryId != null && editEntry == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("正在加载账单…") }
