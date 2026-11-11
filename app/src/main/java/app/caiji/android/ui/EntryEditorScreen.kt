@@ -82,7 +82,7 @@ internal fun EntryEditorScreen(
     onSave: (EntryType, Long, String, LocalDate, String?, (Boolean) -> Unit) -> Unit,
     onDelete: (LedgerEntry) -> Unit,
     onSaveCategory: (EntryType, String?, String, String, (Boolean) -> Unit) -> Unit,
-    onSetCategoryActive: (String, Boolean) -> Unit,
+    onSetCategoryActive: (String, Boolean, (Boolean) -> Unit) -> Unit,
     onReorderCategory: (String, Int, (Boolean) -> Unit) -> Unit,
     imeVisible: Boolean? = null,
     categoryErrorMessage: String? = null,

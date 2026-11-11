@@ -65,11 +65,15 @@ class RoomSalaryRepository(private val database: SalaryDatabase) {
         require(direction == -1 || direction == 1) { "移动方向无效" }
         return database.withTransaction {
             val ordered = dao.incomeTypes().map { it.toDomain() }.sortedWith(compareBy<SalaryIncomeType> { it.sortOrder }.thenBy { it.name })
-            val index = ordered.indexOfFirst { it.id == id }
-            require(index >= 0) { "收入项不存在" }
+            val current = ordered.firstOrNull { it.id == id } ?: error("收入项不存在")
+            val sameNature = ordered.filter { it.isCash == current.isCash }
+            val index = sameNature.indexOfFirst { it.id == id }
             val target = index + direction
-            if (target !in ordered.indices) return@withTransaction false
-            val reordered = ordered.toMutableList().apply { add(target, removeAt(index)) }
+            if (target !in sameNature.indices) return@withTransaction false
+            val reordered = ordered.toMutableList()
+            val currentIndex = reordered.indexOfFirst { it.id == id }
+            val targetIndex = reordered.indexOfFirst { it.id == sameNature[target].id }
+            reordered[currentIndex] = reordered[targetIndex].also { reordered[targetIndex] = reordered[currentIndex] }
             reordered.forEachIndexed { order, type ->
                 require(dao.setIncomeTypeSortOrder(type.id, order) == 1) { "更新收入项顺序失败" }
             }

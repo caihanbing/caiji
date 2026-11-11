@@ -66,7 +66,7 @@ class EntryEditorScreenTest {
                     onSave = { _, _, _, _, _, done -> done(false) },
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
-                    onSetCategoryActive = { _, _ -> },
+                    onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -93,7 +93,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE,
                     onCancel = {}, onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -119,7 +119,7 @@ class EntryEditorScreenTest {
                     clipboardPrefill = ClipboardTransaction(EntryType.INCOME, 2_571_949, LocalDate.of(2026, 10, 23)),
                     clipboardPrefillId = "clipboard-test", onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -137,7 +137,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -160,7 +160,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -181,7 +181,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> reorderCalls.incrementAndGet(); done(true) }
                 )
             }
@@ -206,7 +206,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -226,7 +226,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { id, index, done -> moved.set(id to index); done(true) }
                 )
             }
@@ -250,7 +250,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(false) }
                 )
             }
@@ -275,7 +275,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE, onCancel = {},
                     onSave = { _, _, _, _, _, _ -> }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -299,7 +299,7 @@ class EntryEditorScreenTest {
                     onSave = { _, _, _, _, _, done -> done(false) },
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
-                    onSetCategoryActive = { _, _ -> },
+                    onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -340,7 +340,7 @@ class EntryEditorScreenTest {
                     },
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
-                    onSetCategoryActive = { _, _ -> },
+                    onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }
@@ -365,7 +365,7 @@ class EntryEditorScreenTest {
                     onSave = { _, _, _, _, _, done -> done(false) },
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
-                    onSetCategoryActive = { _, _ -> },
+                    onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) },
                     imeVisible = true
                 )
@@ -390,7 +390,7 @@ class EntryEditorScreenTest {
                 EntryEditorScreen(
                     categories = categories, existing = null, initialType = EntryType.EXPENSE,
                     onCancel = {}, onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }, datePickerLauncher = { date, onSelected ->
                         shownDate.set(date)
                         callback.set(onSelected)
@@ -421,7 +421,7 @@ class EntryEditorScreenTest {
                     categories = categories, existing = null, initialType = EntryType.EXPENSE,
                     onCancel = {}, onSave = { _, amount, _, _, _, done -> savedFen.set(amount); saveCount.incrementAndGet(); done(false) },
                     onDelete = {}, onSaveCategory = { _, _, _, _, done -> done(false) },
-                    onSetCategoryActive = { _, _ -> }, onReorderCategory = { _, _, done -> done(true) }
+                    onSetCategoryActive = { _, _, done -> done(true) }, onReorderCategory = { _, _, done -> done(true) }
                 )
             }
         }
@@ -449,7 +449,7 @@ class EntryEditorScreenTest {
                         EntryEditorScreen(
                             categories = categories, existing = null, initialType = EntryType.EXPENSE,
                             onCancel = {}, onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
-                            onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _ -> },
+                            onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
                             onReorderCategory = { _, _, done -> done(true) }, imeVisible = true
                         )
                     }
@@ -475,7 +475,7 @@ class EntryEditorScreenTest {
                     onSave = { _, _, _, _, _, done -> done(false) },
                     onDelete = {},
                     onSaveCategory = { _, _, _, _, done -> done(false) },
-                    onSetCategoryActive = { _, _ -> },
+                    onSetCategoryActive = { _, _, done -> done(true) },
                     onReorderCategory = { _, _, done -> done(true) }
                 )
             }

@@ -11,14 +11,14 @@ internal sealed interface UpdateState {
     data object Idle : UpdateState
     data object Checking : UpdateState
     data object UpToDate : UpdateState
-    data class Available(val release: GitHubRelease) : UpdateState
+    data class Available(val release: AppRelease) : UpdateState
     data object Failed : UpdateState
 }
 
 internal class UpdateManager(
     private val scope: CoroutineScope,
     private val currentVersion: ReleaseVersion,
-    private val source: GitHubReleaseSource
+    private val source: ReleaseSource
 ) {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state.asStateFlow()

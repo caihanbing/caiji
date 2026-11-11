@@ -12,7 +12,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.caiji.android.update.UpdateState
-import app.caiji.android.update.GitHubRelease
+import app.caiji.android.update.AppRelease
 import app.caiji.android.update.ReleaseVersion
 import app.caiji.android.ui.theme.CaijiTheme
 import org.junit.Assert.assertEquals
@@ -65,7 +65,7 @@ class UpdateSettingsScreenTest {
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-feedback"))
         compose.onNodeWithText("记录问题和截图，按需分享").assertIsDisplayed()
         compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-check-updates"))
-        compose.onNodeWithText("检查 GitHub 上的新版本").assertIsDisplayed()
+        compose.onNodeWithText("优先检查 Gitee，失败后尝试 GitHub").assertIsDisplayed()
     }
 
     @Test fun settingsExposeManualCheckAndDisableItWhileChecking() {
@@ -115,7 +115,7 @@ class UpdateSettingsScreenTest {
             CaijiTheme {
                 UpdateAvailableDialog(
                     currentVersion = "0.4.2",
-                    release = GitHubRelease(tag, ReleaseVersion.parse(tag)!!, "修复问题", "https://github.com/caihanbing/caiji/releases/tag/v0.5.0", null),
+                    release = AppRelease(tag, ReleaseVersion.parse(tag)!!, "修复问题", "https://github.com/caihanbing/caiji/releases/tag/v0.5.0", null),
                     onDismiss = { dismissals++ }, onDownload = { downloads++ }
                 )
             }

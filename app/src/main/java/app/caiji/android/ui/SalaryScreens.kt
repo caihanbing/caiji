@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -802,6 +803,7 @@ private fun SalaryEditor(
         } }, dismissButton = { TextButton(onClick = { deleting = false }) { Text("取消") } })
 }
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SalaryTypesScreen(
     types: List<SalaryIncomeType>,
     back: () -> Unit,
@@ -810,186 +812,192 @@ private fun SalaryTypesScreen(
     create: (String, Boolean, String, (Boolean, String?) -> Unit) -> Unit,
     update: (String, String, String, (Boolean, String?) -> Unit) -> Unit
 ) {
+    var selectedPage by rememberSaveable { mutableIntStateOf(0) }
+    val pager = rememberPagerState(initialPage = selectedPage, pageCount = { 2 })
+    val pagerScope = rememberCoroutineScope()
     var addOpen by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
-    var name by rememberSaveable { mutableStateOf("") }
-    var cash by rememberSaveable { mutableStateOf(true) }
-    var iconKey by rememberSaveable { mutableStateOf("other") }
-    var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var saving by remember { mutableStateOf(false) }
     var operationInProgress by remember { mutableStateOf(false) }
     var operationError by remember { mutableStateOf<String?>(null) }
+    var orderedTypes by remember { mutableStateOf(types.sortedBy { it.sortOrder }) }
     val editing = types.firstOrNull { it.id == editingId }
+
+    LaunchedEffect(pager.settledPage) { selectedPage = pager.settledPage }
+    LaunchedEffect(types) { orderedTypes = types.sortedBy { it.sortOrder } }
+
     fun beginAdd() {
+        if (operationInProgress || pager.isScrollInProgress) return
         addOpen = true
         editingId = null
-        name = ""
-        cash = true
-        iconKey = "other"
-        error = null
+        operationError = null
     }
 
     fun beginEdit(type: SalaryIncomeType) {
-        addOpen = false
+        if (operationInProgress || pager.isScrollInProgress || pager.currentPage != selectedPage) return
         editingId = type.id
-        name = type.name
-        cash = type.isCash
-        iconKey = type.iconKey
-        error = null
+        addOpen = false
+        operationError = null
+    }
+
+    fun move(type: SalaryIncomeType, delta: Int, sameNature: List<SalaryIncomeType>) {
+        val currentIndex = sameNature.indexOfFirst { it.id == type.id }
+        val targetIndex = currentIndex + delta
+        if (operationInProgress || pager.isScrollInProgress || pager.currentPage != selectedPage || targetIndex !in sameNature.indices) return
+        operationInProgress = true
+        operationError = null
+        move(type.id, delta) { saved, message ->
+            if (saved) {
+                val reordered = orderedTypes.toMutableList()
+                val from = reordered.indexOfFirst { it.id == type.id }
+                val to = reordered.indexOfFirst { it.id == sameNature[targetIndex].id }
+                val moved = reordered[from]
+                reordered[from] = reordered[to]
+                reordered[to] = moved
+                orderedTypes = reordered
+            } else operationError = message ?: "更新收入项顺序失败，请重试。"
+            operationInProgress = false
+        }
     }
 
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         CaijiPageTopBar(
-            title = "收入项管理",
-            onBack = back,
-            backTag = "salary-header-back",
+            title = "收入项管理", onBack = back, backTag = "salary-header-back",
             actionTag = "salary-income-types-add",
             action = {
-                TextButton(onClick = ::beginAdd) {
+                TextButton(onClick = ::beginAdd, enabled = !operationInProgress) {
                     CaijiIcon(CaijiIconName.ADD, "添加收入项", Modifier.size(18.dp))
                     Text("添加", Modifier.padding(start = 4.dp))
                 }
             }
         )
-        if (types.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("还没有收入项，点击右上角添加", color = CaijiPalette.SecondaryText)
-            }
-        } else LazyColumn(
-            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).testTag("salary-income-types-list"),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        PagerSegmentedTabs(
+            state = pager, labels = listOf("现金", "非现金"),
+            tags = listOf("salary-income-cash-tab", "salary-income-noncash-tab"),
+            containerTag = "salary-income-type-tabs", enabled = !operationInProgress,
+            onSelectPage = { page -> if (page != pager.currentPage) pagerScope.launch { pager.animateScrollToPage(page) } }
+        )
+        Surface(
+            color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            items(types.sortedWith(compareBy<SalaryIncomeType> { it.sortOrder }.thenBy { it.name }), key = { it.id }) { type ->
-                Surface(
-                    color = CaijiPalette.Surface,
-                    shape = RoundedCornerShape(15.dp),
-                    modifier = Modifier.fillMaxWidth().testTag("salary-income-type-row-${type.id}")
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            color = CaijiPalette.SurfaceAlt,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.size(42.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(categoryEmoji(type.iconKey), style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.testTag("salary-income-type-icon-${type.id}"))
-                            }
-                        }
-                        Column(Modifier.weight(1f).clickable(enabled = !operationInProgress) { beginEdit(type) }
-                            .testTag("salary-income-type-name-${type.id}"),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                type.name,
-                                color = CaijiPalette.Ink,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(if (type.isCash) "现金" else "非现金", color = CaijiPalette.SecondaryText,
-                                style = MaterialTheme.typography.labelSmall)
-                            if (!type.active) Text("已停用", color = CaijiPalette.SecondaryText,
-                                style = MaterialTheme.typography.labelSmall)
-                        }
-                        ManagementReorderButton("上移收入项 ${type.name}", "salary-income-type-move-up-${type.id}",
-                            enabled = !operationInProgress && types.minOfOrNull { it.sortOrder } != type.sortOrder) {
-                            if (!operationInProgress) {
-                                operationInProgress = true; operationError = null
-                                move(type.id, -1) { ok, message -> operationInProgress = false; operationError = if (ok) null else message }
-                            }
-                        }
-                        ManagementReorderButton("下移收入项 ${type.name}", "salary-income-type-move-down-${type.id}",
-                            enabled = !operationInProgress && types.maxOfOrNull { it.sortOrder } != type.sortOrder) {
-                            if (!operationInProgress) {
-                                operationInProgress = true; operationError = null
-                                move(type.id, 1) { ok, message -> operationInProgress = false; operationError = if (ok) null else message }
-                            }
-                        }
-                        Switch(
-                            checked = type.active,
-                            onCheckedChange = { enabled ->
-                                if (!operationInProgress) {
-                                    operationInProgress = true; operationError = null
-                                    setActive(type.id, enabled) { ok, message -> operationInProgress = false; operationError = if (ok) null else message }
+            Text("停用的收入项仍会保留在历史工资记录中。",
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+        }
+        operationError?.let { message ->
+            Surface(color = CaijiPalette.DangerSoft, shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text(message, Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        HorizontalPager(
+            state = pager,
+            userScrollEnabled = !operationInProgress,
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("salary-income-type-pager")
+        ) { pageIndex ->
+            val pageCash = pageIndex == 0
+            val pageTypes = orderedTypes.filter { it.isCash == pageCash }
+            if (pageTypes.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("还没有收入项，点击右上角添加", color = CaijiPalette.SecondaryText)
+                }
+            } else LazyColumn(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("salary-income-types-list"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                itemsIndexed(pageTypes, key = { _, type -> type.id }) { index, type ->
+                    Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(15.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("salary-income-type-row-${type.id}")) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(color = CaijiPalette.SurfaceAlt, shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.size(42.dp).clickable(enabled = !operationInProgress) { beginEdit(type) }
+                                    .testTag("salary-income-type-icon-button-${type.id}")) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(categoryEmoji(type.iconKey), style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.testTag("salary-income-type-icon-${type.id}"))
                                 }
-                            },
-                            enabled = !operationInProgress,
-                            modifier = Modifier.testTag("salary-income-type-active-${type.id}")
-                                .semantics { contentDescription = "启用收入项 ${type.name}" }
-                        )
+                            }
+                            Column(Modifier.weight(1f).clickable(enabled = !operationInProgress) { beginEdit(type) }
+                                .testTag("salary-income-type-name-${type.id}"),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(type.name, color = if (type.active) CaijiPalette.Ink else CaijiPalette.SecondaryText,
+                                    style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (!type.active) Text("已停用", color = CaijiPalette.SecondaryText,
+                                    style = MaterialTheme.typography.labelSmall)
+                            }
+                            ManagementReorderButton("上移收入项 ${type.name}", "salary-income-type-move-up-${type.id}",
+                                enabled = !operationInProgress && index > 0) { move(type, -1, pageTypes) }
+                            ManagementReorderButton("下移收入项 ${type.name}", "salary-income-type-move-down-${type.id}",
+                                enabled = !operationInProgress && index < pageTypes.lastIndex) { move(type, 1, pageTypes) }
+                            Switch(
+                                checked = type.active,
+                                onCheckedChange = { active ->
+                                    if (!operationInProgress && !pager.isScrollInProgress && pager.currentPage == pageIndex) {
+                                        operationInProgress = true
+                                        operationError = null
+                                        setActive(type.id, active) { saved, message ->
+                                            operationInProgress = false
+                                            operationError = if (saved) null else message ?: "更新收入项状态失败，请重试。"
+                                        }
+                                    }
+                                },
+                                enabled = !operationInProgress,
+                                modifier = Modifier.testTag("salary-income-type-active-${type.id}")
+                                    .semantics { contentDescription = "启用收入项 ${type.name}" }
+                            )
+                        }
                     }
                 }
             }
         }
-        operationError?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall) }
     }
 
     if (addOpen || editing != null) {
+        val cash = editing?.isCash ?: (selectedPage == 0)
+        var name by rememberSaveable(editingId, selectedPage) { mutableStateOf(editing?.name.orEmpty()) }
+        var iconKey by rememberSaveable(editingId, selectedPage) { mutableStateOf(editing?.iconKey ?: "other") }
+        var error by rememberSaveable(editingId, selectedPage) { mutableStateOf<String?>(null) }
+        var saving by remember(editingId, selectedPage) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { if (!saving) { addOpen = false; editingId = null; error = null } },
             title = { Text(if (editing == null) "添加收入项" else "编辑收入项") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    if (editing == null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("现金收入")
-                                Text("关闭开关表示非现金", color = CaijiPalette.SecondaryText,
-                                    style = MaterialTheme.typography.bodySmall)
-                            }
-                            Switch(cash, { cash = it }, modifier = Modifier.testTag("salary-income-type-cash"))
-                        }
-                    } else Text(
-                        if (editing.isCash) "现金收入" else "非现金收入",
-                        color = CaijiPalette.SecondaryText,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.testTag("salary-income-type-cash-fixed")
-                    )
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it; error = null },
-                        label = { Text("收入项名称") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("salary-income-type-name")
-                    )
+                    Text(if (cash) "现金收入" else "非现金收入", color = CaijiPalette.SecondaryText,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("salary-income-type-cash-fixed"))
+                    OutlinedTextField(value = name, onValueChange = { name = it; error = null },
+                        label = { Text("收入项名称") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("salary-income-type-name"))
                     Text("选择图标", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.labelMedium)
                     IconCatalogPicker(iconKey, Modifier.height(210.dp).testTag("salary-income-type-icon-grid")) {
-                        iconKey = it
-                        error = null
+                        iconKey = it; error = null
                     }
-                    error?.let {
-                        Text(it, color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.testTag("salary-income-type-error"))
-                    }
+                    error?.let { Text(it, color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("salary-income-type-error")) }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (saving) return@Button
-                        saving = true
-                        error = null
-                        val done: (Boolean, String?) -> Unit = { saved, message ->
-                            saving = false
-                            if (saved) { addOpen = false; editingId = null }
-                            else error = message ?: "收入项保存失败，请检查内容后重试。"
-                        }
-                        if (editing == null) create(name.trim(), cash, iconKey, done)
-                        else update(editing.id, name.trim(), iconKey, done)
-                    },
-                    enabled = name.trim().isNotEmpty() && !saving,
+                Button(onClick = {
+                    if (saving) return@Button
+                    saving = true
+                    error = null
+                    operationInProgress = true
+                    val done: (Boolean, String?) -> Unit = { saved, message ->
+                        saving = false
+                        operationInProgress = false
+                        if (saved) { addOpen = false; editingId = null }
+                        else error = message ?: "收入项保存失败，请检查内容后重试。"
+                    }
+                    if (editing == null) create(name.trim(), cash, iconKey, done)
+                    else update(editing.id, name.trim(), iconKey, done)
+                }, enabled = name.trim().isNotEmpty() && !saving,
                     colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary),
-                    modifier = Modifier.testTag("salary-income-type-save")
-        ) { Text(if (saving) "保存中" else if (editing == null) "添加" else "保存") }
+                    modifier = Modifier.testTag("salary-income-type-save")) { Text(if (saving) "保存中" else "保存") }
             },
-            dismissButton = {
-                TextButton(onClick = { addOpen = false; editingId = null; error = null }, enabled = !saving) { Text("取消") }
-            }
+            dismissButton = { TextButton(onClick = { addOpen = false; editingId = null; error = null }, enabled = !saving) { Text("取消") } }
         )
     }
 }

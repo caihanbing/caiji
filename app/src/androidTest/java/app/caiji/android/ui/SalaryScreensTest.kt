@@ -481,10 +481,17 @@ class SalaryScreensTest {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {},
             initialManagementRoute = SalaryManagementRoute.TYPES) } }
         compose.onNodeWithText("收入项管理").assertIsDisplayed()
+        compose.onNodeWithTag("salary-income-cash-tab").assertIsSelected()
         compose.onNodeWithTag("salary-income-types-add").assertIsDisplayed().performClick()
         compose.onNodeWithText("添加收入项").assertIsDisplayed()
+        compose.onNodeWithText("现金收入").assertIsDisplayed()
+        compose.onAllNodesWithTag("salary-income-type-cash").assertCountEquals(0)
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithTag("salary-income-noncash-tab").performClick()
+        compose.onNodeWithTag("salary-income-noncash-tab").assertIsSelected()
+        compose.onNodeWithTag("salary-income-types-add").performClick()
+        compose.onNodeWithText("非现金收入").assertIsDisplayed()
         compose.onNodeWithTag("salary-income-type-name").performTextInput("自定义福利")
-        compose.onNodeWithTag("salary-income-type-cash").performClick()
         compose.onNodeWithTag("salary-income-type-icon-grid").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("category-icon-allowance"))
         compose.onNodeWithTag("category-icon-allowance").performClick()
@@ -492,10 +499,11 @@ class SalaryScreensTest {
 
         compose.waitUntil(5_000) { runBlocking { repository.incomeTypes().any { it.name == "自定义福利" } } }
         val created = runBlocking { repository.incomeTypes().first { it.name == "自定义福利" } }
+        compose.onNodeWithTag("salary-income-noncash-tab").assertIsSelected()
         compose.onNodeWithTag("salary-income-types-list").performScrollToNode(
             androidx.compose.ui.test.hasTestTag("salary-income-type-row-${created.id}"))
         compose.onNodeWithTag("salary-income-type-row-${created.id}").assertIsDisplayed()
-        compose.onNodeWithTag("salary-income-type-icon-${created.id}").assertTextContains("💵")
+        compose.onNodeWithTag("salary-income-type-icon-${created.id}", useUnmergedTree = true).assertTextContains("💵")
         compose.onNodeWithTag("salary-income-type-name-${created.id}").performClick()
         compose.onNodeWithText("编辑收入项").assertIsDisplayed()
         compose.onNodeWithText("非现金收入").assertIsDisplayed()
@@ -508,7 +516,7 @@ class SalaryScreensTest {
 
         compose.waitUntil(5_000) { runBlocking { repository.incomeTypes().any { it.name == "自定义福利新名" } } }
         compose.onNodeWithTag("salary-income-type-row-${created.id}").assertIsDisplayed()
-        compose.onNodeWithTag("salary-income-type-icon-${created.id}").assertTextContains("💳")
+        compose.onNodeWithTag("salary-income-type-icon-${created.id}", useUnmergedTree = true).assertTextContains("💳")
         val edited = runBlocking { repository.incomeTypes().first { it.id == created.id } }
         assertEquals("自定义福利新名", edited.name)
         assertEquals(false, edited.isCash)

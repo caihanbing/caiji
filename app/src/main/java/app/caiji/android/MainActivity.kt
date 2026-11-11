@@ -634,7 +634,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     }) },
                     onSaveCategory = { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },
-                    onSetCategoryActive = model::setCategoryActive,
+                    onSetCategoryActive = { id, active, done -> model.setCategoryActive(id, active, done) },
                     onReorderCategory = model::reorderCategory,
                     categoryErrorMessage = modelError)
                 Page.CHART -> Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -688,7 +688,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.CATEGORIES -> CategoryManagerScreen(categories, { page = Page.SETTINGS },
                     { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },
-                    model::setCategoryActive, model::reorderCategory, initialType = EntryType.EXPENSE,
+                    { id, active, done -> model.setCategoryActive(id, active, done) }, model::reorderCategory, initialType = EntryType.EXPENSE,
                     errorMessage = modelError)
                 Page.THEMES -> ThemePickerScreen(selectedTheme, onSelect = { theme ->
                     selectedTheme = theme

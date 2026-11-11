@@ -162,7 +162,7 @@ internal fun SettingsScreen(
                         UpdateState.Checking -> "正在检查…"
                         UpdateState.UpToDate -> "已是最新版本"
                         UpdateState.Failed -> "检查失败，请重试"
-                        else -> "检查 GitHub 上的新版本"
+                        else -> "优先检查 Gitee，失败后尝试 GitHub"
                     }
                     Text(status, color = if (updateState == UpdateState.Failed) CaijiPalette.Danger else CaijiPalette.SecondaryText,
                         style = MaterialTheme.typography.bodySmall)

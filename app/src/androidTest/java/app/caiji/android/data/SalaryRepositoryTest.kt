@@ -65,7 +65,6 @@ class SalaryRepositoryTest {
     @Test fun incomeTypesCanBeDisabledReorderedAndReenabledTransactionally() = runBlocking {
         val types = repo.incomeTypes()
         val first = types.first { it.id == "builtin-1" }
-        val second = types.first { it.id == "builtin-2" }
         repo.setIncomeTypeActive(first.id, false)
         assertEquals(false, repo.incomeTypes().first { it.id == first.id }.active)
         assertEquals(false, repo.moveIncomeType(first.id, -1))
@@ -74,11 +73,29 @@ class SalaryRepositoryTest {
         assertEquals(true, repo.incomeTypes().last { it.id == custom.id }.active)
         assertEquals(true, repo.moveIncomeType(custom.id, -1))
         val reordered = repo.incomeTypes()
-        assertEquals(reordered.size - 2, reordered.indexOfFirst { it.id == custom.id })
+        val nonCashOrder = reordered.filterNot { it.isCash }
+        assertEquals(nonCashOrder.size - 2, nonCashOrder.indexOfFirst { it.id == custom.id })
         assertEquals(reordered.indices.toList(), reordered.map { it.sortOrder })
 
         repo.setIncomeTypeActive(first.id, true)
         assertEquals(true, repo.incomeTypes().first { it.id == first.id }.active)
+    }
+
+    @Test fun incomeTypeMovesStayWithinCashNatureAndPreserveOtherNatureOrder() = runBlocking {
+        val before = repo.incomeTypes().sortedBy { it.sortOrder }
+        val cashBefore = before.filter { it.isCash }
+        val nonCashBefore = before.filterNot { it.isCash }.map { it.id }
+        val moved = cashBefore[2]
+
+        assertEquals(true, repo.moveIncomeType(moved.id, -1))
+        val after = repo.incomeTypes().sortedBy { it.sortOrder }
+        val cashAfter = after.filter { it.isCash }
+
+        assertEquals(moved.id, cashAfter[1].id)
+        assertEquals(nonCashBefore, after.filterNot { it.isCash }.map { it.id })
+        assertEquals(after.indices.toList(), after.map { it.sortOrder })
+        assertEquals(false, repo.moveIncomeType(cashAfter.first().id, -1))
+        assertEquals(false, repo.moveIncomeType(cashAfter.last().id, 1))
     }
 
     @Test fun disabledIncomeTypeCannotBeSelectedForNewSalaryButCanRemainOnHistory() = runBlocking {

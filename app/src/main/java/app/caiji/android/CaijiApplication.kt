@@ -12,6 +12,8 @@ import app.caiji.android.data.FeedbackRepository
 import app.caiji.android.data.SalaryDatabase
 import app.caiji.android.data.RoomSalaryRepository
 import app.caiji.android.update.GitHubReleaseSource
+import app.caiji.android.update.GiteeReleaseSource
+import app.caiji.android.update.OrderedReleaseSource
 import app.caiji.android.update.ReleaseVersion
 import app.caiji.android.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +27,10 @@ class CaijiApplication : Application(), DefaultLifecycleObserver {
         UpdateManager(
             scope = updateScope,
             currentVersion = requireNotNull(ReleaseVersion.parse("v${BuildConfig.VERSION_NAME}")),
-            source = GitHubReleaseSource(updateScope)
+            source = OrderedReleaseSource(
+                preferred = GiteeReleaseSource(updateScope),
+                fallback = GitHubReleaseSource(updateScope)
+            )
         )
     }
 

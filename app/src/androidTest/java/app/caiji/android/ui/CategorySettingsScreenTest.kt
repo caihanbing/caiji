@@ -47,7 +47,7 @@ class CategorySettingsScreenTest {
             CaijiTheme {
                 CategoryManagerScreen(
                     categories = CategoryCatalog.defaults(), onBack = {},
-                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _, done -> done(true) },
                     onMove = { _, _, done -> done(true) }
                 )
             }
@@ -63,7 +63,7 @@ class CategorySettingsScreenTest {
             CaijiTheme {
                 CategoryManagerScreen(
                     categories = CategoryCatalog.defaults(), onBack = {},
-                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _, done -> done(true) },
                     onMove = { _, _, done -> done(true) }
                 )
             }
@@ -80,12 +80,34 @@ class CategorySettingsScreenTest {
         compose.mainClock.autoAdvance = true
     }
 
+    @Test fun addCategoryActionIsDisabledUntilPageSwipeSettles() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CaijiTheme {
+                CategoryManagerScreen(
+                    categories = CategoryCatalog.defaults(), onBack = {},
+                    onSave = { _, _, _, _, done -> done(false) },
+                    onActive = { _, _, done -> done(true) },
+                    onMove = { _, _, done -> done(true) }
+                )
+            }
+        }
+        val pager = compose.onNodeWithTag("category-type-pager")
+        pager.performTouchInput {
+            down(center)
+            moveTo(center.copy(x = center.x - width * 0.7f))
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("category-add-button").assertIsNotEnabled()
+        compose.onAllNodesWithText("添加分类").assertCountEquals(0)
+    }
+
     @Test fun categoryManagerTitleIsCenteredAcrossUnequalHeaderActions() {
         compose.setContent {
             CaijiTheme {
                 CategoryManagerScreen(
                     categories = CategoryCatalog.defaults(), onBack = {},
-                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _, done -> done(true) },
                     onMove = { _, _, done -> done(true) }
                 )
             }
@@ -101,7 +123,7 @@ class CategorySettingsScreenTest {
             CaijiTheme {
                 CategoryManagerScreen(
                     categories = CategoryCatalog.defaults(), onBack = {},
-                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _, done -> done(true) },
                     onMove = { _, _, done -> pending.set(done) }
                 )
             }
@@ -123,7 +145,7 @@ class CategorySettingsScreenTest {
                     categories = categories,
                     onBack = {},
                     onSave = { _, _, _, _, done -> done(false) },
-                    onActive = { id, enabled -> active += id to enabled },
+                    onActive = { id, enabled, done -> active += id to enabled; done(true) },
                     onMove = { id, position, done -> moved += id to position; done(true) },
                     initialType = EntryType.EXPENSE
                 )
@@ -156,7 +178,7 @@ class CategorySettingsScreenTest {
                     categories = CategoryCatalog.defaults(),
                     onBack = {},
                     onSave = { _, _, _, _, done -> done(false) },
-                    onActive = { _, _ -> },
+                    onActive = { _, _, done -> done(true) },
                     onMove = { _, _, done -> done(true) },
                     initialType = EntryType.EXPENSE
                 )
@@ -169,12 +191,16 @@ class CategorySettingsScreenTest {
         compose.onNodeWithText("取消").performClick()
 
         compose.onNodeWithTag("category-add").performClick()
-        compose.onNodeWithTag("category-editor-type-EXPENSE").assertIsSelected()
+        compose.onNodeWithText("支出分类").assertIsDisplayed()
+        compose.onAllNodesWithTag("category-editor-type-EXPENSE").assertCountEquals(0)
         assertEquals(100, CategoryCatalog.iconKeys().size)
         CategoryCatalog.iconKeys().forEach { icon -> compose.onAllNodesWithTag("category-icon-${icon.key}").assertCountEquals(1) }
         compose.onNodeWithText("分类名称").performTextInput("自定义分类")
-        compose.onNodeWithTag("category-editor-type-INCOME").performClick()
-        compose.onNodeWithTag("category-editor-type-INCOME").assertIsSelected()
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithTag("category-type-INCOME").performClick()
+        compose.onNodeWithTag("category-add").performClick()
+        compose.onNodeWithText("收入分类").assertIsDisplayed()
+        compose.onAllNodesWithTag("category-editor-type-INCOME").assertCountEquals(0)
     }
 
     @Test fun categoryArrowMoveLocksDuringSaveAndFailurePreservesOrder() {
@@ -185,7 +211,7 @@ class CategorySettingsScreenTest {
             CaijiTheme {
                 CategoryManagerScreen(
                     categories = categories, onBack = {},
-                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _ -> },
+                    onSave = { _, _, _, _, done -> done(false) }, onActive = { _, _, done -> done(true) },
                     onMove = { _, _, done -> moveCalls += 1; complete = done }
                 )
             }
@@ -254,7 +280,7 @@ class CategorySettingsScreenTest {
                             categories = listOf(category),
                             onBack = {},
                             onSave = { _, _, _, _, done -> done(false) },
-                            onActive = { _, _ -> },
+                            onActive = { _, _, done -> done(true) },
                             onMove = { _, _, done -> done(true) },
                             initialType = EntryType.EXPENSE
                         )

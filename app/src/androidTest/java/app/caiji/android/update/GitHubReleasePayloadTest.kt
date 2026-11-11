@@ -16,6 +16,23 @@ class GitHubReleasePayloadTest {
         assertEquals("https://github.com/caihanbing/caiji/releases/download/v0.5.0/caiji-0.5.0-release.apk", release.apkUrl)
     }
 
+    @Test fun giteePayloadUsesItsOwnHostAndBuildsTheReleasePageWhenHtmlUrlIsMissing() {
+        val release = parseGiteeReleasePayload("""{"tag_name":"v0.5.10","prerelease":false,"body":"修复问题","assets":[{"name":"caiji-0.5.10-release.apk","browser_download_url":"https://gitee.com/caihanbingo/caiji/releases/download/v0.5.10/caiji-0.5.10-release.apk"}]}""")
+        assertEquals("https://gitee.com/caihanbingo/caiji/releases/tag/v0.5.10", release.releaseUrl)
+        assertEquals("https://gitee.com/caihanbingo/caiji/releases/download/v0.5.10/caiji-0.5.10-release.apk", release.apkUrl)
+        assertEquals("修复问题", release.notes)
+    }
+
+    @Test fun giteePayloadRejectsNonReleaseVersionsAndForeignAssetHosts() {
+        val base = """{"tag_name":"v0.5.10","prerelease":false,"assets":[{"name":"caiji-0.5.10-release.apk","browser_download_url":"https://github.com/caihanbing/caiji/releases/download/v0.5.10/caiji-0.5.10-release.apk"}]}"""
+        val release = parseGiteeReleasePayload(base)
+        assertNull(release.apkUrl)
+        try {
+            parseGiteeReleasePayload(base.replace("v0.5.10", "0.5.10"))
+            throw AssertionError("Expected invalid Gitee release tag")
+        } catch (_: java.io.IOException) { }
+    }
+
     @Test fun absentApkFallsBackToReleasePageAndDraftsAreRejected() {
         val base = """{"tag_name":"v0.5.0","draft":false,"prerelease":false,"body":"","html_url":"https://github.com/caihanbing/caiji/releases/tag/v0.5.0","assets":[]}"""
         assertNull(parseReleasePayload(base).apkUrl)

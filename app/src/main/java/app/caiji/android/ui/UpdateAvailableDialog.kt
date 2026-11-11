@@ -9,13 +9,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.caiji.android.update.GitHubRelease
+import app.caiji.android.update.AppRelease
 import app.caiji.android.ui.theme.CaijiPalette
 
 @Composable
 internal fun UpdateAvailableDialog(
     currentVersion: String,
-    release: GitHubRelease,
+    release: AppRelease,
     onDismiss: () -> Unit,
     onDownload: () -> Unit
 ) {

@@ -205,10 +205,11 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun setCategoryActive(categoryId: String, active: Boolean) {
+    fun setCategoryActive(categoryId: String, active: Boolean, onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
             runCatching { repository.setCategoryActive(categoryId, active); _error.value = null; refresh() }
-                .onFailure { _error.value = it.message ?: "更新分类失败" }
+                .onSuccess { onComplete(true) }
+                .onFailure { _error.value = it.message ?: "更新分类失败"; onComplete(false) }
         }
     }
 

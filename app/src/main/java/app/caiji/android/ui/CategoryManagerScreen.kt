@@ -65,7 +65,7 @@ internal fun CategoryManagerScreen(
     categories: List<Category>,
     onBack: () -> Unit,
     onSave: (EntryType, String?, String, String, (Boolean) -> Unit) -> Unit,
-    onActive: (String, Boolean) -> Unit,
+    onActive: (String, Boolean, (Boolean) -> Unit) -> Unit,
     onMove: (String, Int, (Boolean) -> Unit) -> Unit,
     initialType: EntryType = EntryType.EXPENSE,
     errorMessage: String? = null
@@ -113,7 +113,16 @@ internal fun CategoryManagerScreen(
         CaijiPageTopBar(
             title = "分类管理", onBack = onBack, backTag = "category-back", actionTag = "category-add",
             action = {
-                TextButton(onClick = { add = true; edit = null }, enabled = !operationInProgress) {
+                TextButton(
+                    onClick = {
+                        if (!operationInProgress && !typePager.isScrollInProgress) {
+                            add = true
+                            edit = null
+                        }
+                    },
+                    enabled = !operationInProgress && !typePager.isScrollInProgress,
+                    modifier = Modifier.testTag("category-add-button")
+                ) {
                     CaijiIcon(CaijiIconName.ADD, "新增分类", Modifier.size(18.dp))
                     Text("添加", modifier = Modifier.padding(start = 4.dp))
                 }
@@ -170,7 +179,13 @@ internal fun CategoryManagerScreen(
                         category = category,
                         onEdit = { if (!operationInProgress && !typePager.isScrollInProgress && typePager.currentPage == pageIndex) edit = category },
                         onActive = { id, active ->
-                            if (!operationInProgress && !typePager.isScrollInProgress && typePager.currentPage == pageIndex) onActive(id, active)
+                            if (!operationInProgress && !typePager.isScrollInProgress && typePager.currentPage == pageIndex) {
+                                movingId = "active:$id"
+                                onActive(id, active) { saved ->
+                                    movingId = null
+                                    if (!saved) moveError = "更新分类状态失败，请重试。"
+                                }
+                            }
                         },
                         canMoveUp = index > 0 && !operationInProgress,
                         canMoveDown = index < pageCategories.lastIndex && !operationInProgress,
@@ -305,8 +320,7 @@ private fun CategoryEditorDialog(
         title = { Text(if (existing == null) "添加分类" else "编辑分类") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                if (existing == null) TypeSelector(type, "category-editor-type") { type = it; saveFailed = false }
-                else Text(
+                Text(
                     if (type == EntryType.EXPENSE) "支出分类" else "收入分类",
                     modifier = Modifier.testTag("category-editor-type-fixed"),
                     color = CaijiPalette.SecondaryText,
