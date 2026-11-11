@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告，分类明细支持编辑和左滑删除。 -->
 <!-- last-verified: 2026-11-11 -->
-<!-- code-basis: HEAD bd5dedf03a41; worktree-digest sha256:6e01f21d2486322154f53043d6d6d4489cff9c2c7607daba2e147aa59a88ac66 -->
+<!-- code-basis: HEAD da75ead8ed08; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 

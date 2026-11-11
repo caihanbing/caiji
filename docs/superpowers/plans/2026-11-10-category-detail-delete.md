@@ -41,4 +41,4 @@
 - [x] Run JVM, lint and API26/API34 instrumented suites; check narrow, large-font and long-amount states.
 - [x] Update `ledger-entries` Feature Doc and index; validate structural and fresh.
 - [x] Build and verify 0.5.9/versionCode 24 APK, signature, alignment, checksum and same-signature upgrade.
-- [ ] Generate commit/Release text with `dms-commit-msg`, commit/push `main` and publish `v0.5.9` with APK and checksum sidecar.
+- [x] Generate commit/Release text with `dms-commit-msg`, commit/push `main` and publish `v0.5.9` with APK and checksum sidecar.
