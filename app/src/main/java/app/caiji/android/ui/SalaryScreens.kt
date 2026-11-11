@@ -3,11 +3,14 @@ package app.caiji.android.ui
 import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,6 +34,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.*
+import app.caiji.android.domain.SalaryAmountInput
 import app.caiji.android.ui.theme.CaijiPalette
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -57,7 +61,8 @@ internal fun SalaryRootScreen(
  initialDraft:SalaryDraft?=null,initialEntry:SalaryEntry?=null,onDraftSnapshotChange:(SalaryDraft?,SalaryEntry?)->Unit={_,_->},
  onAsyncError:(String)->Unit={},onBottomNavigationVisibility:(Boolean)->Unit={},
  initialManagementRoute:SalaryManagementRoute=SalaryManagementRoute.HOME,onManagementBack:()->Unit={},
- onManagementSuccess:(String)->Unit={},homeYear:Int?=null,onHomeYearChange:(Int)->Unit={}
+ onManagementSuccess:(String)->Unit={},homeYear:Int?=null,onHomeYearChange:(Int)->Unit={},
+ initialCashNature:Boolean?=null,onCashNatureChange:(Boolean?)->Unit={}
 ){
  val scope = rememberCoroutineScope()
  val settingsOrigin = initialManagementRoute != SalaryManagementRoute.HOME
@@ -79,6 +84,7 @@ internal fun SalaryRootScreen(
  var types by remember { mutableStateOf(emptyList<SalaryIncomeType>()) }
  var selected by remember { mutableStateOf(initialEntry) }
  var draft by remember { mutableStateOf(initialDraft) }
+ var cashNature by rememberSaveable { mutableStateOf(initialCashNature) }
  var message by remember { mutableStateOf<String?>(null) }
  var typeSelectionNotice by remember { mutableStateOf<String?>(null) }
  var localHomeYear by rememberSaveable { mutableIntStateOf(homeYear ?: LocalDate.now().year) }
@@ -86,7 +92,6 @@ internal fun SalaryRootScreen(
  val changeHomeYear:(Int)->Unit={updated->if(homeYear==null)localHomeYear=updated;onHomeYearChange(updated)}
  var reportYear by rememberSaveable { mutableIntStateOf(selectedHomeYear) }
  var selectedIncomeTypeId by rememberSaveable { mutableStateOf<String?>(null) }
- var deductionsExpanded by rememberSaveable { mutableStateOf(false) }
  var chooseFirstActiveTypeWhenLoaded by rememberSaveable { mutableStateOf(false) }
  var homeSwipeId by rememberSaveable { mutableStateOf<String?>(null) }
  var detailSwipeId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -151,11 +156,11 @@ internal fun SalaryRootScreen(
   openSummary = { page = SR.SUMMARY }, backToYear = {}, listState = homeListState,
   openSwipeEntryId = homeSwipeId, setSwipeEntryId = { homeSwipeId = it },
   delete = deleteFromList,
-  add = { selected = null; editOrigin = SR.HOME; deductionsExpanded = false; homeSwipeId = null; typeSelectionNotice = null
-   chooseFirstActiveTypeWhenLoaded = types.isEmpty()
-   val nextDraft = SalaryDraft.blank(types.firstOrNull { it.active }?.id.orEmpty()); draft = nextDraft
+  add = { selected = null; editOrigin = SR.HOME; cashNature = true; onCashNatureChange(true); homeSwipeId = null; typeSelectionNotice = null
+   chooseFirstActiveTypeWhenLoaded = false
+   val nextDraft = SalaryDraft.blank(""); draft = nextDraft
    onDraftSnapshotChange(nextDraft, null); page = SR.EDIT },
-  edit = { entry -> selected = entry; editOrigin = SR.HOME; deductionsExpanded = false; homeSwipeId = null; typeSelectionNotice = null; chooseFirstActiveTypeWhenLoaded = false
+  edit = { entry -> selected = entry; editOrigin = SR.HOME; cashNature = entry.isCash; onCashNatureChange(entry.isCash); homeSwipeId = null; typeSelectionNotice = null; chooseFirstActiveTypeWhenLoaded = false
    val nextDraft = SalaryDraft.from(entry); draft = nextDraft; onDraftSnapshotChange(nextDraft, entry); page = SR.EDIT }
  )
  SR.SUMMARY->SalaryAnnualSummaryScreen(
@@ -179,7 +184,7 @@ internal fun SalaryRootScreen(
    backToYear = { page = SR.YEAR_REPORT }, listState = detailListState,
    openSwipeEntryId = detailSwipeId, setSwipeEntryId = { detailSwipeId = it }, delete = deleteFromList, add = {},
    edit = { entry ->
-    selected = entry; editOrigin = SR.INCOME_DETAILS; deductionsExpanded = false
+    selected = entry; editOrigin = SR.INCOME_DETAILS; cashNature = entry.isCash; onCashNatureChange(entry.isCash)
     detailSwipeId = null; typeSelectionNotice = null; chooseFirstActiveTypeWhenLoaded = false
     val nextDraft = SalaryDraft.from(entry); draft = nextDraft; onDraftSnapshotChange(nextDraft, entry); page = SR.EDIT
    },
@@ -188,7 +193,7 @@ internal fun SalaryRootScreen(
    detailEmptyState = true, summaryHeaderBackStartPadding = 4.dp
   )
  }
- SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(types.firstOrNull { it.active }?.id.orEmpty()),deductionsExpanded,{deductionsExpanded=it},updateDraft,{page=editOrigin;selected=null;draft=null;onDraftSnapshotChange(null,null)},{e->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资保存失败，输入内容已保留，请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资删除失败，请重试；记录仍保留。若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},typeSelectionNotice)
+ SR.EDIT->SalaryEditor(selected,types,draft?:SalaryDraft.blank(""),cashNature ?: selected?.isCash,{next->cashNature=next;onCashNatureChange(next)},updateDraft,{page=editOrigin;selected=null;draft=null;cashNature=null;onCashNatureChange(null);onDraftSnapshotChange(null,null)},{e,done->scope.launch{runCatching{withContext(Dispatchers.IO){repo.save(e)};refresh()}.onSuccess{message="工资记录已保存";selected=null;draft=null;cashNature=null;onCashNatureChange(null);onDraftSnapshotChange(null,null);page=editOrigin;done(true)}.onFailure{val text="工资保存失败，输入内容已保留，请重试；若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text);done(false)}}},{id->scope.launch{runCatching{withContext(Dispatchers.IO){repo.delete(id)};refresh()}.onSuccess{message="工资记录已删除";selected=null;draft=null;cashNature=null;onCashNatureChange(null);onDraftSnapshotChange(null,null);page=editOrigin}.onFailure{val text="工资删除失败，请重试；记录仍保留。若仍失败，请在设置中提交问题反馈。";message=text;onAsyncError(text)}}},typeSelectionNotice)
  SR.TYPES->SalaryTypesScreen(
   types = types,
   back = { if (settingsOrigin) onManagementBack() else page = typesOrigin },
@@ -556,19 +561,94 @@ private fun SalaryEntryRow(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SalaryEditor(
-    entry: SalaryEntry?, types: List<SalaryIncomeType>, draft: SalaryDraft, expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit, change: (SalaryDraft) -> Unit, back: () -> Unit,
-    save: (SalaryEntry) -> Unit, delete: (String) -> Unit,
+    entry: SalaryEntry?, types: List<SalaryIncomeType>, draft: SalaryDraft, initialCash: Boolean?,
+    onCashChange: (Boolean) -> Unit,
+    change: (SalaryDraft) -> Unit, back: () -> Unit,
+    save: (SalaryEntry, (Boolean) -> Unit) -> Unit, delete: (String) -> Unit,
     typeSelectionNotice: String?
 ) {
     val today = LocalDate.now()
+    val selectedType = types.firstOrNull { it.id == draft.typeId }
+    var cash by rememberSaveable(entry?.id) { mutableStateOf(initialCash ?: entry?.isCash ?: types.firstOrNull { it.id == draft.typeId }?.isCash ?: true) }
+    var expanded by rememberSaveable(entry?.id) { mutableStateOf(false) }
+    var activeField by rememberSaveable(entry?.id) { mutableStateOf("收入") }
+    var keyboardVisible by rememberSaveable(entry?.id) { mutableStateOf(true) }
     var error by remember(entry?.id) { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
-    val net = runCatching {
-        BigInteger.valueOf(draft.gross.money(false)) - listOf(draft.union, draft.pension, draft.medical,
-            draft.unemployment, draft.housing, draft.annuity, draft.tax).sumFen()
-    }.getOrDefault(BigInteger.ZERO)
+    val context = LocalContext.current
+    val deductionFields = listOf("工会费" to draft.union, "养老保险" to draft.pension,
+        "医疗保险" to draft.medical, "失业保险" to draft.unemployment,
+        "公积金" to draft.housing, "企业年金" to draft.annuity, "税" to draft.tax)
+    fun valueOf(label: String): String = when (label) {
+        "收入" -> draft.gross
+        "工会费" -> draft.union
+        "养老保险" -> draft.pension
+        "医疗保险" -> draft.medical
+        "失业保险" -> draft.unemployment
+        "公积金" -> draft.housing
+        "企业年金" -> draft.annuity
+        else -> draft.tax
+    }
+    fun setValue(label: String, value: String) = change(when (label) {
+        "收入" -> draft.copy(gross = value)
+        "工会费" -> draft.copy(union = value)
+        "养老保险" -> draft.copy(pension = value)
+        "医疗保险" -> draft.copy(medical = value)
+        "失业保险" -> draft.copy(unemployment = value)
+        "公积金" -> draft.copy(housing = value)
+        "企业年金" -> draft.copy(annuity = value)
+        else -> draft.copy(tax = value)
+    })
+    val amounts = listOf(draft.gross) + deductionFields.map { it.second }
+    val parsed = amounts.mapIndexed { index, amount ->
+        runCatching { SalaryAmountInput.evaluate(amount, allowNegative = index == amounts.lastIndex) }.getOrNull()
+    }
+    val valuesValid = parsed.all { it != null } && (parsed[0] ?: -1) >= 0 &&
+        parsed.drop(1).dropLast(1).all { (it ?: -1) >= 0 }
+    val deductionFen = parsed.drop(1).filterNotNull().fold(BigInteger.ZERO) { total, amount -> total + BigInteger.valueOf(amount) }
+    val net = if (valuesValid) BigInteger.valueOf(parsed.first()!!) - deductionFen else null
+    val deductionLabel = deductionFen.takeIf { valuesValid }?.let(::formatYuan) ?: "—"
+    var saving by remember(entry?.id) { mutableStateOf(false) }
+    val validToSave = draft.typeId.isNotEmpty()
+
+    fun showDatePicker() {
+        DatePickerDialog(context, { _, year, month, day -> change(draft.copy(date = LocalDate.of(year, month + 1, day))) },
+            draft.date.year, draft.date.monthValue - 1, draft.date.dayOfMonth)
+            .apply { datePicker.maxDate = System.currentTimeMillis() }.show()
+    }
+    fun saveSalary() {
+        try {
+            val type = types.firstOrNull { it.id == draft.typeId } ?: error("请选择收入项")
+            require(type.isCash == cash) { "请选择当前现金性质的收入项" }
+            require(type.active || entry?.incomeTypeId == type.id) { "请选择启用的收入项" }
+            require(valuesValid) { "请检查金额；最多保留两位小数" }
+            val salary = SalaryEntry(entry?.id ?: java.util.UUID.randomUUID().toString(), draft.date, draft.typeId,
+                parsed[0]!!, parsed[1]!!, parsed[2]!!, parsed[3]!!, parsed[4]!!, parsed[5]!!,
+                parsed[6]!!, parsed[7]!!, type.isCash, entry?.createdAtMillis ?: System.currentTimeMillis(), System.currentTimeMillis())
+            salary.validate(today)
+            error = null
+            saving = true
+            save(salary) { succeeded ->
+                saving = false
+                if (!succeeded) error = "工资保存失败，请检查后重试。"
+            }
+        } catch (exception: Exception) { error = exception.message ?: "请检查金额和日期" }
+    }
+    fun editKey(key: String) {
+        val current = valueOf(activeField)
+        val next = when (key) {
+            "⌫" -> current.dropLast(1)
+            "+", "−" -> if (current.isNotEmpty() && current.last().isDigit()) current + if (key == "−") "-" else "+" else current
+            "." -> {
+                val part = current.substringAfterLast('+').substringAfterLast('-')
+                if (part.contains('.')) current else current + if (part.isEmpty()) "0." else "."
+            }
+            else -> if (current.length < 32) current + key else current
+        }
+        if (next != current) { setValue(activeField, next); error = null }
+    }
     Column(Modifier.fillMaxSize().background(CaijiPalette.Background)) {
         SalaryHeader(if (entry == null) "新增收入" else "编辑收入", back,
             action = if (entry == null) null else ({
@@ -576,107 +656,143 @@ private fun SalaryEditor(
                     CaijiIcon(CaijiIconName.DELETE, "删除此笔收入", Modifier.size(20.dp))
                 }
             }))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
-                    .testTag("salary-editor-content")) {
-            Surface(color = CaijiPalette.PrimarySoft, shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                    Text("纯收入 · 自动计算", color = CaijiPalette.SecondaryText,
-                        style = MaterialTheme.typography.bodySmall)
-                    Text("¥${formatYuan(net)}", style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("salary-editor-net"))
+        val cashPagerState = rememberPagerState(initialPage = if (cash) 0 else 1, pageCount = { 2 })
+        val cashPagerScope = rememberCoroutineScope()
+        fun selectCash(nextCash: Boolean) {
+            if (nextCash != cash) {
+                cash = nextCash
+                onCashChange(nextCash)
+                change(draft.copy(typeId = ""))
+                activeField = "收入"
+                keyboardVisible = true
+                error = null
+            }
+        }
+        LaunchedEffect(cashPagerState.settledPage) { selectCash(cashPagerState.settledPage == 0) }
+        LaunchedEffect(draft.typeId, types, entry?.id, initialCash) {
+            val restoredCash = initialCash ?: entry?.isCash ?: types.firstOrNull { it.id == draft.typeId }?.isCash ?: true
+            if (restoredCash != cash) {
+                cash = restoredCash
+                onCashChange(restoredCash)
+                cashPagerState.scrollToPage(if (restoredCash) 0 else 1)
+            }
+        }
+        PagerSegmentedTabs(
+            state = cashPagerState,
+            labels = listOf("现金", "非现金"), tags = listOf("salary-cash-tab", "salary-income-noncash-tab"),
+            containerTag = "salary-income-type-tabs", enabled = true,
+            onSelectPage = { page ->
+                cashPagerScope.launch { cashPagerState.animateScrollToPage(page) }
+            }
+        )
+        HorizontalPager(state = cashPagerState, modifier = Modifier.weight(1f).fillMaxWidth()) { pageIndex ->
+            val pageCash = pageIndex == 0
+            val availableTypes = types.filter { it.active && it.isCash == pageCash }
+            val visibleTypes = if (entry != null && selectedType != null && !selectedType.active && selectedType.isCash == pageCash)
+                availableTypes + selectedType else availableTypes
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
+                .testTag("salary-editor-content-${if (pageCash) "cash" else "noncash"}")) {
+            Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 10.dp)) {
+                Text("收入金额", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth().clickable { activeField = "收入"; keyboardVisible = true }
+                    .testTag("salary-active-amount"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("¥", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.weight(1f))
+                    Text(runCatching { formatYuan(SalaryAmountInput.evaluate(draft.gross)) }.getOrDefault(draft.gross.ifEmpty { "0.00" }),
+                        color = CaijiPalette.Ink, style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.End)
                 }
             }
-            typeSelectionNotice?.let { Text(it, Modifier.padding(top = 8.dp).testTag("salary-disabled-type-notice"),
-                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall) }
-            Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                Column(Modifier.padding(horizontal = 14.dp)) {
-                    val context = LocalContext.current
-                    Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).clickable {
-                        DatePickerDialog(context, { _, year, month, day ->
-                            change(draft.copy(date = LocalDate.of(year, month + 1, day)))
-                        }, draft.date.year, draft.date.monthValue - 1, draft.date.dayOfMonth)
-                            .apply { datePicker.maxDate = System.currentTimeMillis() }.show()
-                    }, verticalAlignment = Alignment.CenterVertically) {
-                        Text("日期"); Spacer(Modifier.weight(1f))
-                        Text(draft.date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")))
-                    }
-                    HorizontalDivider(color = CaijiPalette.Divider)
-                    var menu by remember { mutableStateOf(false) }
-                    val selectedType = types.firstOrNull { it.id == draft.typeId }
-                    Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).clickable(enabled = types.any { it.active }) {
-                        menu = true
-                    }.testTag("salary-income-type-selector"), verticalAlignment = Alignment.CenterVertically) {
-                        Text("收入项")
-                        Spacer(Modifier.width(12.dp))
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.End) {
-                            if (selectedType != null) Text(categoryEmoji(selectedType.iconKey), modifier = Modifier.padding(end = 7.dp))
-                            Text(selectedType?.name ?: if (types.none { it.active }) "暂无启用收入项" else "选择收入项",
-                                maxLines = 1, textAlign = TextAlign.End, overflow = TextOverflow.Ellipsis)
-                        }
-                        DropdownMenu(menu, { menu = false }) {
-                            types.filter { it.active }.forEach { type ->
-                                DropdownMenuItem(text = { Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(categoryEmoji(type.iconKey)); Text(type.name, Modifier.padding(start = 9.dp),
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                } }, onClick = { change(draft.copy(typeId = type.id)); menu = false })
+            Text("选择收入项", Modifier.padding(top = 8.dp, bottom = 8.dp), style = MaterialTheme.typography.titleMedium)
+            if (visibleTypes.isEmpty()) {
+                Text("暂无${if (pageCash) "现金" else "非现金"}收入项", Modifier.fillMaxWidth().padding(vertical = 24.dp)
+                    .testTag("salary-no-income-types"), color = CaijiPalette.SecondaryText, textAlign = TextAlign.Center)
+            } else {
+                visibleTypes.chunked(4).forEach { rowTypes ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        rowTypes.forEach { type ->
+                            val selected = draft.typeId == type.id
+                            Column(Modifier.weight(1f).clickable {
+                                change(draft.copy(typeId = type.id)); activeField = "收入"; keyboardVisible = true; error = null
+                            }.semantics { if (selected) contentDescription = "${type.name}，已选择" }
+                                .testTag("salary-income-type-${type.id}").padding(vertical = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Surface(shape = RoundedCornerShape(16.dp),
+                                    color = if (selected) CaijiPalette.PrimarySoft else CaijiPalette.SurfaceAlt,
+                                    modifier = Modifier.size(62.dp)) {
+                                    Box(contentAlignment = Alignment.Center) { Text(categoryEmoji(type.iconKey), style = MaterialTheme.typography.titleLarge) }
+                                }
+                                Text(type.name, Modifier.padding(top = 4.dp), color = CaijiPalette.SecondaryText,
+                                    style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
                             }
                         }
+                        repeat(4 - rowTypes.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
-            Surface(color = CaijiPalette.Surface, shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                Column(Modifier.padding(horizontal = 14.dp)) {
-                    SalaryMoneyField("收入", draft.gross, { change(draft.copy(gross = it)) })
+            if (typeSelectionNotice != null) Text(typeSelectionNotice, Modifier.padding(vertical = 4.dp)
+                .testTag("salary-disabled-type-notice"), color = CaijiPalette.SecondaryText)
+            Column(Modifier.fillMaxWidth().padding(top = 6.dp).background(CaijiPalette.Surface, RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 50.dp).clickable {
+                    activeField = "收入"; keyboardVisible = true
+                }.testTag("salary-field-收入"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("收入")
+                    Spacer(Modifier.weight(1f))
+                    Text(valueOf("收入").ifEmpty { "0.00" }, Modifier.testTag("salary-value-收入"), color = CaijiPalette.SecondaryText)
+                }
+                HorizontalDivider(color = CaijiPalette.Divider)
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { expanded = !expanded }
+                    .semantics { contentDescription = if (expanded) "收起扣款合计" else "展开扣款合计" }
+                    .testTag("salary-deductions-toggle"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("扣款合计"); Spacer(Modifier.weight(1f))
+                    Text("¥$deductionLabel" + if (expanded) "　⌄" else "　⌃", color = CaijiPalette.SecondaryText)
+                }
+                if (expanded) deductionFields.forEach { (label, value) ->
                     HorizontalDivider(color = CaijiPalette.Divider)
-                    val deduction = listOf(draft.union, draft.pension, draft.medical, draft.unemployment,
-                        draft.housing, draft.annuity, draft.tax).sumFen()
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onExpandedChange(!expanded) }
-                        .semantics { contentDescription = if (expanded) "收起扣款合计" else "展开扣款合计" }
-                        .testTag("salary-deductions-toggle"), verticalAlignment = Alignment.CenterVertically) {
-                        Text("扣款合计"); Spacer(Modifier.weight(1f))
-                        Text("¥${formatYuan(deduction)}" + if (expanded) "　⌄" else "　⌃", color = CaijiPalette.SecondaryText)
-                    }
-                    if (expanded) listOf("工会费" to draft.union, "养老保险" to draft.pension,
-                        "医疗保险" to draft.medical, "失业保险" to draft.unemployment,
-                        "公积金" to draft.housing, "企业年金" to draft.annuity, "税" to draft.tax).forEach { (label, value) ->
-                        HorizontalDivider(color = CaijiPalette.Divider)
-                        val update: (String) -> Unit = { changed ->
-                            change(when (label) {
-                                "工会费" -> draft.copy(union = changed)
-                                "养老保险" -> draft.copy(pension = changed)
-                                "医疗保险" -> draft.copy(medical = changed)
-                                "失业保险" -> draft.copy(unemployment = changed)
-                                "公积金" -> draft.copy(housing = changed)
-                                "企业年金" -> draft.copy(annuity = changed)
-                                else -> draft.copy(tax = changed)
-                            })
-                        }
-                        SalaryMoneyField(label, value, update, tax = label == "税")
+                    Row(Modifier.fillMaxWidth().heightIn(min = 50.dp).clickable {
+                        activeField = label; keyboardVisible = true
+                    }.testTag("salary-field-$label"), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label)
+                        Spacer(Modifier.weight(1f))
+                        Text(value.ifEmpty { "0.00" }, Modifier.testTag("salary-value-$label"),
+                            color = if (activeField == label) CaijiPalette.Primary else CaijiPalette.SecondaryText)
                     }
                 }
             }
-            Text("扣款可留空；税额填负数表示退税。", Modifier.padding(top = 12.dp),
+            Text("扣款可留空；税额填负数表示退税。", Modifier.padding(top = 10.dp),
                 color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
             error?.let { Text(it, Modifier.padding(top = 8.dp), color = CaijiPalette.Danger) }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
         }
-        Button(onClick = {
-            try {
-                val type = types.firstOrNull { it.id == draft.typeId } ?: error("请选择收入项")
-                require(type.active || entry?.incomeTypeId == type.id) { "请选择启用的收入项" }
-                val salary = SalaryEntry(entry?.id ?: java.util.UUID.randomUUID().toString(), draft.date, draft.typeId,
-                    draft.gross.money(false), draft.union.money(false), draft.pension.money(false), draft.medical.money(false),
-                    draft.unemployment.money(false), draft.housing.money(false), draft.annuity.money(false), draft.tax.money(true),
-                    type.isCash, entry?.createdAtMillis ?: System.currentTimeMillis(), System.currentTimeMillis())
-                salary.validate(today); error = null; save(salary)
-            } catch (exception: Exception) { error = exception.message ?: "请检查金额和日期" }
-        }, Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp).height(48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = CaijiPalette.Primary, contentColor = CaijiPalette.OnPrimary)) {
-            Text("保存收入")
+        }
+        Column(Modifier.fillMaxWidth().testTag("salary-input-dock")) {
+            HorizontalDivider(color = CaijiPalette.Divider)
+            Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("纯收入  ¥${net?.let(::formatYuan) ?: "—"}  ·  扣款  ¥$deductionLabel",
+                    Modifier.weight(1f).testTag("salary-editor-net"), color = CaijiPalette.Ink)
+                Text(if (expanded) "⌄" else "⌃", color = CaijiPalette.SecondaryText)
+            }
+            if (keyboardVisible) {
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 1.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("输入：$activeField", Modifier.weight(1f), color = CaijiPalette.SecondaryText,
+                        style = MaterialTheme.typography.bodySmall)
+                    if (activeField == "税") TextButton(onClick = {
+                        val value = valueOf(activeField)
+                        if (value.startsWith("-")) setValue(activeField, value.removePrefix("-"))
+                        else setValue(activeField, "-$value")
+                        error = null
+                    }, modifier = Modifier.testTag("salary-tax-sign")) { Text("±") }
+                }
+                AmountKeypad(date = draft.date, saving = saving,
+                    canSave = !saving && validToSave && valuesValid && net?.signum() in listOf(0, 1) &&
+                        !draft.date.isAfter(today), tagPrefix = "salary",
+                    onDate = { showDatePicker() },
+                    onSave = { saveSalary() },
+                    onKey = { key -> editKey(key) })
+            }
         }
     }
     if (deleting) AlertDialog(onDismissRequest = { deleting = false }, modifier = Modifier.testTag("salary-delete-dialog"),
@@ -685,8 +801,6 @@ private fun SalaryEditor(
             Text("删除", color = CaijiPalette.Danger)
         } }, dismissButton = { TextButton(onClick = { deleting = false }) { Text("取消") } })
 }
-
-@Composable private fun SalaryMoneyField(label:String,value:String,change:(String)->Unit,tax:Boolean=false){Row(Modifier.fillMaxWidth().heightIn(min=54.dp),verticalAlignment=Alignment.CenterVertically){Text(label,Modifier.weight(1f));OutlinedTextField(value,change,Modifier.weight(1f).widthIn(max=190.dp).testTag("salary-field-"+label),singleLine=true,textStyle=MaterialTheme.typography.bodyLarge.copy(textAlign=TextAlign.End),placeholder={Text("0.00",modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.End)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),prefix={Text(if(tax)"±¥" else "¥")})}}
 @Composable
 private fun SalaryTypesScreen(
     types: List<SalaryIncomeType>,

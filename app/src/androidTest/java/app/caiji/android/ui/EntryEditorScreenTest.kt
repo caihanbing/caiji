@@ -431,6 +431,8 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-note").performImeAction()
         compose.onNodeWithTag("entry-key-save").assertIsDisplayed()
         compose.onNodeWithTag("entry-key-1").performClick()
+        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
+        compose.onNodeWithTag("entry-key-save").assertIsEnabled()
         compose.onNodeWithTag("entry-key-save").performClick()
         assertEquals(1, saveCount.get())
         assertEquals(100, savedFen.get())

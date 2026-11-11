@@ -15,16 +15,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.AlertDialog
@@ -68,8 +67,6 @@ import app.caiji.android.domain.Money
 import app.caiji.android.ui.theme.CaijiPalette
 import java.math.BigDecimal
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberUpdatedState
 
@@ -301,80 +298,27 @@ internal fun EntryEditorScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
-                    if (showAmountKeypad) {
-                        val keys = listOf(
-                            listOf("7", "8", "9", "日期"),
-                            listOf("4", "5", "6", "+"),
-                            listOf("1", "2", "3", "−"),
-                            listOf(".", "0", "⌫", "保存")
-                        )
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 3.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            keys.forEachIndexed { rowIndex, row ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(43.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    row.forEach { key ->
-                                        val isDate = key == "日期"
-                                        val isSave = key == "保存"
-                                        val dateLabel = if (date == LocalDate.now()) "今天" else date.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
-                                        val fullDate = date.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))
-                                        Surface(
-                                            shape = RoundedCornerShape(9.dp),
-                                            color = if (isSave) CaijiPalette.Primary else if (isDate) CaijiPalette.PrimarySoft else CaijiPalette.Surface,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxSize()
-                                                .clickable(enabled = !saving && (!isSave || canSave)) {
-                                                    when {
-                                                        isDate -> showDatePicker()
-                                                        isSave -> saveEntry()
-                                                        key == "⌫" -> { expression = expression.dropLast(1); changed = true }
-                                                        key == "+" || key == "−" -> if (expression.isNotEmpty() && expression.last().isDigit()) {
-                                                            expression += if (key == "−") "-" else "+"
-                                                            changed = true
-                                                        }
-                                                        key == "." -> {
-                                                            val token = expression.substringAfterLast('+').substringAfterLast('-')
-                                                            if (!token.contains('.')) {
-                                                                expression += if (token.isEmpty()) "0." else "."
-                                                                changed = true
-                                                            }
-                                                        }
-                                                        expression.length < 24 -> { expression += key; changed = true }
-                                                    }
-                                                }
-                                                .semantics { if (isDate) contentDescription = "日期，$dateLabel，$fullDate" }
-                                                .testTag(if (isSave) "entry-key-save" else "entry-key-${if (isDate) "date" else key}")
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    if (isDate) {
-                                                        dateLabel
-                                                    } else if (isSave && saving) "保存中" else key,
-                                                    modifier = if (isDate) Modifier.testTag("entry-key-date-label") else Modifier,
-                                                    color = CaijiPalette.Ink,
-                                                    style = if (rowIndex == 3 && isSave || isDate) MaterialTheme.typography.labelLarge
-                                                    else MaterialTheme.typography.titleMedium,
-                                                    fontWeight = if (isSave || isDate) FontWeight.SemiBold else FontWeight.Normal,
-                                                    textAlign = TextAlign.Center,
-                                                    maxLines = if (isDate) 2 else 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
+                    if (showAmountKeypad) AmountKeypad(
+                        date = date, saving = saving, canSave = canSave, tagPrefix = "entry",
+                        onDate = { showDatePicker() }, onSave = { saveEntry() },
+                        onKey = { key ->
+                            when (key) {
+                                "⌫" -> { expression = expression.dropLast(1); changed = true }
+                                "+", "−" -> if (expression.isNotEmpty() && expression.last().isDigit()) {
+                                    expression += if (key == "−") "-" else "+"
+                                    changed = true
+                                }
+                                "." -> {
+                                    val token = expression.substringAfterLast('+').substringAfterLast('-')
+                                    if (!token.contains('.')) {
+                                        expression += if (token.isEmpty()) "0." else "."
+                                        changed = true
                                     }
                                 }
+                                else -> if (expression.length < 24) { expression += key; changed = true }
                             }
                         }
-                    }
+                    )
                 }
             }
         }

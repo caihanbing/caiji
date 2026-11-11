@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告，分类明细支持编辑和左滑删除。 -->
 <!-- last-verified: 2026-11-11 -->
-<!-- code-basis: HEAD da75ead8ed08; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- code-basis: HEAD 89f9ddc73527; worktree-digest sha256:fa9fdb7687133d9ef7055c0968bf1bf2617f4e43153b89e6ed21ec26af0d12d6 -->
 
 ## 快速上下文
 
@@ -26,6 +26,8 @@
 
 - 默认新增支出和今天；收支类型需要明确选择，分类不预选。
 - 金额键盘支持单次加减，日期不能晚于今天，备注为选填。
+- 金额键盘外观由 `AmountKeypad` 为账单与工资共用；账单继续使用 `Money.evaluate` 校验并只接受正金额。备注继续使用文本输入法，金额与日期使用应用内键盘。
+- 收支 Pager 继续控制类型和分类；共用键盘的回调在最新录入状态下执行，保存时仍按账单既有正金额和所选分类规则校验。
 - 首页可切换月份；空月份提供“记一笔”入口。
 - 月账单显示所选年 12 个月收支，并可浏览 1900 年至当年的任意年份；月汇总年份选择器与“汇总”标题同行并位于其右侧；年账单显示最早账单年至当前年的汇总；空月和空年显示零值。
 - 年/月报告展示结余、收入、支出和分类排行；点击分类显示对应期间账单，点击账单可编辑并保留筛选。
@@ -78,7 +80,8 @@
 - `app/src/main/java/app/caiji/android/data/LedgerReports.kt` — `BigInteger` 期间、年度和分类聚合。
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `PeriodRankingSnapshot` 双排行聚合的同一 Room 只读事务读取。
 - `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求门闩；`PeriodRankingRequestGate` 按 `ReportPeriod` 完整起止日期标记/撤销在途查询。
-- `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、两页金额/分类内容、分类拖动、数字键盘和确认。
+- `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、两页金额/分类内容、分类拖动和确认；按键由 `AmountKeypad` 提供。
+- `app/src/main/java/app/caiji/android/ui/AmountKeypad.kt` — 账单和工资共用的 4×4 应用内数字键盘及日期/保存按键。
 - `app/src/main/java/app/caiji/android/ui/CommonNavigationComponents.kt` — Pager 连续分段、统一选中语义。
 - `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
 - `app/src/main/java/app/caiji/android/domain/ClipboardTransactionParser.kt` — 两种银行通知模板、交易金额字段和日期年份推断。
@@ -145,7 +148,7 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.9`、`versionCode=24`；账本 Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.10`、`versionCode=25`；账本 Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room；期间双排行同一快照读取，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
@@ -159,6 +162,7 @@
 ### 已执行
 
 - 0.5.9/code24 本轮回归：`:app:testDebugUnitTest`、`:app:lintDebug`通过；API26、API34全量仪器测试各178/178通过。分类明细覆盖行间分隔线、左滑/右滑、单行互斥、确认/取消/失败重试/末条空状态、失败提示按筛选清空及删除后报告和月/年汇总刷新。API34正式签名 AVD 将 0.5.8 覆盖升级到 0.5.9 后保留原账单记录；签名、zipalign、SHA-256证据见 `WORK-20261110-002`。
+- 0.5.10 最终回归：`:app:testDebugUnitTest :app:lintDebug :app:connectedDebugAndroidTest` 全部通过；API26、API34 全量仪器测试各 182 项通过，含键盘抽取后的账单备注 IME、日期、收支切换和保存。
 - `:app:testDebugUnitTest :app:connectedDebugAndroidTest` — JVM 和 API34 AVD 94 项仪器测试通过；覆盖分类切页开关状态、非溢出账单摘要横滑、短/长表格边界交接、双排行中途显示/摘要稳定及期间隔离。
 - `./scripts/build-release-macos.sh` — Lint、JVM 和正式构建通过；0.3.2/code9 包身份、正式签名、zipalign 与 SHA-256 见 `WORK-20261103-001`。
 - API34 AVD 用 0.3.1 正式包写入 ¥12.34 支出、调换分类顺序、选择青竹主题并保存带截图反馈；覆盖安装 0.3.2 并重启后四项均保留。
@@ -212,6 +216,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-11 — 共用账单和工资数字键盘
+
+- **状态**：已完成
+- **变化**：从账单录入抽取共用 `AmountKeypad`；账单继续使用原 `Money.evaluate` 和备注 IME，工资录入复用相同数字键盘、日期和保存按键。
+- **原因**：统一工资新增收入与“记一笔”的输入交互，同时保留账单金额规则。
+- **兼容性**：账单金额仍为正整数分；数据库和备份格式不变。
+- **验证**：JVM、Lint、API26/API34 全量各 182 项通过；发布证据见 `WORK-20261111-001`。
 
 ### 2026-11-11 — 分类明细左滑删除
 

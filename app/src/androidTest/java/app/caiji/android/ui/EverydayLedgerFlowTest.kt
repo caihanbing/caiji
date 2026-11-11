@@ -154,14 +154,18 @@ class EverydayLedgerFlowTest {
         }
         compose.onNodeWithTag("nav-salary").performClick()
         compose.onNodeWithText("＋  新增收入").performClick()
-        compose.onNodeWithTag("salary-field-收入").performTextClearance()
-        compose.onNodeWithTag("salary-field-收入").performTextInput("123.45")
+        compose.onNodeWithTag("salary-income-noncash-tab").performClick()
+        compose.onNodeWithTag("salary-income-type-builtin-4").performClick()
+        listOf("1", "2", "3", ".", "4", "5").forEach {
+            compose.onNodeWithTag("salary-key-$it").performClick()
+        }
 
         compose.activityRule.scenario.recreate()
         compose.waitUntil(5_000) {
             compose.onAllNodesWithTag("salary-field-收入").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("salary-field-收入", useUnmergedTree = true).assertTextContains("123.45", substring = true)
+        compose.onNodeWithTag("salary-value-收入", useUnmergedTree = true).assertTextContains("123.45", substring = true)
+        compose.onNodeWithTag("salary-income-noncash-tab").assertIsSelected()
         compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
     }
 
