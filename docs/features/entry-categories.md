@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 分类管理按支出/收入分页；新增分类由当前页确定类型，并支持名称、100 个内置图标、顺序和启停管理。图标目录供工资收入项管理复用。 -->
 <!-- last-verified: 2026-11-11 -->
-<!-- code-basis: HEAD 345ebfa90c87; worktree-digest sha256:82603b06425cb7c1f4f8b965bafec644841be127daac81a4f8705301f387f72f -->
+<!-- code-basis: HEAD 7dd1b1e08116; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 

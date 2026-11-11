@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 设置页手动检查及前台自动检查均先查询 Gitee 正式 Release，失败后回退 GitHub，并提示高于当前安装版本的更新。 -->
 <!-- last-verified: 2026-11-11 -->
-<!-- code-basis: HEAD 345ebfa90c87; worktree-digest sha256:82603b06425cb7c1f4f8b965bafec644841be127daac81a4f8705301f387f72f -->
+<!-- code-basis: HEAD 7dd1b1e08116; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
 
 ## 快速上下文
 
