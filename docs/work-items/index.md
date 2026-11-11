@@ -27,5 +27,5 @@
 | [`WORK-20261109-002`](WORK-20261109-002.md) | 财记 0.5.7 工资年度汇总与报告导航优化 | change | medium | handoff-ready | salary-records, ledger-entries | 2026-11-10 |
 | [`WORK-20261110-001`](WORK-20261110-001.md) | 财记工资与账单明细及报告样式统一 | change | medium | handoff-ready | ledger-entries, salary-records | 2026-11-10 |
 | [`WORK-20261110-002`](WORK-20261110-002.md) | 财记分类明细左滑删除与分隔线优化 | change | high | handoff-ready | ledger-entries | 2026-11-11 |
-| [`WORK-20261111-001`](WORK-20261111-001.md) | 财记 0.5.10 新增收入录入统一 | change | medium | verifying | salary-records, ledger-entries | 2026-11-11 |
+| [`WORK-20261111-001`](WORK-20261111-001.md) | 财记 0.5.10 新增收入录入统一 | change | medium | handoff-ready | salary-records, ledger-entries | 2026-11-11 |
 <!-- manage-dev-work:index:end -->
