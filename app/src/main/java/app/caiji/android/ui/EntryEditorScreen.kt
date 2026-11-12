@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -97,7 +98,9 @@ internal fun EntryEditorScreen(
     var date by rememberSaveable(existing?.id, clipboardPrefillId) { mutableStateOf(existing?.occurredOn ?: clipboardPrefill?.date ?: LocalDate.now()) }
     var note by rememberSaveable(existing?.id) { mutableStateOf(existing?.note.orEmpty()) }
     var noteFocused by rememberSaveable(existing?.id) { mutableStateOf(false) }
-    var inputPanelExpanded by rememberSaveable(existing?.id, clipboardPrefillId) { mutableStateOf(clipboardPrefill != null) }
+    var inputPanelExpanded by rememberSaveable(existing?.id, clipboardPrefillId) {
+        mutableStateOf(existing != null || clipboardPrefill != null)
+    }
     var changed by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var saving by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var discardPrompt by rememberSaveable(existing?.id) { mutableStateOf(false) }
@@ -265,11 +268,8 @@ internal fun EntryEditorScreen(
                     currentType = type,
                     categories = categories,
                     selectedCategory = selectedCategory,
-                    amount = calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
-                    invalidAmount = expression.isNotEmpty() && calculated == null,
                     saving = saving,
                     mustReselectActiveCategory = mustReselectActiveCategory,
-                    onAmountClick = { focusManager.clearFocus(); inputPanelExpanded = true },
                     onManageCategories = { focusManager.clearFocus(); managingCategories = true },
                     onSelectCategory = { category ->
                         selectedCategory = category.id
@@ -298,27 +298,54 @@ internal fun EntryEditorScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
-                    if (showAmountKeypad) AmountKeypad(
-                        date = date, saving = saving, canSave = canSave, tagPrefix = "entry",
-                        onDate = { showDatePicker() }, onSave = { saveEntry() },
-                        onKey = { key ->
-                            when (key) {
-                                "⌫" -> { expression = expression.dropLast(1); changed = true }
-                                "+", "−" -> if (expression.isNotEmpty() && expression.last().isDigit()) {
-                                    expression += if (key == "−") "-" else "+"
-                                    changed = true
-                                }
-                                "." -> {
-                                    val token = expression.substringAfterLast('+').substringAfterLast('-')
-                                    if (!token.contains('.')) {
-                                        expression += if (token.isEmpty()) "0." else "."
+                    if (showAmountKeypad) {
+                        AmountDisplay(
+                            label = "金额",
+                            amount = calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
+                            modifier = Modifier.pointerInput(pagerState.currentPage) {
+                                var horizontalDrag = 0f
+                                detectHorizontalDragGestures(
+                                    onHorizontalDrag = { change, amount ->
+                                        horizontalDrag += amount
+                                        change.consume()
+                                    },
+                                    onDragEnd = {
+                                        val threshold = 24.dp.toPx()
+                                        when {
+                                            horizontalDrag < -threshold && pagerState.currentPage == 0 ->
+                                                pagerScope.launch { pagerState.animateScrollToPage(1) }
+                                            horizontalDrag > threshold && pagerState.currentPage == 1 ->
+                                                pagerScope.launch { pagerState.animateScrollToPage(0) }
+                                        }
+                                    }
+                                )
+                            },
+                            tag = "amount-display",
+                            errorMessage = if (expression.isNotEmpty() && calculated == null)
+                                "金额格式无效或结果不能为零及负数" else null
+                        )
+                        AmountKeypad(
+                            date = date, saving = saving, canSave = canSave, tagPrefix = "entry",
+                            onDate = { showDatePicker() }, onSave = { saveEntry() },
+                            onKey = { key ->
+                                when (key) {
+                                    "⌫" -> { expression = expression.dropLast(1); changed = true }
+                                    "+", "−" -> if (expression.isNotEmpty() && expression.last().isDigit()) {
+                                        expression += if (key == "−") "-" else "+"
                                         changed = true
                                     }
+                                    "." -> {
+                                        val token = expression.substringAfterLast('+').substringAfterLast('-')
+                                        if (!token.contains('.')) {
+                                            expression += if (token.isEmpty()) "0." else "."
+                                            changed = true
+                                        }
+                                    }
+                                    else -> if (expression.length < 24) { expression += key; changed = true }
                                 }
-                                else -> if (expression.length < 24) { expression += key; changed = true }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -332,11 +359,8 @@ private fun EntryEditorPageContent(
     currentType: EntryType,
     categories: List<Category>,
     selectedCategory: String?,
-    amount: String,
-    invalidAmount: Boolean,
     saving: Boolean,
     mustReselectActiveCategory: Boolean,
-    onAmountClick: () -> Unit,
     onManageCategories: () -> Unit,
     onSelectCategory: (Category) -> Unit,
     onDragActive: (Boolean) -> Unit,
@@ -344,25 +368,6 @@ private fun EntryEditorPageContent(
 ) {
     val pageCategories = categories.filter { it.type == pageType && (it.active || it.id == selectedCategory) }
     Column(Modifier.fillMaxSize().testTag("entry-editor-scroll")) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text("金额", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("¥", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    amount,
-                    Modifier.weight(1f).clickable(onClick = onAmountClick).testTag("amount-display"),
-                    textAlign = TextAlign.End,
-                    style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (invalidAmount) {
-                Text("金额格式无效或结果不能为零及负数", color = CaijiPalette.Danger,
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically

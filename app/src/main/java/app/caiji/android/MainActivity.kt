@@ -201,6 +201,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var salaryEditorDraft by rememberSaveable { mutableStateOf<SalaryDraft?>(null) }
     var salaryEditorEntry by rememberSaveable { mutableStateOf<SalaryEntry?>(null) }
     var salaryEditorCashNature by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var salaryEditorKeyboardExpanded by rememberSaveable { mutableStateOf(false) }
     var salaryManagementRoute by rememberSaveable { mutableStateOf(SalaryManagementRoute.HOME) }
     var showSalaryBottomNavigation by remember { mutableStateOf(true) }
     var salaryExportPeriod by rememberSaveable { mutableStateOf<app.caiji.android.data.SalaryPeriod?>(null) }
@@ -649,8 +650,10 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     initialDraft = salaryEditorDraft,
                     initialEntry = salaryEditorEntry,
                     initialCashNature = salaryEditorCashNature,
+                    initialKeyboardExpanded = salaryEditorKeyboardExpanded,
                     onDraftSnapshotChange = { draft, entry -> salaryEditorDraft = draft; salaryEditorEntry = entry },
                     onCashNatureChange = { salaryEditorCashNature = it },
+                    onKeyboardExpandedChange = { salaryEditorKeyboardExpanded = it },
                     onAsyncError = { pickerError = it },
                     onBottomNavigationVisibility = { showSalaryBottomNavigation = it },
                     onImport = {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +28,41 @@ import app.caiji.android.ui.theme.CaijiPalette
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+@Composable
+internal fun AmountDisplay(
+    label: String,
+    amount: String,
+    modifier: Modifier = Modifier,
+    tag: String,
+    onClick: (() -> Unit)? = null,
+    errorMessage: String? = null
+) {
+    Column(modifier.fillMaxWidth()) {
+        Text(label, Modifier.testTag("$tag-label"), color = CaijiPalette.SecondaryText,
+            style = MaterialTheme.typography.bodySmall)
+        Row(
+            Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("¥", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.weight(1f))
+            Text(
+                amount,
+                Modifier.testTag(tag),
+                color = CaijiPalette.Ink,
+                textAlign = TextAlign.End,
+                style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        errorMessage?.let { Text(it, color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall) }
+    }
+}
 
 @Composable
 internal fun AmountKeypad(

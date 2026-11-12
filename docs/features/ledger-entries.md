@@ -5,7 +5,7 @@
 <!-- feature-aliases: ledger, 账单, 月度汇总 -->
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告，分类明细支持编辑和左滑删除。 -->
-<!-- last-verified: 2026-11-11 -->
+<!-- last-verified: 2026-11-12 -->
 <!-- code-basis: HEAD 89f9ddc73527; worktree-digest sha256:fa9fdb7687133d9ef7055c0968bf1bf2617f4e43153b89e6ed21ec26af0d12d6 -->
 
 ## 快速上下文
@@ -64,8 +64,8 @@
 - 在记账页管理分类后返回会保留类型、金额、日期和备注；新分类显示但不会自动选中。
 - 新账单已选分类若在管理期间被停用，返回后清空选择、折叠输入区并要求重选；编辑历史账单可以保留其已停用分类。
 - 编辑可切换收支类型并更新对应月度汇总；删除需二次确认。
-- 新建和编辑初入均折叠分类以下输入区；点击金额或选择分类后展开。备注和数字键盘相邻；分类网格占标题下方可用空间并在分类较多或键盘展开时自行滚动。分类网格支持长按拖动，松手后写入既有排序事务；系统返回先收起输入区，再使用原放弃草稿确认。
-- 键盘日期键打开系统日期选择器；默认显示“今天”，其他日期显示月日，日期不能晚于今天。备注获得焦点时隐藏数字键盘，IME 完成后恢复。
+- 新建初入折叠分类以下输入区，选择分类后展开；编辑初入展开。备注和当前金额展示位于固定底部数字键盘上方；输入区收起或备注 IME 打开时金额和应用键盘一同隐藏。分类网格占标题下方可用空间并在分类较多或键盘展开时自行滚动，支持长按拖动排序。系统返回先收起输入区，再使用原放弃草稿确认。
+- 键盘日期键打开系统日期选择器；默认显示“今天”，其他日期显示月日，日期不能晚于今天。备注获得焦点时隐藏金额区和数字键盘，IME 完成后恢复。金额区保留收支 Pager 横滑切换。
 - 数字键盘右下“保存”为唯一保存动作；保存期间禁用，失败保留草稿。金额仍以整数分精确校验。
 - 320dp/大字体下，每日摘要保持在日期右侧；账单表头和数值列保持对齐并可整体横向滚动；分类、备注与键盘可滚动到达。摘要和结余文字的实际渲染边缘对齐到 18dp 内容边界。
 
@@ -81,7 +81,7 @@
 - `app/src/main/java/app/caiji/android/data/LedgerRepository.kt` — `PeriodRankingSnapshot` 双排行聚合的同一 Room 只读事务读取。
 - `app/src/main/java/app/caiji/android/data/LatestRequestGate.kt` — 报告请求门闩；`PeriodRankingRequestGate` 按 `ReportPeriod` 完整起止日期标记/撤销在途查询。
 - `app/src/main/java/app/caiji/android/ui/EntryEditorScreen.kt` — `EntryEditorScreen`、两页金额/分类内容、分类拖动和确认；按键由 `AmountKeypad` 提供。
-- `app/src/main/java/app/caiji/android/ui/AmountKeypad.kt` — 账单和工资共用的 4×4 应用内数字键盘及日期/保存按键。
+- `app/src/main/java/app/caiji/android/ui/AmountKeypad.kt` — 账单和工资共用的 `AmountDisplay` 金额区、4×4 应用内数字键盘及日期/保存按键。
 - `app/src/main/java/app/caiji/android/ui/CommonNavigationComponents.kt` — Pager 连续分段、统一选中语义。
 - `app/src/main/java/app/caiji/android/ui/MoneyDisplayFormat.kt` — `formatYuan`，仅格式化 Long/BigInteger 分值。
 - `app/src/main/java/app/caiji/android/domain/ClipboardTransactionParser.kt` — 两种银行通知模板、交易金额字段和日期年份推断。
@@ -195,10 +195,10 @@
 
 ### 记账页展开状态和唯一保存
 
-- **决定**：新增和编辑初始隐藏分类以下输入；选分类后显示，编辑点金额/分类可展开；日期由键盘“今天”键打开；右下“保存”是唯一保存入口。备注 IME 打开时隐藏数字键盘，IME 完成后恢复。
-- **原因**：记账首屏聚焦金额与分类，保留数字录入、日期、备注和草稿行为。
-- **取舍**：日期选择入口只在展开后的数字键盘中显示；再次进入输入区可继续编辑。
-- **证据**：API34 AVD `EntryEditorScreenTest` 和 `EverydayLedgerFlowTest`，含备注 IME 和金额精确保存。
+- **决定**：新增初入隐藏分类以下输入；选分类后显示，编辑初入展开；金额展示与应用键盘同显隐。备注 IME 打开时隐藏金额区和数字键盘，IME 完成后恢复；日期由“今天”键打开，右下“保存”为唯一保存入口。
+- **原因**：保证录入焦点随输入状态一致，且编辑记录可直接修改。
+- **取舍**：日期选择入口只在展开后的数字键盘中显示；金额区随键盘收起。
+- **证据**：API26/API34 `EntryEditorScreenTest` 和 `EverydayLedgerFlowTest`，含备注 IME、编辑初入、切页隐藏/恢复和金额精确保存。
 
 ### 银行通知剪贴板预填
 
@@ -216,6 +216,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-12 — 将账单金额移入键盘底部输入区
+
+- **状态**：已完成
+- **变化**：`AmountDisplay` 与应用键盘一起显示在备注上方；新增初入金额隐藏，选择分类后显示，编辑初入展开；备注 IME 时隐藏金额与自绘键盘。保留从金额区横滑切换收支类型。
+- **原因**：依据实机对照统一“记一笔”和新增工资收入的金额位置与键盘时机。
+- **兼容性**：保持 `Money.evaluate`、金额正值规则、日期和备注行为；数据库与备份格式不变。
+- **验证**：JVM 单测、Lint、API26/API34 全量仪器测试各 188 项通过；覆盖键盘显隐、编辑及跨类型横滑。
 
 ### 2026-11-11 — 共用账单和工资数字键盘
 

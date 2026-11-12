@@ -74,7 +74,7 @@ class EntryEditorScreenTest {
 
         compose.onNodeWithTag("entry-type-expense").assertIsSelected()
         compose.onNodeWithTag("entry-type-income").assertIsNotSelected()
-        compose.onNodeWithTag("amount-display").assertIsDisplayed()
+        compose.onAllNodesWithTag("amount-display").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-save").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-date").assertCountEquals(0)
@@ -83,7 +83,8 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").assertIsDisplayed()
         compose.onAllNodesWithText("请选择分类").assertCountEquals(0)
-        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("amount-display").assertIsDisplayed()
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
     }
 
@@ -105,7 +106,7 @@ class EntryEditorScreenTest {
         val lastExpense = categories.filter { it.type == EntryType.EXPENSE }.maxBy { it.sortOrder }
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-${lastExpense.id}"))
         compose.onNodeWithTag("entry-category-${lastExpense.id}").assertIsDisplayed()
-        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-input-dock").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-${lastExpense.id}"))
         compose.onNodeWithTag("entry-category-${lastExpense.id}").assertIsDisplayed()
@@ -148,7 +149,6 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
         compose.onAllNodesWithTag("entry-key-dismiss").assertCountEquals(0)
-        compose.onNodeWithTag("amount-display").performClick()
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
         compose.onNodeWithTag("entry-type-income").performClick()
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
@@ -169,9 +169,11 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-key-1").performClick()
         compose.onNodeWithTag("entry-content-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("entry-type-income").assertIsSelected()
-        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
+        compose.onAllNodesWithTag("amount-display").assertCountEquals(0)
         compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
         compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
+        compose.onNodeWithTag("entry-category-seed-income-0").performClick()
+        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
     }
 
     @Test fun rapidRepeatedCategorySwipesKeepBothCategoryGridsAndNeverReorder() {
@@ -214,9 +216,12 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-key-1").performClick()
         compose.onNodeWithTag("amount-display").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
         compose.onNodeWithTag("entry-type-income").assertIsSelected()
-        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
+        compose.onAllNodesWithTag("amount-display").assertCountEquals(0)
         compose.onNodeWithTag("entry-category-seed-income-0").assertIsDisplayed()
+        compose.onNodeWithTag("entry-category-seed-income-0").performClick()
+        compose.onNodeWithTag("amount-display").assertTextContains("1.00")
     }
 
     @Test fun longPressDraggingCategoryPersistsItsNewPositionWithoutSelectingIt() {
@@ -241,7 +246,8 @@ class EntryEditorScreenTest {
         compose.waitForIdle()
         assertEquals("seed-expense-0", moved.get()?.first)
         assertEquals(1, moved.get()?.second)
-        compose.onNodeWithTag("amount-display").assertTextEquals("0.00")
+        compose.onAllNodesWithTag("amount-display").assertCountEquals(0)
+        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
     }
 
     @Test fun failedCategoryReorderRestoresItemsAndReleasesPagerLock() {
@@ -347,8 +353,7 @@ class EntryEditorScreenTest {
         }
 
         compose.onNodeWithTag("amount-display").assertTextEquals("8,500.00")
-        compose.onAllNodesWithTag("entry-key-1").assertCountEquals(0)
-        compose.onNodeWithTag("amount-display").performClick()
+        compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
         compose.onNodeWithTag("entry-key-save").performClick()
         assertEquals(850000, savedFen.get())
     }
