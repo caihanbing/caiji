@@ -29,5 +29,5 @@
 | [`WORK-20261110-002`](WORK-20261110-002.md) | 财记分类明细左滑删除与分隔线优化 | change | high | handoff-ready | ledger-entries | 2026-11-11 |
 | [`WORK-20261111-001`](WORK-20261111-001.md) | 财记 0.5.10 新增收入录入统一 | change | medium | handoff-ready | salary-records, ledger-entries | 2026-11-11 |
 | [`WORK-20261111-002`](WORK-20261111-002.md) | 财记 0.5.11 管理界面统一与更新源优化 | change | high | handoff-ready | salary-records, entry-categories, app-updates | 2026-11-11 |
-| [`WORK-20261111-003`](WORK-20261111-003.md) | 财记 0.5.12 收入录入金额区与键盘交互统一 | change | medium | planned | salary-records, ledger-entries | 2026-11-11 |
+| [`WORK-20261111-003`](WORK-20261111-003.md) | 财记 0.5.12 收入录入金额区与键盘交互统一 | change | medium | handoff-ready | salary-records, ledger-entries | 2026-11-12 |
 <!-- manage-dev-work:index:end -->
