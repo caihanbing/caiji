@@ -38,8 +38,8 @@ internal fun AmountDisplay(
     onClick: (() -> Unit)? = null,
     errorMessage: String? = null
 ) {
-    Column(modifier.fillMaxWidth()) {
-        Text(label, Modifier.testTag("$tag-label"), color = CaijiPalette.SecondaryText,
+    Column(modifier.fillMaxWidth().testTag("$tag-container")) {
+        if (label.isNotEmpty()) Text(label, Modifier.testTag("$tag-label"), color = CaijiPalette.SecondaryText,
             style = MaterialTheme.typography.bodySmall)
         Row(
             Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -79,7 +79,7 @@ internal fun AmountKeypad(
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
         keys.forEachIndexed { rowIndex, row ->
-            Row(Modifier.fillMaxWidth().height(43.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth().height(48.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { key ->
                     val isDate = key == "日期"
                     val isSave = key == "保存"
@@ -105,7 +105,11 @@ internal fun AmountKeypad(
                         Box(contentAlignment = Alignment.Center) {
                             Text(if (isDate) dateLabel else if (isSave && saving) "保存中" else key,
                                 modifier = if (isDate) Modifier.testTag("$tagPrefix-key-date-label") else Modifier,
-                                color = if (isSave && !keyEnabled) CaijiPalette.SecondaryText else CaijiPalette.Ink,
+                                color = when {
+                                    isSave && saving -> CaijiPalette.SecondaryText
+                                    isSave && keyEnabled -> CaijiPalette.OnPrimary
+                                    else -> CaijiPalette.Ink
+                                },
                                 style = if (rowIndex == 3 && isSave || isDate) MaterialTheme.typography.labelLarge
                                 else MaterialTheme.typography.titleMedium,
                                 fontWeight = if (isSave || isDate) FontWeight.SemiBold else FontWeight.Normal,

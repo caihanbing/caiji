@@ -52,6 +52,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -124,12 +125,14 @@ internal fun EntryEditorScreen(
             selectedCategory = null
             inputPanelExpanded = false
             mustReselectActiveCategory = false
-            changed = true
+            if (existing != null) changed = true
         }
     }
 
-    fun cancel() {
-        if (changed) discardPrompt = true else onCancel()
+    val cancel: () -> Unit = {
+        val shouldConfirm = if (existing != null) changed else
+            selectedCategory != null && calculated != null && calculated > 0
+        if (shouldConfirm) discardPrompt = true else onCancel()
     }
 
     fun saveEntry() {
@@ -235,7 +238,7 @@ internal fun EntryEditorScreen(
         ) {
             CaijiPageTopBar(
                 title = if (existing == null) "记一笔" else "编辑账单",
-                onBack = ::cancel,
+                onBack = cancel,
                 backTag = "entry-editor-back",
                 actionTag = "entry-editor-delete-action",
                 action = if (existing != null) {
@@ -285,24 +288,11 @@ internal fun EntryEditorScreen(
             if (inputPanelExpanded) {
                 Column(Modifier.fillMaxWidth().testTag("entry-input-dock")) {
                     HorizontalDivider(color = CaijiPalette.Divider)
-                    OutlinedTextField(
-                        value = note,
-                        onValueChange = { note = it.take(20_000); changed = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 2.dp)
-                            .onFocusChanged { noteFocused = it.isFocused }
-                            .testTag("entry-note"),
-                        label = { Text("备注（选填）") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
                     if (showAmountKeypad) {
                         AmountDisplay(
                             label = "金额",
                             amount = calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
-                            modifier = Modifier.pointerInput(pagerState.currentPage) {
+                            modifier = Modifier.padding(horizontal = 16.dp).pointerInput(pagerState.currentPage) {
                                 var horizontalDrag = 0f
                                 detectHorizontalDragGestures(
                                     onHorizontalDrag = { change, amount ->
@@ -324,6 +314,21 @@ internal fun EntryEditorScreen(
                             errorMessage = if (expression.isNotEmpty() && calculated == null)
                                 "金额格式无效或结果不能为零及负数" else null
                         )
+                    }
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it.take(20_000); changed = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp)
+                            .onFocusChanged { noteFocused = it.isFocused }
+                            .testTag("entry-note"),
+                        label = { Text("备注（选填）") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                    )
+                    if (showAmountKeypad) {
                         AmountKeypad(
                             date = date, saving = saving, canSave = canSave, tagPrefix = "entry",
                             onDate = { showDatePicker() }, onSave = { saveEntry() },
@@ -532,6 +537,7 @@ private fun CategoryDragGrid(
                         }
                     }
                     .clickable(enabled = enabled && draggedId == null && !savingOrder) { onSelect(category) }
+                    .semantics { selected = category.id == selectedCategory }
                     .padding(vertical = 4.dp).testTag("entry-category-${category.id}"),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(3.dp)

@@ -2,6 +2,7 @@ package app.caiji.android.ui
 
 import android.view.WindowManager
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
@@ -46,11 +47,31 @@ class EverydayLedgerFlowTest {
 
     @Before fun returnToMainNavigationIfLaunchedOnAChildRoute() {
         repeat(8) {
-            if (compose.onAllNodesWithTag("nav-entry").fetchSemanticsNodes().isEmpty()) {
-                compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-                compose.waitForIdle()
+            when {
+                compose.onAllNodesWithTag("nav-entry").fetchSemanticsNodes().isNotEmpty() -> return
+                compose.onAllNodesWithText("放弃本次记账？").fetchSemanticsNodes().isNotEmpty() ->
+                    compose.onNodeWithText("放弃").performClick()
+                compose.onAllNodesWithText("放弃本次收入？").fetchSemanticsNodes().isNotEmpty() ->
+                    compose.onNodeWithText("放弃").performClick()
+                else -> compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             }
+            compose.waitForIdle()
         }
+    }
+
+    private fun openEntryWithActiveExpenseCategory() {
+        lateinit var repository: RoomLedgerRepository
+        compose.activityRule.scenario.onActivity { activity ->
+            repository = (activity.application as CaijiApplication).ledgerRepository
+        }
+        compose.onNodeWithTag("nav-entry").performClick()
+        compose.onNodeWithTag("entry-manage-categories").performClick()
+        if (!runBlocking { repository.categories().first { it.id == "seed-expense-0" }.active }) {
+            compose.onNodeWithTag("category-active-name-餐饮").performClick()
+            compose.waitUntil(5_000) { runBlocking { repository.categories().first { it.id == "seed-expense-0" }.active } }
+        }
+        compose.onNodeWithTag("category-back").performClick()
+        compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
     }
 
     @Test fun settingsAndBillSummaryNavigationUseConsistentLabels() {
@@ -165,9 +186,11 @@ class EverydayLedgerFlowTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithTag("salary-field-收入").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("salary-value-收入", useUnmergedTree = true).assertTextContains("123.45", substring = true)
+        compose.onNodeWithTag("salary-field-收入", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithTag("salary-active-amount").assertTextContains("123.45", substring = true)
         compose.onNodeWithTag("salary-income-noncash-tab").assertIsSelected()
-        compose.onAllNodesWithTag("salary-field-工会费").assertCountEquals(0)
+        compose.onNodeWithTag("salary-field-selector").assertIsDisplayed()
+        compose.onNodeWithTag("salary-field-工会费", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test fun settingsIncomeTypeEditorDialogRestoresItsDraftAfterActivityRecreation() {
@@ -273,7 +296,11 @@ class EverydayLedgerFlowTest {
 
     @Test fun anExistingEntryCanSwitchFromExpenseToIncomeAndBeDeleted() {
         val note = "ui-transfer-${System.currentTimeMillis()}"
-        compose.onNodeWithTag("nav-entry").performClick()
+        lateinit var repository: RoomLedgerRepository
+        compose.activityRule.scenario.onActivity { activity ->
+            repository = (activity.application as CaijiApplication).ledgerRepository
+        }
+        openEntryWithActiveExpenseCategory()
         compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
@@ -282,10 +309,15 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("entry-note").performTextInput(note)
         compose.onNodeWithTag("entry-note").performImeAction()
         compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
+        compose.onNodeWithTag("entry-category-seed-expense-0").assertIsSelected()
+        compose.onNodeWithTag("entry-key-save").assertIsEnabled()
         compose.onNodeWithTag("entry-key-save").performClick()
-        compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText(note).fetchSemanticsNodes().isNotEmpty()
+        compose.waitUntil(15_000) { runBlocking { repository.allEntries().any { it.note == note } } }
+        compose.waitUntil(timeoutMillis = 15_000) {
+            compose.onAllNodesWithTag("nav-ledger").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("backup-feedback").fetchSemanticsNodes().isNotEmpty()
         }
+        compose.onAllNodesWithTag("backup-feedback").assertCountEquals(0)
         compose.onNodeWithText(note).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(note).performClick()
         compose.onNodeWithTag("amount-display").assertTextEquals("1.23")
@@ -311,16 +343,27 @@ class EverydayLedgerFlowTest {
 
     @Test fun editingAFilteredReportEntryRefreshesTheReportAndKeepsItsCategoryFilter() {
         val note = "期间报告编辑-${System.currentTimeMillis()}"
-        compose.onNodeWithTag("nav-entry").performClick()
+        lateinit var repository: RoomLedgerRepository
+        compose.activityRule.scenario.onActivity { activity ->
+            repository = (activity.application as CaijiApplication).ledgerRepository
+        }
+        openEntryWithActiveExpenseCategory()
         compose.onNodeWithTag("entry-category-grid").assertIsDisplayed()
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         listOf("1", "7").forEach { compose.onNodeWithTag("entry-key-$it").performClick() }
         compose.onNodeWithTag("entry-note").performTextInput(note)
         compose.onNodeWithTag("entry-note").performImeAction()
+        compose.onNodeWithTag("amount-display").assertTextEquals("17.00")
+        compose.onNodeWithTag("entry-category-seed-expense-0").assertIsSelected()
+        compose.onNodeWithTag("entry-key-save").assertIsEnabled()
         compose.onNodeWithTag("entry-key-save").performClick()
-        compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty()
+        compose.waitUntil(15_000) { runBlocking { repository.allEntries().any { it.note == note } } }
+        compose.waitUntil(timeoutMillis = 15_000) {
+            compose.onAllNodesWithTag("nav-ledger").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("backup-feedback").fetchSemanticsNodes().isNotEmpty()
         }
+        compose.onAllNodesWithTag("backup-feedback").assertCountEquals(0)
+        compose.onNodeWithText(note, substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("nav-ledger").performClick()
 
         val month = java.time.YearMonth.now()
@@ -359,16 +402,20 @@ class EverydayLedgerFlowTest {
             repository = (activity.application as CaijiApplication).ledgerRepository
         }
         val note = "分类明细删除-${System.currentTimeMillis()}"
-        compose.onNodeWithTag("nav-entry").performClick()
+        openEntryWithActiveExpenseCategory()
         compose.onNodeWithTag("entry-category-grid").performScrollToNode(hasTestTag("entry-category-seed-expense-0"))
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("entry-key-3").performClick()
         compose.onNodeWithTag("entry-note").performTextInput(note)
         compose.onNodeWithTag("entry-note").performImeAction()
+        compose.onNodeWithTag("entry-key-save").assertIsEnabled()
         compose.onNodeWithTag("entry-key-save").performClick()
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithText(note, substring = true).fetchSemanticsNodes().isNotEmpty()
+        compose.waitUntil(15_000) { runBlocking { repository.allEntries().any { it.note == note } } }
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithTag("nav-ledger").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("backup-feedback").fetchSemanticsNodes().isNotEmpty()
         }
+        compose.onAllNodesWithTag("backup-feedback").assertCountEquals(0)
         val entry = runBlocking { repository.allEntries().single { it.note == note } }
         val month = YearMonth.from(entry.occurredOn)
         val balanceBefore = runBlocking { repository.monthTotals(month) }

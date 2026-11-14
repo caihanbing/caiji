@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -43,6 +44,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,6 +88,79 @@ class EntryEditorScreenTest {
         compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
         compose.onNodeWithTag("amount-display").assertIsDisplayed()
         compose.onNodeWithTag("entry-key-1").assertIsDisplayed()
+    }
+
+    @Test fun selectingCategoryAndSwipingWithoutValidPositiveAmountDoesNotAskToDiscard() {
+        val cancelled = AtomicLong(0)
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    onCancel = { cancelled.incrementAndGet() },
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-content-pager").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("entry-editor-back").performClick()
+        compose.onAllNodesWithText("放弃本次记账？").assertCountEquals(0)
+        assertEquals(1L, cancelled.get())
+    }
+
+    @Test fun categoryAndPositiveAmountAskToDiscardButClearingAmountDoesNot() {
+        val cancelled = AtomicLong(0)
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    onCancel = { cancelled.incrementAndGet() },
+                    onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-category-seed-expense-0").assertIsSelected()
+        compose.onNodeWithTag("entry-key-1").performClick()
+        compose.onNodeWithTag("entry-category-seed-expense-0").assertIsSelected()
+        compose.onNodeWithTag("amount-display").assertTextEquals("1.00")
+        compose.onNodeWithTag("entry-editor-back").performClick()
+        assertEquals(0L, cancelled.get())
+        compose.onNodeWithText("放弃本次记账？").assertIsDisplayed()
+        compose.onNodeWithText("继续编辑").performClick()
+        compose.onNodeWithTag("entry-key-⌫").performClick()
+        compose.onNodeWithTag("entry-editor-back").performClick()
+        compose.onAllNodesWithText("放弃本次记账？").assertCountEquals(0)
+        assertEquals(1L, cancelled.get())
+    }
+
+    @Test fun amountSitsAboveNoteWithSixteenDpHorizontalInsets() {
+        var density = 1f
+        compose.setContent {
+            density = LocalDensity.current.density
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    onCancel = {}, onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) }, onSetCategoryActive = { _, _, done -> done(true) },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        val amount = compose.onNodeWithTag("amount-display-container").fetchSemanticsNode().boundsInRoot
+        val note = compose.onNodeWithTag("entry-note").fetchSemanticsNode().boundsInRoot
+        val keypad = compose.onNodeWithTag("entry-key-1").fetchSemanticsNode().boundsInRoot
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(amount.top < note.top)
+        assertTrue(note.bottom < keypad.top)
+        assertEquals(16f * density, amount.left - root.left, 2f)
+        assertEquals(16f * density, root.right - amount.right, 2f)
     }
 
     @Test fun collapsedCategoryGridUsesAvailableHeightAndCanReachLastCategory() {
