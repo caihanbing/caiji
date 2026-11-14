@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -336,6 +337,7 @@ class SalaryScreensTest {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.onNodeWithTag("salary-open-summary").performClick()
 
+        compose.onNodeWithContentDescription("显示金额").performClick()
         compose.onNodeWithTag("salary-net-total").assertTextContains("24,500.00", substring = true)
         compose.onNodeWithTag("salary-year-table-scroll").assertIsDisplayed()
         compose.onNodeWithText("年份").assertIsDisplayed()

@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.captureToImage
@@ -848,6 +849,7 @@ class BillReportsScreenTest {
         compose.onNodeWithTag("year-row-2026").assertIsDisplayed()
         compose.onAllNodesWithText("历史总结余").assertCountEquals(0)
         compose.onNodeWithText("累计结余").assertIsDisplayed()
+        compose.onNodeWithContentDescription("显示金额").performClick()
         compose.onAllNodesWithText("123,456,789,012,345,678.91", substring = true).assertCountEquals(2)
     }
 

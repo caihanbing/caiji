@@ -32,6 +32,8 @@ enum class CaijiIconName {
     DATE,
     EDIT,
     DELETE,
+    VISIBILITY,
+    VISIBILITY_OFF,
     MONTH_PREVIOUS,
     MONTH_NEXT,
     IMPORT,
@@ -53,11 +55,14 @@ fun CaijiIcon(
         CaijiIconName.DATE -> Icons.Outlined.DateRange
         CaijiIconName.EDIT -> Icons.Outlined.Edit
         CaijiIconName.DELETE -> Icons.Outlined.Delete
+        CaijiIconName.VISIBILITY, CaijiIconName.VISIBILITY_OFF -> null
         CaijiIconName.IMPORT, CaijiIconName.EXPORT -> null
         CaijiIconName.MONTH_PREVIOUS, CaijiIconName.MONTH_NEXT -> null
     }
     if (image == null) {
-        if (name == CaijiIconName.CATEGORY) CategoryTagGlyph(contentDescription, modifier)
+        if (name == CaijiIconName.VISIBILITY || name == CaijiIconName.VISIBILITY_OFF)
+            VisibilityGlyph(name == CaijiIconName.VISIBILITY_OFF, contentDescription, modifier)
+        else if (name == CaijiIconName.CATEGORY) CategoryTagGlyph(contentDescription, modifier)
         else if (name == CaijiIconName.MONTH_PREVIOUS || name == CaijiIconName.MONTH_NEXT) {
             MonthChevronGlyph(name == CaijiIconName.MONTH_NEXT, contentDescription, modifier)
         } else FileActionGlyph(name == CaijiIconName.IMPORT, contentDescription, modifier)
@@ -69,6 +74,25 @@ fun CaijiIcon(
         modifier = modifier,
         tint = LocalContentColor.current
     )
+}
+
+@Composable
+private fun VisibilityGlyph(hidden: Boolean, description: String?, modifier: Modifier) {
+    val color = LocalContentColor.current
+    Canvas(modifier.size(24.dp).semantics {
+        if (description != null) contentDescription = description
+    }) {
+        val sx = size.width / 24f
+        val sy = size.height / 24f
+        val eye = Path().apply {
+            moveTo(2f * sx, 12f * sy)
+            cubicTo(7f * sx, 4f * sy, 17f * sx, 4f * sy, 22f * sx, 12f * sy)
+            cubicTo(17f * sx, 20f * sy, 7f * sx, 20f * sy, 2f * sx, 12f * sy)
+        }
+        drawPath(eye, color, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round))
+        drawCircle(color, 2.8f * sx, Offset(size.width / 2, size.height / 2))
+        if (hidden) drawLine(color, Offset(4f * sx, 20f * sy), Offset(20f * sx, 4f * sy), 2.dp.toPx())
+    }
 }
 
 @Composable

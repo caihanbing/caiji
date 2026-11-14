@@ -89,6 +89,7 @@ internal fun SalaryRootScreen(
   )
  }
  var typesOrigin by rememberSaveable { mutableStateOf(SR.HOME) }
+ var summaryAmountsHidden by remember { mutableStateOf(true) }
  var editOrigin by rememberSaveable { mutableStateOf(SR.HOME) }
  var records by remember { mutableStateOf(emptyList<SalaryEntry>()) }
  var duplicates by remember { mutableIntStateOf(0) }
@@ -180,7 +181,7 @@ internal fun SalaryRootScreen(
   records = records, types = types, year = selectedHomeYear, summary = false, message = message,
   dismiss = { message = null }, previous = { changeHomeYear((selectedHomeYear - 1).coerceAtLeast(1900)); homeSwipeId = null },
   next = { changeHomeYear((selectedHomeYear + 1).coerceAtMost(LocalDate.now().year)); homeSwipeId = null }, setYear = { changeHomeYear(it); homeSwipeId = null },
-  openSummary = { page = SR.SUMMARY }, backToYear = {}, listState = homeListState,
+  openSummary = { summaryAmountsHidden = true; page = SR.SUMMARY }, backToYear = {}, listState = homeListState,
   openSwipeEntryId = homeSwipeId, setSwipeEntryId = { homeSwipeId = it },
   delete = deleteFromList,
   add = { selected = null; editOrigin = SR.HOME; cashNature = true; salaryActiveField = "收入"; onCashNatureChange(true); homeSwipeId = null; typeSelectionNotice = null
@@ -194,12 +195,14 @@ internal fun SalaryRootScreen(
  SR.SUMMARY->SalaryAnnualSummaryScreen(
   records = records, tableVerticalState = annualTableVerticalState, tableHorizontalState = annualTableHorizontalState,
   onBack = { page = SR.HOME },
-  onOpenYear = { selectedYear -> reportYear = selectedYear; page = SR.YEAR_REPORT }
+  onOpenYear = { selectedYear -> reportYear = selectedYear; page = SR.YEAR_REPORT },
+  amountsHidden = summaryAmountsHidden,
+  onToggleAmounts = { summaryAmountsHidden = !summaryAmountsHidden }
  )
  SR.YEAR_REPORT->SalaryYearReportScreen(
   year = reportYear, records = SalaryReports.filter(records, SalaryPeriod.Year(reportYear)), types = types,
   listState = yearReportRankingState,
-  onBack = { page = SR.SUMMARY },
+  onBack = { summaryAmountsHidden = true; page = SR.SUMMARY },
   onOpenIncomeType = { id -> selectedIncomeTypeId = id; detailSwipeId = null; page = SR.INCOME_DETAILS }
  )
  SR.INCOME_DETAILS -> {
@@ -468,7 +471,9 @@ private fun SalaryAnnualSummaryScreen(
     tableVerticalState: androidx.compose.foundation.ScrollState,
     tableHorizontalState: androidx.compose.foundation.ScrollState,
     onBack: () -> Unit,
-    onOpenYear: (Int) -> Unit
+    onOpenYear: (Int) -> Unit,
+    amountsHidden: Boolean,
+    onToggleAmounts: () -> Unit
 ) {
     val currentYear = LocalDate.now().year
     val allTotals = SalaryReports.summarize(records)
@@ -490,7 +495,8 @@ private fun SalaryAnnualSummaryScreen(
             primaryLabel = "累计纯收入", primaryFen = allTotals.netFen,
             leftLabel = "累计收入", leftFen = allTotals.grossFen, leftColor = CaijiPalette.Income,
             rightLabel = "累计扣款", rightFen = allTotals.deductionFen,
-            primaryTag = "salary-net-total", leftTag = "salary-gross-total"
+            primaryTag = "salary-net-total", leftTag = "salary-gross-total",
+            maskPrimaryAmount = amountsHidden, maskLeftAmount = amountsHidden, onToggleAmounts = onToggleAmounts
         )
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(tableVerticalState).padding(horizontal = 16.dp)) {
             PeriodAmountTable(

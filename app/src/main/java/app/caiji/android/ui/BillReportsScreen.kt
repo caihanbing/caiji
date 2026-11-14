@@ -65,6 +65,7 @@ internal fun BillReportsScreen(
     onOpenMonth: (YearMonth) -> Unit,
     onOpenYear: (Int) -> Unit
 ) {
+    var amountsHidden by remember { mutableStateOf(true) }
     val pagerState = rememberPagerState(initialPage = mode.ordinal, pageCount = { BillListMode.entries.size })
     val pagerScope = rememberCoroutineScope()
     val visibleMonthReports = monthReports.filter { it.month.year == year }
@@ -104,7 +105,8 @@ internal fun BillReportsScreen(
                     }
                     Column(Modifier.fillMaxSize()) {
                         PeriodSummaryCard("${year}年结余", yearTotals,
-                            incomeLabel = "${year}年收入", expenseLabel = "${year}年支出")
+                            incomeLabel = "${year}年收入", expenseLabel = "${year}年支出",
+                            amountsHidden = amountsHidden, onToggleAmounts = { amountsHidden = !amountsHidden })
                         val rows = visibleMonthReports.sortedByDescending { it.month }.map { item ->
                             PeriodAmountTableRow("${item.month.monthValue}月", billAmounts(item.totals), "month-row-${item.month.monthValue}") {
                                 onOpenMonth(item.month)
@@ -128,7 +130,8 @@ internal fun BillReportsScreen(
                     PeriodAmountTableRow("${yearValue}年", billAmounts(totals), "year-row-$yearValue") { onOpenYear(yearValue) }
                     }
                     Column(Modifier.fillMaxSize()) {
-                        PeriodSummaryCard("累计结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出")
+                        PeriodSummaryCard("累计结余", allTime, incomeLabel = "累计收入", expenseLabel = "累计支出",
+                            amountsHidden = amountsHidden, onToggleAmounts = { amountsHidden = !amountsHidden })
                         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                             PeriodAmountTable("年份", listOf("收入", "支出", "结余"), tableRows,
                                 "bill-table-scroll", listOf("bill-table-header-income", "bill-table-header-expense", "bill-table-header-balance"))

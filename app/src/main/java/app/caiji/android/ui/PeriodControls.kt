@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -85,7 +86,9 @@ internal fun PeriodSummaryCard(
     totals: LedgerPeriodTotals,
     incomeLabel: String = "收入",
     expenseLabel: String = "支出",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    amountsHidden: Boolean = false,
+    onToggleAmounts: (() -> Unit)? = null
 ) {
     FinancialSummaryCard(
         primaryLabel = title,
@@ -96,7 +99,10 @@ internal fun PeriodSummaryCard(
         rightLabel = expenseLabel,
         rightFen = totals.expenseFen,
         modifier = modifier,
-        primaryTag = "report-balance"
+        primaryTag = "report-balance",
+        maskPrimaryAmount = amountsHidden,
+        maskLeftAmount = amountsHidden,
+        onToggleAmounts = onToggleAmounts
     )
 }
 
@@ -112,7 +118,10 @@ internal fun FinancialSummaryCard(
     modifier: Modifier = Modifier,
     primaryTag: String? = null,
     leftTag: String? = null,
-    rightTag: String? = null
+    rightTag: String? = null,
+    maskPrimaryAmount: Boolean = false,
+    maskLeftAmount: Boolean = false,
+    onToggleAmounts: (() -> Unit)? = null
 ) {
     val balanceScroll = rememberScrollState()
     Surface(
@@ -124,11 +133,20 @@ internal fun FinancialSummaryCard(
             .testTag("period-summary-card")
     ) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-            Text(primaryLabel, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(primaryLabel, Modifier.weight(1f), color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                if (onToggleAmounts != null) {
+                    IconButton(onClick = onToggleAmounts, modifier = Modifier.size(48.dp).testTag("summary-privacy-toggle")) {
+                        CaijiIcon(if (maskPrimaryAmount) CaijiIconName.VISIBILITY_OFF else CaijiIconName.VISIBILITY,
+                            if (maskPrimaryAmount) "显示金额" else "隐藏金额")
+                    }
+                }
+            }
             Box(Modifier.fillMaxWidth().horizontalScroll(balanceScroll, enabled = balanceScroll.maxValue > 0)
                 .testTag("summary-balance-scroll-area")) {
                 Text(
-                    "${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}",
+                    if (maskPrimaryAmount) maskThousands("${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}")
+                    else "${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}",
                     if (primaryTag == null) Modifier else Modifier.testTag(primaryTag),
                     style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
                     fontWeight = FontWeight.SemiBold,
@@ -138,7 +156,7 @@ internal fun FinancialSummaryCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                SummaryMetric(leftLabel, leftFen, leftColor, Modifier.weight(1f), leftTag)
+                SummaryMetric(leftLabel, leftFen, leftColor, Modifier.weight(1f), leftTag, maskLeftAmount)
                 SummaryMetric(rightLabel, rightFen, CaijiPalette.Ink, Modifier.weight(1f), rightTag)
             }
         }
@@ -147,13 +165,13 @@ internal fun FinancialSummaryCard(
 
 @Composable
 private fun SummaryMetric(label: String, amountFen: java.math.BigInteger, color: androidx.compose.ui.graphics.Color,
-    modifier: Modifier, valueTag: String? = null) {
+    modifier: Modifier, valueTag: String? = null, hidden: Boolean = false) {
     val amountScroll = rememberScrollState()
     Column(modifier) {
         Text(label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
         Box(Modifier.fillMaxWidth().horizontalScroll(amountScroll, enabled = amountScroll.maxValue > 0)) {
             Text(
-                "¥${formatYuan(amountFen)}",
+                if (hidden) maskThousands("¥${formatYuan(amountFen)}") else "¥${formatYuan(amountFen)}",
                 modifier = if (valueTag == null) Modifier else Modifier.testTag(valueTag),
                 color = color,
                 style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
