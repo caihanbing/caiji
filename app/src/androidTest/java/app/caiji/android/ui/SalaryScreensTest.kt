@@ -209,6 +209,31 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-key-save").assertIsDisplayed()
     }
 
+    @Test fun incomeTypeManagementReturnsToDraftAndKeepsActiveFieldAndDockOrder() {
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
+        compose.onNodeWithText("＋  新增收入").performClick()
+        compose.onNodeWithTag("salary-income-type-builtin-1").performClick()
+        enterSalaryAmount("收入", "123", replace = false)
+        compose.onNodeWithTag("salary-field-工会费", useUnmergedTree = true).performScrollTo().performClick()
+        enterSalaryAmount("工会费", "4", replace = false)
+        compose.onNodeWithTag("salary-manage-income-types").performClick()
+        compose.onNodeWithText("收入项管理").assertIsDisplayed()
+        compose.onNodeWithTag("salary-header-back").performClick()
+
+        compose.onNodeWithTag("salary-income-type-builtin-1").assertIsDisplayed()
+        compose.onNodeWithTag("salary-field-工会费", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("salary-active-amount").assertTextEquals("4.00")
+        val summary = compose.onNodeWithTag("salary-editor-summary").fetchSemanticsNode().boundsInRoot
+        val amount = compose.onNodeWithTag("salary-active-amount-container").fetchSemanticsNode().boundsInRoot
+        val fields = compose.onNodeWithTag("salary-field-selector").fetchSemanticsNode().boundsInRoot
+        val keypad = compose.onNodeWithTag("salary-keypad").fetchSemanticsNode().boundsInRoot
+        assertTrue("summary should be above the amount", summary.bottom <= amount.top)
+        assertTrue("amount should be above the field selector", amount.bottom <= fields.top)
+        assertTrue("field selector should be above the keypad", fields.bottom <= keypad.top)
+        val expectedRowHeight = with(compose.density) { 56.dp.toPx() }
+        assertEquals("56dp minimum field row", expectedRowHeight, fields.height, 1f)
+    }
+
     @Test fun salaryFieldSelectorContainsAllEightFieldsAndCanScrollToTax() {
         compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
         compose.onNodeWithText("＋  新增收入").performClick()

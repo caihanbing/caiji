@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告，分类明细支持编辑和左滑删除。 -->
 <!-- last-verified: 2026-11-14 -->
-<!-- code-basis: HEAD f076e87bcb19; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- code-basis: HEAD d34ef049b6b4; working-tree=dirty -->
 
 ## 快速上下文
 
@@ -149,7 +149,7 @@
 
 ## 配置与依赖
 
-- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.13`、`versionCode=28`；账本 Room schema 1。
+- Android `minSdk=26`、`targetSdk=34`；当前版本配置为 `0.5.14`、`versionCode=29`；账本 Room schema 1。
 - 使用 Kotlin、Jetpack Compose Material 3、Lifecycle ViewModel、Coroutines 和 Room；期间双排行同一快照读取，无业务后端。
 - macOS release 构建说明位于 `docs/release/macOS-install.md`。
 
@@ -225,6 +225,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-14 — 工资录入对齐记账控件基线
+
+- **状态**：已完成
+- **变化**：“选择收入项”标题采用与记账页“选择分类”相同的 14sp 字号；记账页金额、备注和数字键盘是收入录入同角色控件的样式基准。
+- **原因**：按用户要求审视全应用相似控件的一致性。
+- **兼容性**：账单编辑器行为及账单数据不变。
+- **验证**：对照 Compose 实现及 API34 模拟器记账页；完整核验证据见 `WORK-20261114-001`。
 
 ### 2026-11-14 — 调整记账固定区顺序与放弃提示
 
