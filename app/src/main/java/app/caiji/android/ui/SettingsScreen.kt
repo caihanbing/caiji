@@ -23,6 +23,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +43,8 @@ import app.caiji.android.BuildConfig
 import app.caiji.android.ui.theme.CaijiPalette
 import app.caiji.android.ui.theme.CaijiThemeId
 import app.caiji.android.update.UpdateState
+import app.caiji.android.domain.parseExpenseNoteThreshold
+import java.math.BigDecimal
 
 @Composable
 internal fun SettingsScreen(
@@ -51,9 +58,12 @@ internal fun SettingsScreen(
     onLocalDialogVisibilityChange: (Boolean) -> Unit = {},
     onSalaryImport: () -> Unit = {},
     onSalaryExport: () -> Unit = {},
-    onSalaryTypes: () -> Unit = {}
+    onSalaryTypes: () -> Unit = {},
+    requiredExpenseNoteThresholdFen: Long? = null,
+    onRequiredExpenseNoteThresholdChange: (Long?) -> Unit = {}
 ) {
     var exportPrompt by remember { mutableStateOf(false) }
+    var thresholdDialog by remember { mutableStateOf(false) }
     if (exportPrompt) BackupPasswordDialog(
         title = "加密备份",
         confirmLabel = "选择保存位置",
@@ -61,6 +71,49 @@ internal fun SettingsScreen(
         onDismiss = { exportPrompt = false; onLocalDialogVisibilityChange(false) },
         onConfirm = { password, _ -> exportPrompt = false; onLocalDialogVisibilityChange(false); onExport(password) }
     )
+    if (thresholdDialog) {
+        var enabled by remember(requiredExpenseNoteThresholdFen) { mutableStateOf(requiredExpenseNoteThresholdFen != null) }
+        var amount by remember(requiredExpenseNoteThresholdFen) {
+            mutableStateOf(requiredExpenseNoteThresholdFen?.let { BigDecimal.valueOf(it, 2).stripTrailingZeros().toPlainString() }.orEmpty())
+        }
+        var invalid by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { thresholdDialog = false },
+            title = { Text("必填备注最低支出") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("启用支出备注要求", Modifier.weight(1f))
+                        Switch(checked = enabled, onCheckedChange = { enabled = it }, modifier = Modifier.testTag("expense-note-threshold-enabled"))
+                    }
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { amount = it; invalid = false },
+                        enabled = enabled,
+                        label = { Text("最低支出金额（元）") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        isError = invalid,
+                        supportingText = {
+                            Text(if (invalid) "请输入非负金额，最多两位小数" else "达到或超过此金额时，必须填写备注。设为 0 元时，所有支出都必须填写备注。")
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("expense-note-threshold-amount")
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val fen = if (enabled) parseExpenseNoteThreshold(amount) else null
+                    if (enabled && fen == null) invalid = true else {
+                        onRequiredExpenseNoteThresholdChange(fen)
+                        thresholdDialog = false
+                    }
+                }, modifier = Modifier.testTag("expense-note-threshold-save")) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { thresholdDialog = false }) { Text("取消") } },
+            modifier = Modifier.testTag("expense-note-threshold-dialog")
+        )
+    }
 
     Column(
         Modifier.fillMaxSize().testTag("settings-root").verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 18.dp),
@@ -88,6 +141,13 @@ internal fun SettingsScreen(
                     Text("›", color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.headlineMedium)
                 }
             }
+            SalarySettingsRow(
+                "必填备注最低支出",
+                requiredExpenseNoteThresholdFen?.let { "支出达到 ¥${app.caiji.android.ui.formatYuan(it)} 时必须填写备注" } ?: "未启用",
+                CaijiIconName.EDIT,
+                { thresholdDialog = true },
+                "settings-expense-note-threshold"
+            )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-backup-section")) {
                 SalarySettingsRow("加密备份", "仅备份账单和分类，密码至少 8 位", CaijiIconName.EXPORT,
                     { exportPrompt = true; onLocalDialogVisibilityChange(true) }, "settings-export")

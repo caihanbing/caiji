@@ -66,6 +66,7 @@ import app.caiji.android.domain.Category
 import app.caiji.android.domain.ClipboardTransaction
 import app.caiji.android.domain.EntryType
 import app.caiji.android.domain.Money
+import app.caiji.android.domain.requiresExpenseNote
 import app.caiji.android.ui.theme.CaijiPalette
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -88,7 +89,8 @@ internal fun EntryEditorScreen(
     onReorderCategory: (String, Int, (Boolean) -> Unit) -> Unit,
     imeVisible: Boolean? = null,
     categoryErrorMessage: String? = null,
-    datePickerLauncher: ((LocalDate, (LocalDate?) -> Unit) -> Unit)? = null
+    datePickerLauncher: ((LocalDate, (LocalDate?) -> Unit) -> Unit)? = null,
+    requiredExpenseNoteThresholdFen: Long? = null
 ) {
     var type by rememberSaveable(existing?.id, clipboardPrefillId) { mutableStateOf(existing?.type ?: clipboardPrefill?.type ?: initialType) }
     var expression by rememberSaveable(existing?.id, clipboardPrefillId) {
@@ -113,7 +115,8 @@ internal fun EntryEditorScreen(
     val pagerState = rememberPagerState(initialPage = if (type == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
     val pagerScope = rememberCoroutineScope()
     val calculated = runCatching { Money.evaluate(expression) }.getOrNull()
-    val canSave = !saving && calculated != null && selectedCategory != null && !date.isAfter(LocalDate.now())
+    val missingRequiredNote = requiresExpenseNote(type, calculated ?: 0L, requiredExpenseNoteThresholdFen) && note.isBlank()
+    val canSave = !saving && calculated != null && selectedCategory != null && !date.isAfter(LocalDate.now()) && !missingRequiredNote
     val showSoftwareKeyboard = imeVisible ?: noteFocused
     val showAmountKeypad = inputPanelExpanded && !showSoftwareKeyboard
     val focusManager = LocalFocusManager.current
@@ -323,7 +326,11 @@ internal fun EntryEditorScreen(
                             .padding(horizontal = 16.dp, vertical = 2.dp)
                             .onFocusChanged { noteFocused = it.isFocused }
                             .testTag("entry-note"),
-                        label = { Text("备注（选填）") },
+                        label = { Text(if (requiresExpenseNote(type, calculated ?: 0L, requiredExpenseNoteThresholdFen)) "备注（必填）" else "备注（选填）") },
+                        isError = missingRequiredNote,
+                        supportingText = if (missingRequiredNote) {
+                            { Text("支出达到 ¥${formatYuan(requiredExpenseNoteThresholdFen!!)}，请填写备注。", Modifier.testTag("entry-note-required-error")) }
+                        } else null,
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })

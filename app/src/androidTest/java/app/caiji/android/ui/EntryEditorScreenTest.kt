@@ -111,6 +111,37 @@ class EntryEditorScreenTest {
         assertEquals(1L, cancelled.get())
     }
 
+    @Test fun requiredNoteAppearsAtThresholdAndAllowsSaveAfterTextEntry() {
+        val saveCalls = AtomicLong(0)
+        compose.setContent {
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    requiredExpenseNoteThresholdFen = 50000,
+                    onCancel = {},
+                    onSave = { _, _, _, _, note, done ->
+                        assertEquals("必需备注", note)
+                        saveCalls.incrementAndGet(); done(true)
+                    },
+                    onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) },
+                    onSetCategoryActive = { _, _, done -> done(true) },
+                    onReorderCategory = { _, _, done -> done(true) }
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        repeat(3) { compose.onNodeWithTag("entry-key-5").performClick() }
+        compose.onNodeWithText("备注（必填）").assertIsDisplayed()
+        compose.onNodeWithTag("entry-note-required-error", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("entry-key-save").assertIsNotEnabled()
+        compose.onNodeWithTag("entry-note").performClick().performTextInput("必需备注")
+        compose.onAllNodesWithTag("entry-note-required-error", useUnmergedTree = true).assertCountEquals(0)
+        compose.onNodeWithTag("entry-note").performImeAction()
+        compose.onNodeWithTag("entry-key-save").assertIsEnabled().performClick()
+        assertEquals(1L, saveCalls.get())
+    }
+
     @Test fun categoryAndPositiveAmountAskToDiscardButClearingAmountDoesNot() {
         val cancelled = AtomicLong(0)
         compose.setContent {

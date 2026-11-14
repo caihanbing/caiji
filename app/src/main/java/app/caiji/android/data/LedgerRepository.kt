@@ -5,6 +5,7 @@ import android.database.Cursor
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.CategoryCatalog
 import app.caiji.android.domain.EntryType
+import app.caiji.android.domain.requireExpenseNote
 import java.math.BigInteger
 import java.time.LocalDate
 import java.time.YearMonth
@@ -134,13 +135,15 @@ class RoomLedgerRepository(private val database: LedgerDatabase) {
         amountFen: Long,
         categoryId: String,
         occurredOn: LocalDate,
-        note: String?
+        note: String?,
+        requiredExpenseNoteThresholdFen: Long? = null
     ): LedgerEntry {
         initialize()
         return writeGate.withUserWrite {
             database.withTransaction {
                 validateAmountAndDate(amountFen, occurredOn)
                 validateNote(note)
+                requireExpenseNote(type, amountFen, note, requiredExpenseNoteThresholdFen)
                 val category = dao.categoryById(categoryId)
                 require(category != null && category.active && category.type == type.name) { "请选择有效的收支分类" }
                 val now = System.currentTimeMillis()
@@ -152,12 +155,13 @@ class RoomLedgerRepository(private val database: LedgerDatabase) {
         }
     }
 
-    suspend fun updateEntry(entry: LedgerEntry): LedgerEntry {
+    suspend fun updateEntry(entry: LedgerEntry, requiredExpenseNoteThresholdFen: Long? = null): LedgerEntry {
         initialize()
         return writeGate.withUserWrite {
             database.withTransaction {
                 validateAmountAndDate(entry.amountFen, entry.occurredOn)
                 validateNote(entry.note)
+                requireExpenseNote(entry.type, entry.amountFen, entry.note, requiredExpenseNoteThresholdFen)
                 val previous = dao.entryById(entry.id)?.toDomain()
                     ?: throw IllegalArgumentException("账单不存在")
                 val category = dao.categoryById(entry.categoryId)

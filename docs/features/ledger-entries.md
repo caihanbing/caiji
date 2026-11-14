@@ -6,9 +6,11 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 在本机维护整数分账单，底栏入口“账单”、录入入口“记一笔”；首页“汇总”可查看月度或年度收支报告，分类明细支持编辑和左滑删除。 -->
 <!-- last-verified: 2026-11-14 -->
-<!-- code-basis: HEAD 10cc16b7f570; worktree-digest sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- code-basis: HEAD a115f5768b2e; worktree-digest sha256:f2b47c8da580a9f85e2d47dc310c4f8626f080bc4bec4052f4b1fb11ee161371 -->
 
 ## 快速上下文
+
+账单“汇总”页月/年卡片默认隐藏结余和收入的千位及以上数字，按每位数字替换为 `*`，保留分隔符、低三位、小数及负号。右上眼睛按钮切换显示；重新进入和 Activity 重建后恢复隐藏，同页期间切换不重置。支出和表格保持完整显示。设置页账单区“必填备注最低支出”默认关闭；启用后新增或编辑支出金额达到阈值时要求非空白备注。门槛以整数分存于本机偏好设置，不纳入账单备份。
 
 财记底部导航依次为“账单、图表、记一笔、工资、设置”；图表入口仅为占位，工资功能在独立数据库中记录并统计，不属于账单收支。账单首页左上角“汇总”入口进入月/年汇总表，页面标题为“汇总”。记一笔编辑器标题与入口相同且位于屏幕中心；月汇总年份选择器位于“汇总”标题右侧，和账单月份、工资年份控件共用 14sp 半粗文字。年度总表继续显示全部年份。记账 Pager 覆盖金额与分类内容；分类网格按可用高度布局并在网格内滚动。未溢出的账单金额/表格关闭子滚动手势，超宽表格优先滚动并在边界把剩余手势交给 Pager。年月报告一次读取同一期间汇总和支出/收入双排行，切页直接使用已加载数据；排行榜金额以首页明细金额字号显示，收入使用正号和收入色、支出使用负号和正文色；年账单累计卡标题为“累计结余”；账单月/年总表进入时按年份读取两类数据，页签切换不重查或清空汇总；年份变化和重试统一刷新双列表，渲染时按所选年份过滤月度数据。期间变化及账单/分类写入会失效旧报告快照。四组 Pager 的分段背景跟随拖动进度，业务状态在停稳后更新。
 
@@ -46,6 +48,8 @@
 - 分类明细不显示逐笔分隔线。确认删除期间禁用重复操作；取消保留账单，失败显示错误并保留账单，切换期间/类型/分类后清空旧提示；成功后刷新原期间/收支类型/分类报告。删除最后一笔仍留在所选分类并显示空状态；返回排行、总表或首页时显示更新金额。
 - 编辑、删除完成后刷新月度明细和汇总；放弃未保存编辑时显示确认。
 
+- 账单汇总卡仅隐藏结余和收入千位及以上数字；默认隐藏并提供切换。设置的非负最低支出金额达到后，新增/编辑支出必须填写备注；0 元表示所有支出必填，收入不受影响。
+
 ### 范围外
 
 - 多账本、转账、多币种、云同步、登录、预算和资产管理。
@@ -72,6 +76,9 @@
 
 ## 架构与代码地图
 
+- `app/src/main/java/app/caiji/android/ui/PrivacyAmountFormat.kt` — 汇总金额按位脱敏格式化。
+- `app/src/main/java/app/caiji/android/domain/ExpenseNoteRequirement.kt` — 元到整数分解析、门槛条件与备注校验。
+
 - `app/src/main/java/app/caiji/android/MainActivity.kt` — `CaijiRoot`、页面切换、月份回调和账单写入回调。
 - `app/src/main/java/app/caiji/android/ui/LedgerScreens.kt` — `LedgerHome`、`FinancialGroupHeader`、`FinancialSwipeDeleteContainer`、`FinancialDetailRow`、月度汇总和账单行。
 - `app/src/main/java/app/caiji/android/ui/BillReportsScreen.kt` — 月/年总表、期间报告、分类排行和筛选账单。
@@ -92,6 +99,10 @@
 - `app/src/main/java/app/caiji/android/domain/Money.kt` — 十进制输入解析、加减和溢出检查。
 
 ## API、事件与任务
+
+### 支出备注阈值
+
+- `RoomLedgerRepository.addEntry` / `updateEntry` 接收本机必填备注阈值，在事务中拒绝达到门槛但备注为空白的支出。账单恢复使用独立写入路径，不执行此用户输入校验。
 
 ### `LedgerViewModel.addEntry` / `updateEntry`
 
@@ -115,6 +126,8 @@
 - `LedgerViewModel` 通过请求门闩阻止旧月份/年份及报告期间查询覆盖新结果；请求键使用 `ReportPeriod` 完整起止日期，因此年度和当年一月独立寻址。返回已缓存期间会撤销其他期间的在途查询并清除其错误状态。报告双排行来自同一 `PeriodRankingSnapshot`，切页不请求数据库。
 
 ## 数据模型与迁移
+
+本机 SharedPreferences `ledger_preferences` 的 `required_expense_note_threshold_fen` 保存可选阈值；不新增 Room 字段或迁移，也不纳入账单加密备份。
 
 `entries` 保存 ID、类型、分值金额、分类 ID、本地日期、备注及创建/更新时间。账单通过外键关联稳定分类 ID。当前 Room schema 为 1；本次 UI 更新没有数据库字段、索引或迁移变化。将来结构更新必须添加显式 Room Migration。
 
@@ -162,6 +175,8 @@
 
 ### 已执行
 
+- `ExpenseNoteRequirementTest` 覆盖千元边界、分组与负号、超大金额、阈值解析、0 元、门槛边界、空白备注及收入豁免。API34 全量仪器测试 201 项通过；API26 全量一个既有类型切换用例超时，单独重跑通过；API26/API34 汇总和工资 UI 目标回归各 81 项通过。
+
 - 0.5.9/code24 本轮回归：`:app:testDebugUnitTest`、`:app:lintDebug`通过；API26、API34全量仪器测试各178/178通过。分类明细覆盖行间分隔线、左滑/右滑、单行互斥、确认/取消/失败重试/末条空状态、失败提示按筛选清空及删除后报告和月/年汇总刷新。API34正式签名 AVD 将 0.5.8 覆盖升级到 0.5.9 后保留原账单记录；签名、zipalign、SHA-256证据见 `WORK-20261110-002`。
 - 0.5.10 最终回归：`:app:testDebugUnitTest :app:lintDebug :app:connectedDebugAndroidTest` 全部通过；API26、API34 全量仪器测试各 182 项通过，含键盘抽取后的账单备注 IME、日期、收支切换和保存。
 - 0.5.13 录入优化：`:app:testDebugUnitTest :app:lintDebug` 通过；API34 全量 196 项通过，API26 分组全量 196 项通过。新增覆盖金额/备注/键盘顺序与两侧 16dp、未输入金额的类型滑动返回、有效正金额确认及清空金额后直接离开。
@@ -180,6 +195,13 @@
 - 用户实体设备上的剪贴板系统提示、系统键盘、排序尖角触控和长金额仍需最终回归。
 
 ## 关键决策
+
+### 汇总隐私显示与支出备注门槛
+
+- **决定**：账单汇总结余/收入按位遮罩并默认隐藏；备注门槛保存在本机偏好，新增和编辑共用 Repository 校验。
+- **原因**：不改动账单数据库或备份结构即可保护指定金额并可靠执行支出规则。
+- **取舍**：星号数量仍显示金额位数；更换设备需重新设置门槛。
+- **证据**：`PrivacySummaryCardTest`、`ExpenseNoteRequirementTest`、`LedgerRepositoryTest.requiredNoteThresholdValidatesNewAndEditedExpensesButNotIncome` 及 API26/API34 仪器回归。
 
 ### 金额以分保存，合计用任意精度整数
 
@@ -225,6 +247,14 @@
 - **后续动作**：用户按 `docs/release/macOS-install.md` 在 Android 8.0+ 实机覆盖升级，核对历史账单与常用流程。
 
 ## 变更记录
+
+### 2026-11-14 — 汇总隐私与支出备注门槛
+
+- **状态**：已完成
+- **变化**：账单月/年摘要卡可隐藏结余和收入千位及以上数字；设置页新增最低支出门槛，新增/编辑支出达到门槛时校验备注。
+- **原因**：保护汇总金额并落实实机反馈的备注要求。
+- **兼容性**：新增本机偏好键；Room schema 与账单加密备份格式不变，历史记录不追补。
+- **验证**：API34 全量 201 项通过；API26 一个既有类型切换用例全量运行超时、单独重跑通过；阈值及汇总目标用例通过。APK/Release 详见 `WORK-20261114-002`。
 
 ### 2026-11-14 — 工资录入对齐记账控件基线
 

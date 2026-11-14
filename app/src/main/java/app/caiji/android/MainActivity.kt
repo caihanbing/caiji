@@ -160,6 +160,11 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
     var page by rememberSaveable { mutableStateOf(Page.LEDGER) }
     var editorReturnPage by rememberSaveable { mutableStateOf(Page.LEDGER.name) }
     var billListMode by rememberSaveable { mutableStateOf(BillListMode.MONTH.name) }
+    var requiredExpenseNoteThresholdFen by remember {
+        val saved = context.getSharedPreferences("ledger_preferences", Context.MODE_PRIVATE)
+            .getLong("required_expense_note_threshold_fen", -1L)
+        mutableStateOf(saved.takeIf { it >= 0L })
+    }
     var reportYear by rememberSaveable { mutableIntStateOf(month.year) }
     var reportMonthValue by rememberSaveable { mutableIntStateOf(month.monthValue) }
     var reportTypeName by rememberSaveable { mutableStateOf(EntryType.EXPENSE.name) }
@@ -613,6 +618,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                 Page.EDITOR -> if (editEntryId != null && editEntry == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("正在加载账单…") }
                 } else EntryEditorScreen(categories, editEntry, initialEditorType,
+                    requiredExpenseNoteThresholdFen = requiredExpenseNoteThresholdFen,
                     clipboardPrefill = clipboardPrefill,
                     clipboardPrefillId = clipboardPrefillId,
                     onCancel = { page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER); editEntry = null; editEntryId = null; clipboardPrefill = null; clipboardPrefillId = null },
@@ -626,9 +632,9 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                             onComplete(true)
                         }
                         val failed = { onComplete(false) }
-                        if (entryBeingEdited == null) model.addEntry(type, fen, categoryId, date, note, saved, failed)
+                        if (entryBeingEdited == null) model.addEntry(type, fen, categoryId, date, note, requiredExpenseNoteThresholdFen, saved, failed)
                         else model.updateEntry(entryBeingEdited.copy(type = type, amountFen = fen, categoryId = categoryId,
-                            occurredOn = date, note = note), saved, failed)
+                            occurredOn = date, note = note), requiredExpenseNoteThresholdFen, saved, failed)
                     }, onDelete = { entry -> model.deleteEntry(entry.id, onDeleted = {
                         page = runCatching { Page.valueOf(editorReturnPage) }.getOrDefault(Page.LEDGER)
                         editEntryId = null
@@ -687,7 +693,15 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     onLocalDialogVisibilityChange = { localBlockingDialogOpen = it },
                     onSalaryImport = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.IMPORT; salaryPreview = null; page = Page.SALARY },
                     onSalaryExport = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.EXPORT; pickerError = null; page = Page.SALARY },
-                    onSalaryTypes = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.TYPES; page = Page.SALARY })
+                    onSalaryTypes = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.TYPES; page = Page.SALARY },
+                    requiredExpenseNoteThresholdFen = requiredExpenseNoteThresholdFen,
+                    onRequiredExpenseNoteThresholdChange = { threshold ->
+                        requiredExpenseNoteThresholdFen = threshold
+                        context.getSharedPreferences("ledger_preferences", Context.MODE_PRIVATE).edit().apply {
+                            if (threshold == null) remove("required_expense_note_threshold_fen")
+                            else putLong("required_expense_note_threshold_fen", threshold)
+                        }.apply()
+                    })
                 Page.CATEGORIES -> CategoryManagerScreen(categories, { page = Page.SETTINGS },
                     { type, id, name, icon, done -> model.saveCategory(type, id, name, icon,
                         onSaved = { done(true) }, onFailed = { done(false) }) },

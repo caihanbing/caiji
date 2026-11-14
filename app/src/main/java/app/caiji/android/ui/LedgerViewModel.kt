@@ -172,17 +172,17 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun addEntry(type: EntryType, fen: Long, categoryId: String, date: LocalDate, note: String?,
-        onSaved: () -> Unit, onFailed: () -> Unit) {
+        requiredExpenseNoteThresholdFen: Long?, onSaved: () -> Unit, onFailed: () -> Unit) {
         viewModelScope.launch {
-            runCatching { repository.addEntry(type, fen, categoryId, date, note) }
+            runCatching { repository.addEntry(type, fen, categoryId, date, note, requiredExpenseNoteThresholdFen) }
                 .onSuccess { _error.value = null; refresh(); onSaved() }
                 .onFailure { _error.value = it.message ?: "保存账单失败"; onFailed() }
         }
     }
 
-    fun updateEntry(entry: LedgerEntry, onSaved: () -> Unit, onFailed: () -> Unit) {
+    fun updateEntry(entry: LedgerEntry, requiredExpenseNoteThresholdFen: Long?, onSaved: () -> Unit, onFailed: () -> Unit) {
         viewModelScope.launch {
-            runCatching { repository.updateEntry(entry) }
+            runCatching { repository.updateEntry(entry, requiredExpenseNoteThresholdFen) }
                 .onSuccess { _error.value = null; refresh(); onSaved() }
                 .onFailure { _error.value = it.message ?: "保存账单失败"; onFailed() }
         }

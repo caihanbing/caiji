@@ -1,6 +1,7 @@
 package app.caiji.android.ui
 
 import android.view.WindowManager
+import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotSelected
@@ -88,8 +89,33 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("nav-ledger").performClick()
         compose.onNodeWithTag("nav-ledger").assertTextContains("账单")
         compose.onNodeWithTag("ledger-open-bills").assertTextContains("汇总").performClick()
+        compose.onNodeWithContentDescription("显示金额").assertIsDisplayed()
         compose.onNodeWithTag("bills-back").assertIsDisplayed()
         compose.onNodeWithText("汇总").assertIsDisplayed()
+    }
+
+    @Test fun expenseNoteThresholdSettingPersistsAcrossActivityRecreation() {
+        val prefs = compose.activity.applicationContext.getSharedPreferences("ledger_preferences", Context.MODE_PRIVATE)
+        val old = prefs.getLong("required_expense_note_threshold_fen", -1L)
+        try {
+            prefs.edit().remove("required_expense_note_threshold_fen").commit()
+            compose.onNodeWithTag("nav-settings").performClick()
+            compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-expense-note-threshold"))
+            compose.onNodeWithTag("settings-expense-note-threshold").performClick()
+            compose.onNodeWithTag("expense-note-threshold-enabled").performClick()
+            compose.onNodeWithTag("expense-note-threshold-amount").performTextInput("500")
+            compose.onNodeWithTag("expense-note-threshold-save").performClick()
+            compose.onNodeWithText("支出达到 ¥500.00 时必须填写备注").assertIsDisplayed()
+            assertEquals(50000L, prefs.getLong("required_expense_note_threshold_fen", -1L))
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithTag("settings-root").performScrollToNode(hasTestTag("settings-expense-note-threshold"))
+            compose.onNodeWithText("支出达到 ¥500.00 时必须填写备注").assertIsDisplayed()
+        } finally {
+            prefs.edit().apply {
+                if (old < 0L) remove("required_expense_note_threshold_fen")
+                else putLong("required_expense_note_threshold_fen", old)
+            }.commit()
+        }
     }
 
     @Test fun salarySummaryPageSurvivesActivityRecreation() {
@@ -103,12 +129,14 @@ class EverydayLedgerFlowTest {
         compose.onNodeWithTag("salary-open-summary").performClick()
         compose.onNodeWithText("累计纯收入").assertIsDisplayed()
         compose.onNodeWithText("年份").assertIsDisplayed()
+        compose.onNodeWithContentDescription("显示金额").performClick()
 
         compose.activityRule.scenario.recreate()
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText("累计纯收入").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("累计纯收入").assertIsDisplayed()
+        compose.onNodeWithContentDescription("显示金额").assertIsDisplayed()
         compose.onNodeWithTag("salary-year-row-${java.time.LocalDate.now().year}").assertTextContains("¥0.00")
     }
 

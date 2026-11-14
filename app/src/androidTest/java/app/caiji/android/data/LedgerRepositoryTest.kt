@@ -54,6 +54,21 @@ class LedgerRepositoryTest {
         assertEquals(MonthTotals(BigInteger.ZERO, BigInteger.ZERO), repository.monthTotals(YearMonth.of(2026, 1)))
     }
 
+    @Test fun requiredNoteThresholdValidatesNewAndEditedExpensesButNotIncome() = runBlocking {
+        val food = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "餐饮" }
+        val income = repository.categories().first { it.type == EntryType.INCOME && it.name == "工资" }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.addEntry(EntryType.EXPENSE, 50000, food.id, LocalDate.now(), "  ", 50000) }
+        }
+        val entry = repository.addEntry(EntryType.EXPENSE, 49999, food.id, LocalDate.now(), null, 50000)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.updateEntry(entry.copy(amountFen = 50000), 50000) }
+        }
+        repository.updateEntry(entry.copy(amountFen = 50000, note = "必要支出"), 50000)
+        repository.addEntry(EntryType.INCOME, 90000, income.id, LocalDate.now(), null, 0)
+        Unit
+    }
+
     @Test fun reportQueriesReturnAllMonthsYearsAndCategoryTotalsFromLocalEntries() = runBlocking {
         val food = repository.categories().first { it.type == EntryType.EXPENSE && it.name == "餐饮" }
         val salary = repository.categories().first { it.type == EntryType.INCOME && it.name == "工资" }
