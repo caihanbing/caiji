@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立工资库按年浏览和跨年汇总；收入项管理按现金性质分页，在同性质内排序并支持改名、图标和启停；支持 XLSX 迁移目录设置。 -->
 <!-- last-verified: 2026-11-15 -->
-<!-- code-basis: impl-v2 sha256:1b5501b970063169ec01e99cdd89fd3faea9e0c1a5c432646f77ec1fac223abd -->
+<!-- code-basis: impl-v2 sha256:8651a16dff16d5bf94bc21b9e0af671aa6482834c6e95f5067cf83bc8ee983fd -->
 
 ## 快速上下文
 
