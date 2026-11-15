@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import app.caiji.android.ui.theme.CaijiPalette
 
 internal data class PeriodAmountTableRow(
@@ -38,7 +40,8 @@ internal fun PeriodAmountTable(
     rows: List<PeriodAmountTableRow>,
     scrollTag: String,
     headerTags: List<String>,
-    horizontalScrollState: androidx.compose.foundation.ScrollState? = null
+    horizontalScrollState: androidx.compose.foundation.ScrollState? = null,
+    rowHeight: Dp? = null
 ) {
     require(amountHeadings.size == 3 && headerTags.size == 3)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -71,7 +74,8 @@ internal fun PeriodAmountTable(
                         require(item.amounts.size == 3)
                         Row(
                             Modifier.fillMaxWidth().clickable(onClick = item.onClick).testTag(item.tag)
-                                .padding(start = rowStartPadding, end = rowEndPadding, top = 12.dp, bottom = 12.dp),
+                                .then(if (rowHeight == null) Modifier.padding(start = rowStartPadding, end = rowEndPadding, top = 12.dp, bottom = 12.dp)
+                                    else Modifier.height(rowHeight).padding(start = rowStartPadding, end = rowEndPadding)),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(item.label, Modifier.width(firstWidth), style = MaterialTheme.typography.bodyMedium,

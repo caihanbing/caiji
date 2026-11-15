@@ -19,8 +19,8 @@ android {
         applicationId = "app.caiji.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 30
-        versionName = "0.5.15"
+        versionCode = 31
+        versionName = "0.5.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

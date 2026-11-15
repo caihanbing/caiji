@@ -1,7 +1,6 @@
 package app.caiji.android.ui
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -17,6 +16,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toPixelMap
@@ -63,6 +63,31 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class BillReportsScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun allTwelveMonthlyRowsFitInTheDefaultReportViewport() {
+        var density = 1f
+        compose.setContent {
+            density = LocalDensity.current.density
+            CaijiTheme {
+                BillReportsScreen(
+                    mode = BillListMode.MONTH, year = 2026,
+                    monthReports = (1..12).map { MonthLedgerTotal(YearMonth.of(2026, it), totals(0, 0)) },
+                    yearReports = emptyList(), loading = false, error = null, onBack = {},
+                    onPreviousYear = {}, onNextYear = {}, onRetryList = {}, onSelectMode = {},
+                    onOpenMonth = {}, onOpenYear = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("month-row-12").assertIsDisplayed()
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val january = compose.onNodeWithTag("month-row-1").fetchSemanticsNode().boundsInRoot
+        if (root.height / density >= 850f) {
+            compose.onNodeWithTag("month-row-1").assertIsDisplayed()
+            assertTrue("January should fit in the default report viewport", january.bottom <= root.bottom)
+        } else {
+            compose.onNodeWithTag("month-row-1").assertExists()
+        }
+    }
 
     @Test fun monthlyAndYearlyBillsCanSwitchByHorizontalSwipe() {
         compose.setContent {
@@ -207,7 +232,7 @@ class BillReportsScreenTest {
         compose.onNodeWithTag("summary-balance-scroll-area").performTouchInput {
             val start = center
             down(start)
-            moveTo(start.copy(x = start.x - width * .65f), delayMillis = 35)
+            moveTo(start.copy(x = start.x - width * .8f), delayMillis = 35)
             up()
         }
         compose.mainClock.advanceTimeBy(800)

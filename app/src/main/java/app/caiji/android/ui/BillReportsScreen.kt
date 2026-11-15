@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -112,9 +113,14 @@ internal fun BillReportsScreen(
                                 onOpenMonth(item.month)
                             }
                         }
-                        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                            PeriodAmountTable("月份", listOf("收入", "支出", "结余"), rows,
-                                "bill-table-scroll", listOf("bill-table-header-income", "bill-table-header-expense", "bill-table-header-balance"))
+                        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                            val monthRowHeight = ((maxHeight - 40.dp) / 12).coerceIn(40.dp, 44.dp)
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
+                                .testTag("bill-month-list")) {
+                                PeriodAmountTable("月份", listOf("收入", "支出", "结余"), rows,
+                                    "bill-table-scroll", listOf("bill-table-header-income", "bill-table-header-expense", "bill-table-header-balance"),
+                                    rowHeight = monthRowHeight)
+                            }
                         }
                     }
                 }

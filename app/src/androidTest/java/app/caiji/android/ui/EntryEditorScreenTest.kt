@@ -492,6 +492,38 @@ class EntryEditorScreenTest {
     }
 
     @Test
+    fun hidingNoteImeOnceRestoresAmountAndFullKeypad() {
+        lateinit var imeVisible: androidx.compose.runtime.MutableState<Boolean>
+        var density = 1f
+        compose.setContent {
+            density = LocalDensity.current.density
+            imeVisible = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            CaijiTheme {
+                EntryEditorScreen(
+                    categories = categories, existing = null, initialType = EntryType.EXPENSE,
+                    onCancel = {}, onSave = { _, _, _, _, _, done -> done(false) }, onDelete = {},
+                    onSaveCategory = { _, _, _, _, done -> done(false) },
+                    onSetCategoryActive = { _, _, done -> done(true) },
+                    onReorderCategory = { _, _, done -> done(true) }, imeVisible = imeVisible.value
+                )
+            }
+        }
+        compose.onNodeWithTag("entry-category-seed-expense-0").performClick()
+        compose.onNodeWithTag("entry-note").performClick().performTextInput("早餐")
+        compose.runOnIdle { imeVisible.value = true }
+        compose.onNodeWithTag("entry-key-7").assertDoesNotExist()
+
+        compose.runOnIdle { imeVisible.value = false }
+
+        compose.onNodeWithTag("amount-display").assertIsDisplayed()
+        val amountLabel = compose.onNodeWithTag("entry-amount-label").fetchSemanticsNode().boundsInRoot
+        assertTrue("Amount label row matches the 24dp salary summary row", kotlin.math.abs(amountLabel.height / density - 24f) < 1f)
+        compose.onNodeWithTag("entry-key-7").assertIsDisplayed()
+        compose.onNodeWithTag("entry-key-save").assertIsDisplayed()
+        compose.onNodeWithTag("entry-note").assertTextContains("早餐")
+    }
+
+    @Test
     fun dateKeyOpensPickerAndOnlySelectionChangesDateLabel() {
         val callback = AtomicReference<((LocalDate?) -> Unit)?>(null)
         val shownDate = AtomicReference<LocalDate>()

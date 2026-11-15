@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import app.caiji.android.ui.theme.CaijiTheme
 import androidx.compose.ui.graphics.Color
 import java.math.BigInteger
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -36,6 +37,11 @@ class PrivacySummaryCardTest {
         compose.onNodeWithTag("report-balance").assertTextEquals("¥**,345.67")
         compose.onNodeWithTag("report-income").assertTextEquals("¥*,230.00")
         compose.onNodeWithTag("summary-privacy-toggle").assertIsDisplayed()
+        val amountBounds = compose.onNodeWithTag("report-balance").fetchSemanticsNode().boundsInRoot
+        val toggleBounds = compose.onNodeWithTag("summary-privacy-toggle").fetchSemanticsNode().boundsInRoot
+        assertTrue("Privacy toggle should sit to the right of the primary amount", toggleBounds.left >= amountBounds.right)
+        assertTrue("Privacy toggle should align vertically with the primary amount",
+            kotlin.math.abs(toggleBounds.center.y - amountBounds.center.y) <= toggleBounds.height / 2f)
         compose.onNodeWithContentDescription("显示金额").performClick()
         compose.onNodeWithTag("report-balance").assertTextEquals("¥12,345.67")
         compose.onNodeWithTag("report-income").assertTextEquals("¥1,230.00")

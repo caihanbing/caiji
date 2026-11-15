@@ -48,6 +48,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -117,9 +121,19 @@ internal fun EntryEditorScreen(
     val calculated = runCatching { Money.evaluate(expression) }.getOrNull()
     val missingRequiredNote = requiresExpenseNote(type, calculated ?: 0L, requiredExpenseNoteThresholdFen) && note.isBlank()
     val canSave = !saving && calculated != null && selectedCategory != null && !date.isAfter(LocalDate.now()) && !missingRequiredNote
-    val showSoftwareKeyboard = imeVisible ?: noteFocused
+    val systemImeVisible = imeVisible ?: (WindowInsets.ime.getBottom(LocalDensity.current) > 0)
+    val showSoftwareKeyboard = systemImeVisible || noteFocused
     val showAmountKeypad = inputPanelExpanded && !showSoftwareKeyboard
     val focusManager = LocalFocusManager.current
+
+    var wasSystemImeVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(systemImeVisible) {
+        if (wasSystemImeVisible && !systemImeVisible && noteFocused) {
+            noteFocused = false
+            focusManager.clearFocus()
+        }
+        wasSystemImeVisible = systemImeVisible
+    }
 
     LaunchedEffect(pagerState.settledPage) {
         val settledType = if (pagerState.settledPage == 0) EntryType.EXPENSE else EntryType.INCOME
@@ -292,8 +306,12 @@ internal fun EntryEditorScreen(
                 Column(Modifier.fillMaxWidth().testTag("entry-input-dock")) {
                     HorizontalDivider(color = CaijiPalette.Divider)
                     if (showAmountKeypad) {
+                        Box(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 16.dp).testTag("entry-amount-label"), contentAlignment = Alignment.CenterStart) {
+                            Text("金额",
+                                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                        }
                         AmountDisplay(
-                            label = "金额",
+                            label = "",
                             amount = calculated?.let(::formatYuan) ?: expression.ifEmpty { "0.00" },
                             modifier = Modifier.padding(horizontal = 16.dp).pointerInput(pagerState.currentPage) {
                                 var horizontalDrag = 0f

@@ -135,24 +135,26 @@ internal fun FinancialSummaryCard(
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(primaryLabel, Modifier.weight(1f), color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).then(if (balanceScroll.maxValue > 0) Modifier.horizontalScroll(balanceScroll) else Modifier)
+                    .testTag("summary-balance-scroll-area")) {
+                    Text(
+                        if (maskPrimaryAmount) maskThousands("${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}")
+                        else "${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}",
+                        if (primaryTag == null) Modifier else Modifier.testTag(primaryTag),
+                        style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
                 if (onToggleAmounts != null) {
                     IconButton(onClick = onToggleAmounts, modifier = Modifier.size(48.dp).testTag("summary-privacy-toggle")) {
                         CaijiIcon(if (maskPrimaryAmount) CaijiIconName.VISIBILITY_OFF else CaijiIconName.VISIBILITY,
                             if (maskPrimaryAmount) "显示金额" else "隐藏金额")
                     }
                 }
-            }
-            Box(Modifier.fillMaxWidth().horizontalScroll(balanceScroll, enabled = balanceScroll.maxValue > 0)
-                .testTag("summary-balance-scroll-area")) {
-                Text(
-                    if (maskPrimaryAmount) maskThousands("${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}")
-                    else "${if (primaryFen.signum() < 0) "−" else ""}¥${formatYuan(primaryFen.abs())}",
-                    if (primaryTag == null) Modifier else Modifier.testTag(primaryTag),
-                    style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    softWrap = false
-                )
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -169,7 +171,7 @@ private fun SummaryMetric(label: String, amountFen: java.math.BigInteger, color:
     val amountScroll = rememberScrollState()
     Column(modifier) {
         Text(label, color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodySmall)
-        Box(Modifier.fillMaxWidth().horizontalScroll(amountScroll, enabled = amountScroll.maxValue > 0)) {
+        Box(Modifier.fillMaxWidth().then(if (amountScroll.maxValue > 0) Modifier.horizontalScroll(amountScroll) else Modifier)) {
             Text(
                 if (hidden) maskThousands("¥${formatYuan(amountFen)}") else "¥${formatYuan(amountFen)}",
                 modifier = if (valueTag == null) Modifier else Modifier.testTag(valueTag),
