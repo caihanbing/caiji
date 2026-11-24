@@ -52,6 +52,7 @@ import androidx.test.core.app.ApplicationProvider
 import app.caiji.android.data.RoomSalaryRepository
 import app.caiji.android.data.SalaryDatabase
 import app.caiji.android.data.LedgerEntry
+import app.caiji.android.data.SalaryEntry
 import app.caiji.android.domain.Category
 import app.caiji.android.domain.EntryType
 import app.caiji.android.ui.theme.CaijiTheme
@@ -76,6 +77,26 @@ class SalaryScreensTest {
         runBlocking { repository.initialize() }
     }
     @After fun tearDown() { database.close() }
+
+    @Test fun secondaryAndActionTextMeetContrastAcrossThemes() {
+        fun luminance(color: Color): Double {
+            fun channel(value: Float): Double = if (value <= 0.04045f) value / 12.92 else ((value + 0.055) / 1.055).toDouble().let { it * it * it }
+            return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
+        }
+        fun contrast(foreground: Color, background: Color): Double {
+            val first = luminance(foreground)
+            val second = luminance(background)
+            return (maxOf(first, second) + 0.05) / (minOf(first, second) + 0.05)
+        }
+        CaijiThemeId.entries.forEach { theme ->
+            CaijiPalette.select(theme)
+            listOf(CaijiPalette.Background, CaijiPalette.Surface, CaijiPalette.SurfaceAlt, CaijiPalette.PrimarySoft).forEach { surface ->
+                assertTrue("Secondary text needs 4.5:1 contrast in ${theme.label}", contrast(CaijiPalette.SecondaryText, surface) >= 4.5)
+            }
+            assertTrue("Action text needs 4.5:1 contrast in ${theme.label}", contrast(CaijiPalette.PrimaryText, CaijiPalette.Background) >= 4.5)
+        }
+        CaijiPalette.select(CaijiThemeId.AMBER)
+    }
 
     private fun enterSalaryAmount(field: String, amount: String, replace: Boolean = true) {
         compose.onNodeWithTag("salary-field-$field", useUnmergedTree = true).performScrollTo().performClick()
@@ -121,6 +142,43 @@ class SalaryScreensTest {
         compose.onAllNodesWithText("收入项管理").assertCountEquals(0)
         compose.onNodeWithTag("salary-net-total", useUnmergedTree = true).assertTextContains("100.00", substring = true)
         compose.onNodeWithText("本年纯收入").assertIsDisplayed()
+    }
+
+    @Test fun selectedIncomeAndDeductionPrefillTheirConfiguredDefaults() {
+        val (income, deduction) = runBlocking {
+            repository.createIncomeType("项目奖金", true, "gift", 85_000) to
+                repository.createDeductionType("补充保险", "insurance", 1_250)
+        }
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
+        compose.onNodeWithText("＋  新增收入").performClick()
+        compose.onNodeWithTag("salary-income-type-${income.id}").performScrollTo().performClick()
+        compose.onNodeWithTag("salary-active-amount").assertTextContains("850.00")
+        compose.onNodeWithTag("salary-field-${deduction.name}", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithTag("salary-active-amount").assertTextContains("12.50")
+    }
+
+    @Test fun handEnteredIncomeAmountSurvivesOpeningIncomeTypeManager() {
+        val (first, second) = runBlocking {
+            repository.createIncomeType("首个项目", true, "gift", 10_000) to
+                repository.createIncomeType("另一个项目", true, "allowance", 20_000)
+        }
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
+        compose.onNodeWithText("＋  新增收入").performClick()
+        compose.onNodeWithTag("salary-income-type-${first.id}").performScrollTo().performClick()
+        enterSalaryAmount("收入", "5", replace = false)
+        compose.onNodeWithTag("salary-active-amount").assertTextContains("5.00")
+        compose.onNodeWithTag("salary-manage-income-types").performClick()
+        compose.onNodeWithTag("salary-header-back").performClick()
+        compose.onNodeWithTag("salary-income-type-${second.id}").performScrollTo().performClick()
+        compose.onNodeWithTag("salary-active-amount").assertTextContains("5.00")
+    }
+
+    @Test fun deductionManagementUsesTheSameDefaultValueEditor() {
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}, initialManagementRoute = SalaryManagementRoute.DEDUCTIONS) } }
+        compose.onNodeWithTag("salary-deduction-add").performClick()
+        compose.onNodeWithText("添加扣款项").assertIsDisplayed()
+        compose.onNodeWithTag("salary-deduction-default").assertTextContains("0.00")
+        compose.onNodeWithTag("salary-deduction-icon-grid").assertIsDisplayed()
     }
 
     @Test fun salaryStartsAsCashWithoutSelectionAndSwitchingClearsOnlyIncomeType() {
@@ -1017,6 +1075,31 @@ class SalaryScreensTest {
         compose.onNodeWithTag("salary-year-row-${now.year - 1}").assertTextContains("¥250.00")
         compose.onNodeWithTag("salary-header-back").performClick()
         compose.onNodeWithTag("salary-year-label").assertTextEquals("${now.year}年")
+    }
+
+    @Test fun incomeDetailsDefaultToRecentDateAndCanSwitchToHighestNetAmount() = runBlocking {
+        val type = repository.incomeTypes().first()
+        val today = java.time.LocalDate.now()
+        repository.save(SalaryEntry("income-sort-high-old", today.minusDays(10), type.id, 80_000,
+            isCash = type.isCash, createdAtMillis = 1, updatedAtMillis = 1))
+        repository.save(SalaryEntry("income-sort-low-recent", today, type.id, 10_000,
+            isCash = type.isCash, createdAtMillis = 2, updatedAtMillis = 2))
+        compose.setContent { CaijiTheme { SalaryRootScreen(repository, null, {}, {}, {}) } }
+        compose.onNodeWithTag("salary-open-summary").performClick()
+        compose.onNodeWithTag("salary-year-row-${today.year}").performClick()
+        compose.onNodeWithTag("salary-income-ranking-${type.id}").performClick()
+
+        val recent = compose.onNodeWithTag("salary-entry-row-income-sort-low-recent").fetchSemanticsNode().boundsInRoot
+        val older = compose.onNodeWithTag("salary-entry-row-income-sort-high-old").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("salary-detail-sort-time").assertIsSelected()
+        val sortButtonHeight = compose.onNodeWithTag("salary-detail-sort-time").fetchSemanticsNode().boundsInRoot.height
+        assertTrue("Sort controls should provide a 48dp touch target", sortButtonHeight >= with(compose.density) { 48.dp.toPx() })
+        assertTrue("Income details should default to recent date first", recent.top < older.top)
+        compose.onNodeWithTag("salary-detail-sort-amount").performClick()
+        compose.onNodeWithTag("salary-detail-sort-amount").assertIsSelected()
+        val high = compose.onNodeWithTag("salary-entry-row-income-sort-high-old").fetchSemanticsNode().boundsInRoot
+        val low = compose.onNodeWithTag("salary-entry-row-income-sort-low-recent").fetchSemanticsNode().boundsInRoot
+        assertTrue("Income amount sorting should use net amount descending", high.top < low.top)
     }
 
     @Test fun cancellingAndDeletingFromIncomeDetailsRefreshReportAndAnnualTable() {

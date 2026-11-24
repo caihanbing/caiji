@@ -25,16 +25,16 @@ internal enum class CaijiThemeId(val key: String, val label: String) {
 
 private data class CaijiColors(
     val background: Color, val surface: Color, val surfaceAlt: Color, val ink: Color, val secondaryText: Color,
-    val divider: Color, val primary: Color, val onPrimary: Color, val primarySoft: Color,
+    val divider: Color, val primary: Color, val primaryText: Color, val onPrimary: Color, val primarySoft: Color,
     val income: Color, val incomeSoft: Color, val danger: Color, val dangerSoft: Color, val isDark: Boolean = false
 )
 
 private val themeOptions = mapOf(
-    CaijiThemeId.AMBER to CaijiColors(Color(0xFFF7F6F2), Color(0xFFFFFEFA), Color(0xFFF1F0EA), Color(0xFF282A26), Color(0xFF777970), Color(0xFFE9E6DD), Color(0xFFC4821C), Color(0xFF282A26), Color(0xFFF7EDD8), Color(0xFF39704F), Color(0xFFE8F0E8), Color(0xFFA74636), Color(0xFFFAECE7)),
-    CaijiThemeId.BAMBOO to CaijiColors(Color(0xFFF2F7F4), Color(0xFFFCFFFD), Color(0xFFE7F0EB), Color(0xFF233A31), Color(0xFF66786F), Color(0xFFDCE7E0), Color(0xFF357961), Color(0xFFFFFFFF), Color(0xFFDDEFE6), Color(0xFF39704F), Color(0xFFE3F0E7), Color(0xFFA74636), Color(0xFFFAECE7)),
-    CaijiThemeId.SEA to CaijiColors(Color(0xFFF3F7FB), Color(0xFFFFFFFF), Color(0xFFE9F0F7), Color(0xFF243449), Color(0xFF68788A), Color(0xFFDDE5EE), Color(0xFF3977B7), Color(0xFFFFFFFF), Color(0xFFE0EDF9), Color(0xFF39704F), Color(0xFFE3F0E7), Color(0xFFA74636), Color(0xFFFAECE7)),
-    CaijiThemeId.MIST to CaijiColors(Color(0xFFF7F4FA), Color(0xFFFFFCFF), Color(0xFFF0EBF5), Color(0xFF352A42), Color(0xFF796F84), Color(0xFFE6DFED), Color(0xFF8063A8), Color(0xFFFFFFFF), Color(0xFFEEE5F7), Color(0xFF39704F), Color(0xFFE3F0E7), Color(0xFFA74636), Color(0xFFFAECE7)),
-    CaijiThemeId.GRAPHITE to CaijiColors(Color(0xFF171B21), Color(0xFF242A33), Color(0xFF2D3540), Color(0xFFEEF2F7), Color(0xFFAAB4C2), Color(0xFF38414E), Color(0xFF90AFFF), Color(0xFF171B21), Color(0xFF2C3850), Color(0xFF83C7A3), Color(0xFF263B34), Color(0xFFF39B90), Color(0xFF442E32), true)
+    CaijiThemeId.AMBER to CaijiColors(Color(0xFFF7F6F2), Color(0xFFFFFEFA), Color(0xFFF1F0EA), Color(0xFF282A26), Color(0xFF5F6159), Color(0xFFE9E6DD), Color(0xFFC4821C), Color(0xFF8A5610), Color(0xFF282A26), Color(0xFFF7EDD8), Color(0xFF39704F), Color(0xFFE8F0E8), Color(0xFFA74636), Color(0xFFFAECE7)),
+    CaijiThemeId.BAMBOO to CaijiColors(Color(0xFFF2F7F4), Color(0xFFFCFFFD), Color(0xFFE7F0EB), Color(0xFF233A31), Color(0xFF52645B), Color(0xFFDCE7E0), Color(0xFF357961), Color(0xFF245944), Color(0xFFFFFFFF), Color(0xFFDDEFE6), Color(0xFF39704F), Color(0xFFE3F0E7), Color(0xFFA74636), Color(0xFFFAECE7)),
+    CaijiThemeId.SEA to CaijiColors(Color(0xFFF3F7FB), Color(0xFFFFFFFF), Color(0xFFE9F0F7), Color(0xFF243449), Color(0xFF536579), Color(0xFFDDE5EE), Color(0xFF3977B7), Color(0xFF275780), Color(0xFFFFFFFF), Color(0xFFE0EDF9), Color(0xFF39704F), Color(0xFFE3F0E7), Color(0xFFA74636), Color(0xFFFAECE7)),
+    CaijiThemeId.MIST to CaijiColors(Color(0xFFF7F4FA), Color(0xFFFFFCFF), Color(0xFFF0EBF5), Color(0xFF352A42), Color(0xFF62576F), Color(0xFFE6DFED), Color(0xFF8063A8), Color(0xFF5C447D), Color(0xFFFFFFFF), Color(0xFFEEE5F7), Color(0xFF39704F), Color(0xFFE3F0E7), Color(0xFFA74636), Color(0xFFFAECE7)),
+    CaijiThemeId.GRAPHITE to CaijiColors(Color(0xFF171B21), Color(0xFF242A33), Color(0xFF2D3540), Color(0xFFEEF2F7), Color(0xFFAAB4C2), Color(0xFF38414E), Color(0xFF90AFFF), Color(0xFF90AFFF), Color(0xFF171B21), Color(0xFF2C3850), Color(0xFF83C7A3), Color(0xFF263B34), Color(0xFFF39B90), Color(0xFF442E32), true)
 )
 
 internal object CaijiPalette {
@@ -47,6 +47,7 @@ internal object CaijiPalette {
     val SecondaryText get() = active.value.secondaryText
     val Divider get() = active.value.divider
     val Primary get() = active.value.primary
+    val PrimaryText get() = active.value.primaryText
     val OnPrimary get() = active.value.onPrimary
     val PrimarySoft get() = active.value.primarySoft
     val Income get() = active.value.income

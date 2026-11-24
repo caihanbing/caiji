@@ -28,6 +28,16 @@ class ClipboardTransactionParserTest {
         assertEquals(LocalDate.of(2026, 11, 1), result?.date)
     }
 
+    @Test fun parsesCardlessPaymentNotificationWithBalanceAndDetails() {
+        val result = parser.parse(
+            "交易成功提醒\n交易时间：:11月21日12:13\n交易类型：:无卡支付（尾号2091）\n交易金额：:人民币 35.20\n账户余额：:382.46元\n交易说明：:点击查看更多详情",
+            LocalDate.of(2026, 11, 23)
+        )
+        assertEquals(EntryType.EXPENSE, result?.type)
+        assertEquals(3_520L, result?.amountFen)
+        assertEquals(LocalDate.of(2026, 11, 21), result?.date)
+    }
+
     @Test fun assignsPreviousYearToFutureMonthAndFindsLeapYearForFebruary29() {
         assertEquals(LocalDate.of(2025, 12, 31), parser.parse(
             "交易成功提醒\n交易时间：12月31日23:59\n交易类型：网上快捷支付\n交易金额：1元",

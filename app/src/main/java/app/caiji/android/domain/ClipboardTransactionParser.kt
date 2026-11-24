@@ -20,7 +20,9 @@ object ClipboardTransactionParser {
             lines.firstOrNull()?.trimEnd(':', '：') == "账户变动提醒" &&
                 uniqueValue(lines, "交易类型")?.startsWith("代发工资") == true -> EntryType.INCOME
             lines.firstOrNull()?.trimEnd(':', '：') == "交易成功提醒" &&
-                uniqueValue(lines, "交易类型")?.startsWith("网上快捷支付") == true -> EntryType.EXPENSE
+                uniqueValue(lines, "交易类型")?.let {
+                    it.startsWith("网上快捷支付") || it.startsWith("无卡支付")
+                } == true -> EntryType.EXPENSE
             else -> return null
         }
         val amountText = uniqueValue(lines, "交易金额") ?: return null

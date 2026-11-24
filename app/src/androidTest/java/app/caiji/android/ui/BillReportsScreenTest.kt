@@ -375,6 +375,37 @@ class BillReportsScreenTest {
         assertEquals("detail-food", editedEntry.get())
     }
 
+    @Test fun categoryDetailsDefaultToAmountDescendingAndCanSwitchToRecentDate() {
+        val category = Category("sort-category", EntryType.EXPENSE, "餐饮", "restaurant")
+        val highOlder = LedgerEntry("sort-high", EntryType.EXPENSE, 8_000, category.id,
+            java.time.LocalDate.of(2026, 11, 1))
+        val lowRecent = LedgerEntry("sort-recent", EntryType.EXPENSE, 1_000, category.id,
+            java.time.LocalDate.of(2026, 11, 20))
+        compose.setContent {
+            CaijiTheme {
+                BillPeriodReportScreen(
+                    year = 2026, monthValue = 11,
+                    report = PeriodLedgerReport(java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 12, 1),
+                        totals(9_000, 0), listOf(CategoryPeriodTotal(category, BigInteger.valueOf(9_000))),
+                        listOf(lowRecent, highOlder)),
+                    loading = false, error = null, selectedType = EntryType.EXPENSE, selectedCategoryId = category.id,
+                    onBack = {}, onRetry = {}, onSelectType = {}, onSelectCategory = {}, onEditEntry = {}
+                )
+            }
+        }
+        val highRow = compose.onNodeWithTag("report-entry-sort-high").fetchSemanticsNode().boundsInRoot
+        val recentRow = compose.onNodeWithTag("report-entry-sort-recent").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("report-detail-sort-amount").assertIsSelected()
+        val sortButtonHeight = compose.onNodeWithTag("report-detail-sort-amount").fetchSemanticsNode().boundsInRoot.height
+        assertTrue("Sort controls should provide a 48dp touch target", sortButtonHeight >= with(compose.density) { 48.dp.toPx() })
+        assertTrue("Category detail should default to highest amount", highRow.top < recentRow.top)
+        compose.onNodeWithTag("report-detail-sort-time").performClick()
+        compose.onNodeWithTag("report-detail-sort-time").assertIsSelected()
+        val sortedHigh = compose.onNodeWithTag("report-entry-sort-high").fetchSemanticsNode().boundsInRoot
+        val sortedRecent = compose.onNodeWithTag("report-entry-sort-recent").fetchSemanticsNode().boundsInRoot
+        assertTrue("Time sorting should put the most recent date first", sortedRecent.top < sortedHigh.top)
+    }
+
     @Test fun categoryDetailsUseTheOtherIconWhenCategoryIsUnavailable() {
         val entry = LedgerEntry("detail-missing-category", EntryType.EXPENSE, 500, "missing-category",
             java.time.LocalDate.of(2026, 11, 9), null)

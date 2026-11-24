@@ -23,6 +23,60 @@ class SalaryRepositoryTest {
     }
     @After fun tearDown() { db.close() }
 
+    @Test fun deductionDirectoryAndCustomSalaryAmountsPersistAcrossEdits() = runBlocking {
+        val deduction = repo.createDeductionType("补充保险", "insurance", 1_250)
+        val income = repo.createIncomeType("项目奖金", true, "gift", 85_000)
+        val now = System.currentTimeMillis()
+        val entry = SalaryEntry("salary-custom-deduction", LocalDate.now(), income.id, 100_000,
+            isCash = true, createdAtMillis = now, updatedAtMillis = now,
+            customDeductions = mapOf(deduction.id to 1_250))
+        repo.save(entry)
+
+        assertEquals(98_750L, repo.entry(entry.id)!!.netIncomeFen)
+        assertEquals(1_250L, repo.entry(entry.id)!!.customDeductions[deduction.id])
+        assertEquals(1_250L, repo.deductionTypes().first { it.id == deduction.id }.defaultFen)
+        assertEquals(85_000L, repo.incomeTypes().first { it.id == income.id }.defaultFen)
+        repo.setDeductionTypeActive(deduction.id, false)
+        assertEquals(false, repo.deductionTypes().first { it.id == deduction.id }.active)
+        repo.delete(entry.id)
+        assertEquals(0, repo.entries().size)
+    }
+
+    @Test fun importedCustomDeductionsAreSavedAndParticipateInDuplicateChecks() = runBlocking {
+        val income = repo.incomeTypes().first { it.id == "builtin-1" }
+        val type = SalaryDeductionType("workbook-deduction", "工作簿扣款", false, 7, "insurance", true, 500)
+        val zeroType = SalaryDeductionType("workbook-zero-deduction", "工作簿零元扣款", false, 8, "tax", true, 0)
+        val now = System.currentTimeMillis()
+        val record = SalaryEntry("workbook-entry", LocalDate.now(), income.id, 10_000, isCash = true,
+            createdAtMillis = now, updatedAtMillis = now, customDeductions = mapOf(type.id to 500, zeroType.id to 0))
+
+        val firstImport = repo.importNewWithDeductions(listOf(record), newDeductionTypes = listOf(type, zeroType))
+        val secondImport = repo.importNewWithDeductions(listOf(record))
+
+        assertEquals(1, firstImport.insertedCount)
+        assertEquals(1, secondImport.skippedDuplicateCount)
+        val imported = repo.entries().single()
+        assertEquals(9_500L, imported.netIncomeFen)
+        assertEquals(500L, imported.customDeductions[type.id])
+        assertEquals(true, imported.customDeductions.containsKey(zeroType.id))
+    }
+
+    @Test fun defaultDirectoryRestorationIsAtomicWithAddingCustomDeductionAndSalary() = runBlocking {
+        val builtIn = SalaryDeductionTypes.defaults.first().copy(name = "工作簿工会费", defaultFen = 2_000)
+        val custom = SalaryDeductionType("workbook-new-deduction", "工作簿补充扣款", false, 7, "insurance", true, 500)
+        val income = repo.incomeTypes().first { it.id == "builtin-1" }
+        val entry = SalaryEntry("workbook-restored-deduction", LocalDate.now(), income.id, 10_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(custom.id to 500))
+
+        val result = repo.importNewWithDeductions(listOf(entry), newDeductionTypes = listOf(custom),
+            deductionTypesToRestore = listOf(builtIn))
+
+        assertEquals(1, result.insertedCount)
+        assertEquals("工作簿工会费", repo.deductionTypes().first { it.id == builtIn.id }.name)
+        assertEquals(2_000L, repo.deductionTypes().first { it.id == builtIn.id }.defaultFen)
+        assertEquals(9_500L, repo.entries().single().netIncomeFen)
+    }
+
     @Test fun createAndEditIncomeTypePreserveIdentityCashAndLinkedSalaryRows() = runBlocking {
         val custom = repo.createIncomeType("旧项目", isCash = false, iconKey = "gift")
         val now = System.currentTimeMillis()

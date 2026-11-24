@@ -17,8 +17,21 @@ data class SalaryIncomeType(
     val builtIn: Boolean = false,
     val sortOrder: Int = 0,
     val iconKey: String = "other",
-    val active: Boolean = true
+    val active: Boolean = true,
+    val defaultFen: Long = 0
 )
+
+data class SalaryDeductionType(
+    val id: String,
+    val name: String,
+    val builtIn: Boolean = false,
+    val sortOrder: Int = 0,
+    val iconKey: String = "other",
+    val active: Boolean = true,
+    val defaultFen: Long = 0
+)
+
+fun SalaryDeductionType.fixedFieldIndex(): Int? = if (builtIn) id.removePrefix("deduction-builtin-").toIntOrNull()?.minus(1) else null
 
 data class SalaryEntry(
     val id: String,
@@ -34,11 +47,13 @@ data class SalaryEntry(
     val taxFen: Long = 0,
     val isCash: Boolean,
     val createdAtMillis: Long,
-    val updatedAtMillis: Long
+    val updatedAtMillis: Long,
+    val customDeductions: Map<String, Long> = emptyMap()
 ) : java.io.Serializable {
     val deductionsFen: BigInteger
         get() = listOf(unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen)
-            .fold(BigInteger.ZERO) { total, fen -> total + BigInteger.valueOf(fen) }
+            .fold(BigInteger.ZERO) { total, fen -> total + BigInteger.valueOf(fen) } +
+            customDeductions.values.fold(BigInteger.ZERO) { total, fen -> total + BigInteger.valueOf(fen) }
     val netIncomeFen: Long
         get() {
             validate()
@@ -50,6 +65,7 @@ data class SalaryEntry(
         require(listOf(unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen).all { it >= 0 }) {
             "税额以外的扣款不能为负数"
         }
+        require(customDeductions.values.all { it >= 0 }) { "自定义扣款不能为负数" }
         require(occurredOn <= today) { "日期不能晚于今天" }
         val net = BigInteger.valueOf(grossFen).subtract(deductionsFen)
         require(net.signum() >= 0) { "纯收入不能为负数" }
@@ -57,7 +73,8 @@ data class SalaryEntry(
     }
 
     fun duplicateKey(): SalaryDuplicateKey = SalaryDuplicateKey(
-        occurredOn, incomeTypeId, grossFen, unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen
+        occurredOn, incomeTypeId, grossFen, unionFen, pensionFen, medicalFen, unemploymentFen, housingFen, annuityFen, taxFen,
+        customDeductions.toSortedMap()
     )
 }
 
@@ -71,7 +88,8 @@ data class SalaryDuplicateKey(
     val unemploymentFen: Long,
     val housingFen: Long,
     val annuityFen: Long,
-    val taxFen: Long
+    val taxFen: Long,
+    val customDeductions: Map<String, Long>
 )
 
 data class SalaryTotals(
@@ -89,7 +107,9 @@ data class SalaryImportDelta(val entriesToInsert: List<SalaryEntry>, val skipped
 
 data class SalaryImportCatalog(
     val incomeTypes: List<SalaryIncomeType>,
-    val restoreDefaultDirectory: Boolean
+    val restoreDefaultDirectory: Boolean,
+    val deductionTypes: List<SalaryDeductionType> = SalaryDeductionTypes.defaults,
+    val restoreDefaultDeductionDirectory: Boolean = false
 )
 
 object SalaryReports {

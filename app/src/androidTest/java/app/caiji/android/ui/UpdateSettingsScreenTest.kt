@@ -39,7 +39,8 @@ class UpdateSettingsScreenTest {
         val importExcel = compose.onNodeWithTag("settings-salary-import").fetchSemanticsNode().boundsInRoot
         val exportExcel = compose.onNodeWithTag("settings-salary-export").fetchSemanticsNode().boundsInRoot
         assertTrue(incomeTypes.top < importExcel.top && importExcel.top < exportExcel.top)
-        compose.onNodeWithText("账单").assertIsDisplayed()
+        val categories = compose.onNodeWithTag("settings-categories").fetchSemanticsNode().boundsInRoot
+        assertTrue(categories.top < incomeTypes.top)
         compose.onNodeWithText("工资").assertIsDisplayed()
         compose.onNodeWithText("导入 Excel").performClick()
         assertEquals("导入 Excel", selected)

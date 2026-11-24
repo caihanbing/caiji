@@ -39,7 +39,9 @@ data class SalaryImportPreview(
     val rowsRead: Int,
     val incomeTypesToCreate: List<SalaryIncomeType>,
     val duplicateCount: Int = 0,
-    val incomeTypesToRestore: List<SalaryIncomeType> = emptyList()
+    val incomeTypesToRestore: List<SalaryIncomeType> = emptyList(),
+    val deductionTypesToCreate: List<SalaryDeductionType> = emptyList(),
+    val deductionTypesToRestore: List<SalaryDeductionType> = emptyList()
 )
 
 private class SalaryXlsxProblem(val userReason: String, val userSuggestion: String, val errorCode: String) : IllegalArgumentException()
@@ -63,12 +65,16 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         source: InputStream,
         knownTypes: List<SalaryIncomeType>,
         today: LocalDate,
-        restoreDefaultDirectory: Boolean = false
+        restoreDefaultDirectory: Boolean = false,
+        knownDeductionTypes: List<SalaryDeductionType> = SalaryDeductionTypes.defaults,
+        restoreDefaultDeductionDirectory: Boolean = false
     ): SalaryImportPreview {
         val entries = mutableListOf<SalaryEntry>()
         val errors = mutableListOf<SalaryImportError>()
         val typesToCreate = mutableListOf<SalaryIncomeType>()
         val typesToRestore = mutableListOf<SalaryIncomeType>()
+        val deductionTypesToCreate = mutableListOf<SalaryDeductionType>()
+        val deductionTypesToRestore = mutableListOf<SalaryDeductionType>()
         var rowsRead = 0
         try {
             val parts = archive(source)
@@ -86,6 +92,29 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             val shared = parts["xl/sharedStrings.xml"]?.let(::strings).orEmpty()
             val legacyTypes = metadata(parts["docProps/custom.xml"])
             val directoryTypes = directoryMetadata(parts["docProps/custom.xml"])
+            val savedDeductionTypes = deductionMetadata(parts["docProps/custom.xml"])
+            val savedCustomDeductions = savedDeductionTypes.filterNot { it.builtIn }
+            deductionTypesToCreate += savedCustomDeductions.filter { incoming ->
+                knownDeductionTypes.none { it.id == incoming.id || (!it.builtIn && it.name == incoming.name) }
+            }
+            val nameConflict = savedCustomDeductions.firstOrNull { incoming ->
+                knownDeductionTypes.any { it.builtIn && it.id != incoming.id && it.name == incoming.name } &&
+                    knownDeductionTypes.none { !it.builtIn && (it.id == incoming.id || it.name == incoming.name) }
+            }
+            if (nameConflict != null && !restoreDefaultDeductionDirectory) {
+                throw SalaryXlsxProblem("工作簿自定义扣款名称与本机预置扣款项冲突",
+                    "请先在本机重命名预置扣款项，再重新导入。", "IMP-DEDUCTION-NAME-001")
+            }
+            if (restoreDefaultDeductionDirectory) {
+                val localById = knownDeductionTypes.associateBy { it.id }
+                savedDeductionTypes.filter { it.builtIn }.forEach { incoming ->
+                    val local = localById[incoming.id] ?: return@forEach
+                    if (local.name != incoming.name || local.iconKey != incoming.iconKey || local.active != incoming.active ||
+                        local.sortOrder != incoming.sortOrder || local.defaultFen != incoming.defaultFen) {
+                        deductionTypesToRestore += incoming.copy(builtIn = true)
+                    }
+                }
+            }
             val resolvedTypes = resolveIncomeTypes(knownTypes, legacyTypes, directoryTypes, restoreDefaultDirectory)
             typesToCreate += resolvedTypes.toCreate
             typesToRestore += resolvedTypes.toRestore
@@ -109,7 +138,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     }
                 }
                 if (rowNumber == 1) {
-                    val headerErrors = validateHeader(row, shared)
+                    val headerErrors = validateHeader(row, shared, savedDeductionTypes.filterNot { it.builtIn }.sortedBy { it.sortOrder })
                     errors += headerErrors
                     headerSeen = true
                     if (headerErrors.isNotEmpty()) break
@@ -119,7 +148,14 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                 if (dateRaw.isBlank() && listOf("B", "C", "D", "E", "F", "G", "H", "I", "J").all { values[it].isNullOrBlank() }) continue
                 if (dateRaw in totals) continue
                 rowsRead++
-                parseSalaryRow(rowNumber, values, knownTypes, resolvedTypes.byWorkbookName, today, entries, errors)
+            val localById = knownDeductionTypes.associateBy { it.id }
+            val workbookDeductions = savedCustomDeductions.associate { saved ->
+                val localByIdMatch = localById[saved.id]?.takeIf { !it.builtIn }
+                val localByName = knownDeductionTypes.firstOrNull { !it.builtIn && it.name == saved.name }
+                val local = localByIdMatch ?: localByName ?: saved
+                saved.name to local.copy(sortOrder = saved.sortOrder)
+            }
+            parseSalaryRow(rowNumber, values, knownTypes, resolvedTypes.byWorkbookName, today, entries, errors, workbookDeductions)
             }
             if (!headerSeen) errors += fileError("工作簿中没有表头行", "请检查 Sheet1 的第 1 行是否保留了样例表头。", "IMP-HEADER-001")
             if (rowsRead == 0 && errors.isEmpty()) errors += fileError("工作簿中没有收入明细", "请在样例表头下添加收入记录后重试。", "IMP-EMPTY-001")
@@ -141,8 +177,11 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             entries.clear()
             typesToCreate.clear()
             typesToRestore.clear()
+            deductionTypesToCreate.clear()
+            deductionTypesToRestore.clear()
         }
-        return SalaryImportPreview(entries, errors, rowsRead, typesToCreate, incomeTypesToRestore = typesToRestore)
+        return SalaryImportPreview(entries, errors, rowsRead, typesToCreate, incomeTypesToRestore = typesToRestore,
+            deductionTypesToCreate = deductionTypesToCreate, deductionTypesToRestore = deductionTypesToRestore)
     }
 
     private data class ResolvedIncomeTypes(
@@ -187,7 +226,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     if (restoreDefaultDirectory) {
                         incoming.copy(builtIn = true).also { updated ->
                             if (local.name != updated.name || local.iconKey != updated.iconKey ||
-                                local.active != updated.active || local.sortOrder != updated.sortOrder) toRestore += updated
+                                local.active != updated.active || local.sortOrder != updated.sortOrder || local.defaultFen != updated.defaultFen) toRestore += updated
                         }
                     } else local
                 }
@@ -265,7 +304,8 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         importedTypesByName: Map<String, SalaryIncomeType>,
         today: LocalDate,
         entries: MutableList<SalaryEntry>,
-        errors: MutableList<SalaryImportError>
+        errors: MutableList<SalaryImportError>,
+        deductionTypesByName: Map<String, SalaryDeductionType>
     ) {
         val issues=mutableListOf<SalaryImportError>()
         val labels=mapOf("A" to "时间","B" to "收入项","C" to "毛收入","D" to "工会费","E" to "养老保险","F" to "医疗保险","G" to "失业保险","H" to "公积金","I" to "企业年金","J" to "税","K" to "纯收入")
@@ -287,12 +327,21 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         if(issues.isNotEmpty()||date==null||type==null){errors+=issues;return}
         val now=System.currentTimeMillis()
         val entry=SalaryEntry("import-"+row,date,type.id,amounts.getValue("C"),amounts.getValue("D"),amounts.getValue("E"),amounts.getValue("F"),amounts.getValue("G"),amounts.getValue("H"),amounts.getValue("I"),amounts.getValue("J"),type.isCash,now,now)
-        val net=BigInteger.valueOf(entry.grossFen).subtract(entry.deductionsFen)
+        val customTypes = deductionTypesByName.values.filterNot { it.builtIn }.distinctBy { it.id }.sortedBy { it.sortOrder }
+        val customDeductions = customTypes.mapIndexedNotNull { index, deduction ->
+            val col = excelColumn(11 + index)
+            val raw = v[col].orEmpty()
+            if (raw.isBlank()) null else try { deduction.id to parseAmount(raw, deduction.name, false) }
+            catch (e: SalaryCellProblem) { issues += cellError(row, col, deduction.name, raw, e.userReason, e.userSuggestion); null }
+        }.toMap()
+        if (issues.isNotEmpty()) { errors += issues; return }
+        val fullEntry = entry.copy(customDeductions = customDeductions)
+        val net=BigInteger.valueOf(fullEntry.grossFen).subtract(fullEntry.deductionsFen)
         if(net.signum()<0){errors+=cellError(row,"K",labels.getValue("K"),v["K"],"扣款合计大于毛收入，纯收入为负数","请核对本行毛收入 C 和扣款 D:J；纯收入必须大于或等于 0。");return}
-        try{entry.validate(today)}catch(_:Exception){errors+=cellError(row,"K",labels.getValue("K"),v["K"],"计算后的纯收入超出可处理范围","请检查本行 C:J 的金额和小数点位置。");return}
+        try{fullEntry.validate(today)}catch(_:Exception){errors+=cellError(row,"K",labels.getValue("K"),v["K"],"计算后的纯收入超出可处理范围","请检查本行金额。");return}
         val supplied=v["K"]?.takeIf(String::isNotBlank)
-        if(supplied!=null)try{if(parseAmount(supplied,labels.getValue("K"),false)!=entry.netIncomeFen){errors+=cellError(row,"K",labels.getValue("K"),supplied,"纯收入与毛收入减扣款的结果不一致","本行纯收入应为 ¥"+yuan(entry.netIncomeFen)+"。请修正 K"+row+"，或检查 C:J 金额。");return}}catch(e:SalaryCellProblem){errors+=cellError(row,"K",labels.getValue("K"),supplied,e.userReason,e.userSuggestion);return}
-        entries+=entry
+        if(supplied!=null)try{if(parseAmount(supplied,labels.getValue("K"),false)!=fullEntry.netIncomeFen){errors+=cellError(row,"K",labels.getValue("K"),supplied,"纯收入与毛收入减扣款的结果不一致","本行纯收入应为 ¥"+yuan(fullEntry.netIncomeFen)+"。请检查各项扣款。");return}}catch(e:SalaryCellProblem){errors+=cellError(row,"K",labels.getValue("K"),supplied,e.userReason,e.userSuggestion);return}
+        entries+=fullEntry
     }
 
     private fun parseAmount(raw:String?,field:String,negative:Boolean):Long {
@@ -304,7 +353,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         return fen
     }
 
-    fun export(output: OutputStream, entries: List<SalaryEntry>, types: List<SalaryIncomeType>) {
+    fun export(output: OutputStream, entries: List<SalaryEntry>, types: List<SalaryIncomeType>, deductionTypes: List<SalaryDeductionType> = SalaryDeductionTypes.defaults) {
         val p=template().use(::archive).toMutableMap()
         val sheet=xml(p["xl/worksheets/sheet1.xml"] ?: error("工资模板无效"))
         val data=sheet.getElementsByTagNameNS(MAIN,"sheetData").item(0) as Element
@@ -313,6 +362,15 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         val detailTemplate=original.first { it.getAttribute("r")=="2" }
         val sumTemplates=(3..5).map { n->original.first { it.getAttribute("r")==n.toString() } }
         val values=p["xl/sharedStrings.xml"]?.let(::strings)?.toMutableList() ?: error("工资模板损坏")
+        val customColumns = deductionTypes.filterNot { it.builtIn }.sortedBy { it.sortOrder }.mapIndexed { index, type -> excelColumn(11 + index) to type }
+        val incomeItemsColumn = excelColumn(12 + customColumns.size)
+        val cashFlagColumn = excelColumn(13 + customColumns.size)
+        customColumns.forEach { (column, type) ->
+            val cell = sheet.createElementNS(MAIN, "c") as Element
+            cell.setAttribute("r", column + "1"); cell.setAttribute("t", "s")
+            val value = sheet.createElementNS(MAIN, "v"); value.textContent = indexShared(values, type.name).toString(); cell.appendChild(value)
+            (h as Element).appendChild(cell)
+        }
         while(data.firstChild!=null)data.removeChild(data.firstChild)
         data.appendChild(sheet.importNode(h,true))
         val ordered=entries.sortedWith(compareBy<SalaryEntry>{it.occurredOn}.thenBy{it.createdAtMillis}.thenBy{it.id})
@@ -329,9 +387,17 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                 val v=vals[col]; if(v!=null && (col=="A" || col=="B" || v!="0")){
                     val el=sheet.createElementNS(MAIN,"v");el.textContent=v.toString();c.appendChild(el)
                 }
-                if(col=="K"){val f=sheet.createElementNS(MAIN,"f");f.textContent="C"+rn+"-SUM(D"+rn+":J"+rn+")";c.insertBefore(f,c.firstChild)}
+                if(col=="K"){val f=sheet.createElementNS(MAIN,"f");f.textContent="C"+rn+"-SUM(D"+rn+":J"+rn+")"+customColumns.joinToString("") { "-"+it.first+rn };c.insertBefore(f,c.firstChild)}
             }
-            val cashFlag=sheet.createElementNS(MAIN,"c");cashFlag.setAttribute("r","N"+rn)
+            customColumns.forEach { (column, type) ->
+                val cell = sheet.createElementNS(MAIN, "c") as Element; cell.setAttribute("r", column + rn)
+                val amount = e.customDeductions[type.id] ?: 0L
+                if (amount != 0L || e.customDeductions.containsKey(type.id)) {
+                    val value = sheet.createElementNS(MAIN, "v"); value.textContent = yuan(amount); cell.appendChild(value)
+                }
+                r.appendChild(cell)
+            }
+            val cashFlag=sheet.createElementNS(MAIN,"c");cashFlag.setAttribute("r",cashFlagColumn+rn)
             val cashValue=sheet.createElementNS(MAIN,"v");cashValue.textContent=if(e.isCash)"1" else "0";cashFlag.appendChild(cashValue);r.appendChild(cashFlag)
             data.appendChild(r)
         }
@@ -344,7 +410,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     c.getElementsByTagNameNS(MAIN,"f").item(0)?.let(c::removeChild);c.getElementsByTagNameNS(MAIN,"v").item(0)?.let(c::removeChild)
                     val formula=when(idx){
                         0->"SUM("+col+"2:"+col+last+")"
-                        1->"SUMIF(N2:N"+last+",\"1\","+col+"2:"+col+last+")"
+                        1->"SUMIF("+cashFlagColumn+"2:"+cashFlagColumn+last+",\"1\","+col+"2:"+col+last+")"
                         else->col+(rn-2)+"-"+col+(rn-1)
                     }
                     val f=sheet.createElementNS(MAIN,"f");f.textContent=formula;c.appendChild(f)
@@ -352,6 +418,23 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                     val v=sheet.createElementNS(MAIN,"v");v.textContent=yuan(cached);c.appendChild(v)
                 }
             };data.appendChild(r)
+            customColumns.forEach { (column, type) ->
+                val cell = sheet.createElementNS(MAIN, "c") as Element; cell.setAttribute("r", column + rn)
+                val formula = when (idx) {
+                    0 -> "SUM(" + column + "2:" + column + last + ")"
+                    1 -> "SUMIF(" + cashFlagColumn + "2:" + cashFlagColumn + last + ",\"1\"," + column + "2:" + column + last + ")"
+                    else -> column + (rn - 2) + "-" + column + (rn - 1)
+                }
+                val formulaElement = sheet.createElementNS(MAIN, "f"); formulaElement.textContent = formula; cell.appendChild(formulaElement)
+                val total = ordered.filter { idx == 0 || (idx == 1) == it.isCash }
+                    .fold(java.math.BigInteger.ZERO) { sum, entry -> sum + java.math.BigInteger.valueOf(entry.customDeductions[type.id] ?: 0L) }
+                val value = sheet.createElementNS(MAIN, "v"); value.textContent = if (idx == 2) {
+                    val cash = ordered.filter { it.isCash }.fold(java.math.BigInteger.ZERO) { sum, entry -> sum + java.math.BigInteger.valueOf(entry.customDeductions[type.id] ?: 0L) }
+                    val all = ordered.fold(java.math.BigInteger.ZERO) { sum, entry -> sum + java.math.BigInteger.valueOf(entry.customDeductions[type.id] ?: 0L) }
+                    yuan(all - cash)
+                } else yuan(total)
+                cell.appendChild(value); r.appendChild(cell)
+            }
         }
         val end=sumStart+2
         val merged = sheet.getElementsByTagNameNS(MAIN, "mergeCells").item(0) as? Element
@@ -371,25 +454,30 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
         typeNames.forEachIndexed { index,name ->
             val rowNumber=index+2
             val row=sheetRows[rowNumber] ?: sheet.createElementNS(MAIN,"row").also { it.setAttribute("r",rowNumber.toString());data.appendChild(it);sheetRows[rowNumber]=it }
-            val cell=sheet.createElementNS(MAIN,"c");cell.setAttribute("r","M"+rowNumber);cell.setAttribute("t","s")
+            val cell=sheet.createElementNS(MAIN,"c");cell.setAttribute("r",incomeItemsColumn+rowNumber);cell.setAttribute("t","s")
             val value=sheet.createElementNS(MAIN,"v");value.textContent=indexShared(values,name).toString();cell.appendChild(value);row.appendChild(cell)
         }
         while(data.firstChild!=null)data.removeChild(data.firstChild)
         sheetRows.toSortedMap().values.forEach(data::appendChild)
         val cols=sheet.getElementsByTagNameNS(MAIN,"cols").item(0) as? Element
-        if(cols!=null){val hidden=sheet.createElementNS(MAIN,"col");hidden.setAttribute("min","13");hidden.setAttribute("max","14");hidden.setAttribute("width","0");hidden.setAttribute("hidden","1");cols.appendChild(hidden)}
-        (sheet.getElementsByTagNameNS(MAIN,"dimension").item(0) as? Element)?.setAttribute("ref","A1:N"+maxOf(end,typeNames.size+1))
+        if(cols!=null){
+            val oldHidden = (0 until cols.childNodes.length).mapNotNull { cols.childNodes.item(it) as? Element }
+                .filter { it.getAttribute("min") == "13" && it.getAttribute("max") == "14" }
+            oldHidden.forEach(cols::removeChild)
+            val hidden=sheet.createElementNS(MAIN,"col");hidden.setAttribute("min",excelColumnIndex(incomeItemsColumn).toString());hidden.setAttribute("max",excelColumnIndex(cashFlagColumn).toString());hidden.setAttribute("width","0");hidden.setAttribute("hidden","1");cols.appendChild(hidden)
+        }
+        (sheet.getElementsByTagNameNS(MAIN,"dimension").item(0) as? Element)?.setAttribute("ref","A1:"+cashFlagColumn+maxOf(end,typeNames.size+1))
         (sheet.getElementsByTagNameNS(MAIN,"autoFilter").item(0) as? Element)?.setAttribute("ref","B1:B"+last)
         (sheet.getElementsByTagNameNS(MAIN,"dataValidation").item(0) as? Element)?.apply { setAttribute("sqref","B2:B"+last);getElementsByTagNameNS(MAIN,"formula1").item(0)?.textContent="SalaryIncomeItems" }
         p["xl/worksheets/sheet1.xml"]=bytes(sheet)
         p["xl/sharedStrings.xml"]=writeStrings(p["xl/sharedStrings.xml"]!!,values)
-        p["docProps/custom.xml"]=custom(types)
+        p["docProps/custom.xml"]=custom(types, deductionTypes)
         p["_rels/.rels"]=relationship(p["_rels/.rels"]!!)
         p["[Content_Types].xml"]=contentType(p["[Content_Types].xml"]!!)
         val wb=xml(p["xl/workbook.xml"]!!)
         val definitions=wb.getElementsByTagNameNS(MAIN,"definedNames").item(0) as? Element ?: wb.createElementNS(MAIN,"definedNames").also { wb.documentElement.appendChild(it) }
         while(definitions.firstChild!=null)definitions.removeChild(definitions.firstChild)
-        val defined=wb.createElementNS(MAIN,"definedName");defined.setAttribute("name","SalaryIncomeItems");defined.textContent="Sheet1!\$M\$2:\$M\$"+(typeNames.size+1);definitions.appendChild(defined)
+        val defined=wb.createElementNS(MAIN,"definedName");defined.setAttribute("name","SalaryIncomeItems");defined.textContent="Sheet1!\$"+incomeItemsColumn+"\$2:\$"+incomeItemsColumn+"\$"+(typeNames.size+1);definitions.appendChild(defined)
         (wb.getElementsByTagNameNS(MAIN,"calcPr").item(0) as? Element)?.apply{setAttribute("calcMode","auto");setAttribute("fullCalcOnLoad","1");setAttribute("forceFullCalc","1")}
         p["xl/workbook.xml"]=bytes(wb)
         ZipOutputStream(output).use { z->p.forEach{(name,b)->z.putNextEntry(ZipEntry(name));z.write(b);z.closeEntry()} }
@@ -403,7 +491,14 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
     private fun amount(s:String?):Long {val n=s?.takeIf(String::isNotBlank)?.let(::BigDecimal)?:BigDecimal.ZERO;require(n.scale()<=2||n.stripTrailingZeros().scale()<=2){"金额最多保留两位小数"};return n.movePointRight(2).longValueExact()}
     private fun parseDate(s:String):LocalDate {runCatching{return LocalDate.parse(s)};val n=s.toDoubleOrNull()?:error("日期格式无效");require(n>=1&&n<2958466){"日期超出 Excel 范围"};return LocalDate.of(1899,12,30).plusDays(n.toLong())}
     private fun excelDate(d:LocalDate)=ChronoUnit.DAYS.between(LocalDate.of(1899,12,30),d)
-    private fun validateHeader(row: Element, shared: List<String>): List<SalaryImportError> {
+    private fun excelColumn(index: Int): String {
+        var value = index + 1
+        var result = ""
+        while (value > 0) { value--; result = ('A'.code + value % 26).toChar() + result; value /= 26 }
+        return result
+    }
+    private fun excelColumnIndex(column: String): Int = column.fold(0) { total, char -> total * 26 + char.code - 'A'.code + 1 }
+    private fun validateHeader(row: Element, shared: List<String>, customDeductions: List<SalaryDeductionType>): List<SalaryImportError> {
         val expectedColumns = headers.indices.map { ('A'.code + it).toChar().toString() }
         val byColumn = cells(row).associateBy { it.getAttribute("r").takeWhile(Char::isLetter) }
         val errors = mutableListOf<SalaryImportError>()
@@ -418,7 +513,16 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             if (value != expected) errors += cellError(1, column, "表头", value ?: "缺失", "列标题与样例不一致",
                 "请将 " + column + "1 改为“" + expected + "”，并保持样例的 11 列顺序。", "IMP-HEADER-002")
         }
-        if (byColumn.keys.any { it !in expectedColumns }) errors += fileError("Sheet1 列数与工资样例不一致", "请仅保留样例的 A:K 这 11 列。", "IMP-HEADER-003")
+        val customColumns = customDeductions.mapIndexed { index, type -> excelColumn(11 + index) to type.name }.toMap()
+        customColumns.forEach { (column, expected) ->
+            val cell = byColumn[column]
+            val raw = cell?.getElementsByTagNameNS(MAIN, "v")?.item(0)?.textContent.orEmpty()
+            val actual = if (cell?.getAttribute("t") == "inlineStr") cell.getElementsByTagNameNS(MAIN, "t").item(0)?.textContent
+                else shared.getOrNull(raw.toIntOrNull() ?: -1)
+            if (actual != expected) errors += cellError(1, column, "扣款项表头", actual ?: "缺失", "列标题与扣款目录不一致", "请保留导出文件中的“$expected”列。", "IMP-HEADER-002")
+        }
+        val allowed = expectedColumns.toSet() + customColumns.keys
+        if (byColumn.keys.any { it !in allowed }) errors += fileError("Sheet1 列数与工资样例不一致", "请删除未配置的表格列。", "IMP-HEADER-003")
         return errors
     }
     private fun readZip(input:InputStream):Map<String,ByteArray>{val out=linkedMapOf<String,ByteArray>();var size=0;var count=0;ZipInputStream(input).use{z->while(true){val e=z.nextEntry?:break;require(++count<=MAX_PARTS){"Excel 文件部件过多"};if(e.isDirectory) { z.closeEntry(); continue };require(!e.name.startsWith("/")&&!e.name.split("/").contains("..")&&!e.name.contains("\\")){"文件路径无效"};require(!e.name.contains("vbaProject")&&!e.name.startsWith("xl/externalLinks/")&&!e.name.startsWith("xl/embeddings/")){"不支持宏、外部链接或嵌入内容"};require(!out.containsKey(e.name)){"Excel 文件含重复部件"};val b=ByteArrayOutputStream();val buf=ByteArray(8192);var nsum=0;while(true){val n=z.read(buf);if(n<0)break;nsum+=n;size+=n;require(nsum<=MAX_XML&&size<=MAX_BYTES){"Excel 文件超过安全读取上限"};b.write(buf,0,n)};out[e.name]=b.toByteArray()}};if(!out.containsKey("xl/workbook.xml"))throw SalaryXlsxProblem("未找到 Excel 工作簿部件","请确认文件是有效的 .xlsx 工作簿，并用 Excel/WPS 重新另存。","IMP-ZIP-001");return out}
@@ -526,7 +630,7 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
     private fun bytes(d:Document):ByteArray{val t=TransformerFactory.newInstance().apply{runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") };runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalStylesheet", "") }}.newTransformer();val o=ByteArrayOutputStream();t.setOutputProperty(OutputKeys.ENCODING,"UTF-8");t.transform(DOMSource(d),StreamResult(o));return o.toByteArray()}
     private fun strings(b:ByteArray):List<String>{val d=xml(b);val n=d.getElementsByTagNameNS(MAIN,"si");return (0 until n.length).map{i->val t=(n.item(i) as Element).getElementsByTagNameNS(MAIN,"t");(0 until t.length).joinToString(""){j->t.item(j).textContent}}}
     private fun writeStrings(b:ByteArray,values:List<String>):ByteArray{val d=xml(b);val r=d.documentElement;while(r.firstChild!=null)r.removeChild(r.firstChild);values.forEach{s->val i=d.createElementNS(MAIN,"si");val t=d.createElementNS(MAIN,"t");t.textContent=s;i.appendChild(t);r.appendChild(i)};r.setAttribute("count",values.size.toString());r.setAttribute("uniqueCount",values.size.toString());return bytes(d)}
-    private fun custom(types: List<SalaryIncomeType>): ByteArray {
+    private fun custom(types: List<SalaryIncomeType>, deductionTypes: List<SalaryDeductionType>): ByteArray {
         val d = xml("""<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>""".toByteArray())
         val properties = d.documentElement
         fun add(name: String, pid: String, value: String) {
@@ -559,6 +663,16 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             ).joinToString("|")
         }.joinToString("\n")
         add("CaijiSalaryIncomeDirectoryV3", "4", directoryV3)
+        val incomeV4 = "4\n" + orderedTypes.mapIndexed { order, type -> listOf(
+            type.id, Base64.getEncoder().encodeToString(type.name.toByteArray()), if (type.isCash) "1" else "0",
+            Base64.getEncoder().encodeToString(type.iconKey.toByteArray()), if (type.active) "1" else "0", order.toString(), type.defaultFen.toString()
+        ).joinToString("|") }.joinToString("\n")
+        add("CaijiSalaryIncomeDirectoryV4", "5", incomeV4)
+        val deductionDirectory = "1\n" + deductionTypes.sortedBy { it.sortOrder }.mapIndexed { order, type -> listOf(
+            type.id, Base64.getEncoder().encodeToString(type.name.toByteArray()), Base64.getEncoder().encodeToString(type.iconKey.toByteArray()),
+            if (type.active) "1" else "0", order.toString(), type.defaultFen.toString(), if (type.builtIn) "1" else "0"
+        ).joinToString("|") }.joinToString("\n")
+        add("CaijiSalaryDeductionDirectoryV1", "6", deductionDirectory)
         return bytes(d)
     }
     private fun metadata(b:ByteArray?):List<SalaryIncomeType>{
@@ -579,15 +693,17 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "property"
         )
         val directory = (0 until properties.length).map { properties.item(it) as Element }
+        val v4 = directory.firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV4" }?.textContent
         val v3 = directory.firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV3" }?.textContent
-        val isV3 = v3 != null
-        val value = v3 ?: directory.firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV2" }?.textContent.orEmpty()
+        val isV4 = v4 != null
+        val isV3 = v3 != null || isV4
+        val value = v4 ?: v3 ?: directory.firstOrNull { it.getAttribute("name") == "CaijiSalaryIncomeDirectoryV2" }?.textContent.orEmpty()
         if (value.isBlank()) return emptyList()
         val lines = value.lineSequence().toList()
-        require(lines.firstOrNull() == if (isV3) "3" else "2") { "工资目录元数据版本不受支持" }
+        require(lines.firstOrNull() == when { isV4 -> "4"; isV3 -> "3"; else -> "2" }) { "工资目录元数据版本不受支持" }
         val parsed = lines.drop(1).filter(String::isNotBlank).mapIndexed { index, line ->
             val fields = line.split('|')
-            require(fields.size == if (isV3) 6 else 4) { "工资目录元数据损坏（字段数=${fields.size}）" }
+            require(fields.size == when { isV4 -> 7; isV3 -> 6; else -> 4 }) { "工资目录元数据损坏（字段数=${fields.size}）" }
             val id = fields[0]
             val name = String(Base64.getDecoder().decode(fields[1]), Charsets.UTF_8)
             val cashFlag = fields[2]
@@ -597,6 +713,8 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
             val active = if (isV3) fields[4].also { require(it in setOf("0", "1")) { "工资目录启停状态损坏" } } == "1" else true
             val sortOrder = if (isV3) fields[5].toIntOrNull()?.also { require(it >= 0) { "工资目录顺序无效" } }
                 ?: error("工资目录顺序无效") else index
+            val defaultFen = if (isV4) fields[6].toLongOrNull()?.also { require(it >= 0) { "收入默认值无效" } }
+                ?: error("收入默认值无效") else 0L
             require(id.isNotBlank() && id.length <= 128 && name.isNotBlank() && name == name.trim() && name.length <= 100) {
                 "工资目录元数据损坏（项目名称或ID）"
             }
@@ -609,12 +727,36 @@ class SalaryXlsxCodec(private val template: () -> InputStream) {
                 builtIn = builtIn != null,
                 sortOrder = sortOrder,
                 iconKey = if (CategoryCatalog.isAllowedIcon(savedIcon)) savedIcon else "other",
-                active = active
+                active = active,
+                defaultFen = defaultFen
             )
         }
         require(parsed.map { it.id }.distinct().size == parsed.size) { "工资元数据含重复收入项 ID" }
         require(parsed.map { it.name }.distinct().size == parsed.size) { "工资元数据含重复收入项名称" }
         if (isV3) require(parsed.map { it.sortOrder }.distinct().size == parsed.size) { "工资目录顺序重复" }
+        return parsed
+    }
+
+    private fun deductionMetadata(b: ByteArray?): List<SalaryDeductionType> {
+        if (b == null) return emptyList()
+        val nodes = xml(b).getElementsByTagNameNS("http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "property")
+        val raw = (0 until nodes.length).map { nodes.item(it) as Element }
+            .firstOrNull { it.getAttribute("name") == "CaijiSalaryDeductionDirectoryV1" }?.textContent.orEmpty()
+        if (raw.isBlank()) return emptyList()
+        val lines = raw.lineSequence().toList()
+        require(lines.firstOrNull() == "1") { "扣款目录元数据版本不受支持" }
+        val parsed = lines.drop(1).filter(String::isNotBlank).mapIndexed { index, line ->
+            val fields = line.split('|'); require(fields.size == 7) { "扣款目录元数据损坏" }
+            val name = String(Base64.getDecoder().decode(fields[1]), Charsets.UTF_8)
+            val icon = String(Base64.getDecoder().decode(fields[2]), Charsets.UTF_8)
+            val active = fields[3].also { require(it in setOf("0", "1")) } == "1"
+            val order = fields[4].toIntOrNull()?.also { require(it >= 0) } ?: error("扣款顺序无效")
+            val default = fields[5].toLongOrNull()?.also { require(it >= 0) } ?: error("扣款默认值无效")
+            val builtIn = fields[6].also { require(it in setOf("0", "1")) } == "1"
+            require(fields[0].isNotBlank() && name.isNotBlank() && name == name.trim()) { "扣款目录元数据损坏" }
+            SalaryDeductionType(fields[0], name, builtIn, order, if (CategoryCatalog.isAllowedIcon(icon)) icon else "other", active, default)
+        }
+        require(parsed.map { it.id }.distinct().size == parsed.size && parsed.map { it.name }.distinct().size == parsed.size) { "扣款目录含重复项" }
         return parsed
     }
     private fun relationship(b:ByteArray):ByteArray{val d=xml(b);val r=d.documentElement;val n=(0 until r.childNodes.length).mapNotNull{r.childNodes.item(it) as? Element};if(n.none{it.getAttribute("Type").endsWith("/custom-properties")}){val e=d.createElementNS(r.namespaceURI,"Relationship");e.setAttribute("Id","rIdSalaryCustom");e.setAttribute("Type","http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties");e.setAttribute("Target","docProps/custom.xml");r.appendChild(e)};return bytes(d)}

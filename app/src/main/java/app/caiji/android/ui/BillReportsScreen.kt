@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.caiji.android.data.LedgerPeriodTotals
@@ -180,6 +184,7 @@ internal fun BillPeriodReportScreen(
     var deleteCandidate by remember { mutableStateOf<app.caiji.android.data.LedgerEntry?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember(year, monthValue, selectedType, selectedCategoryId) { mutableStateOf<String?>(null) }
+    var detailSort by remember(year, monthValue, selectedCategoryId) { mutableStateOf("amount") }
     val rankingPager = rememberPagerState(initialPage = if (selectedType == EntryType.EXPENSE) 0 else 1, pageCount = { 2 })
     val rankingPagerScope = rememberCoroutineScope()
     LaunchedEffect(deleteCandidate) { onModalVisibilityChange(deleteCandidate != null) }
@@ -245,15 +250,21 @@ internal fun BillPeriodReportScreen(
             }
         } else {
             val selectedCategory = visibleReport?.categories?.firstOrNull { it.category.id == selectedCategoryId }?.category
-            Text(selectedCategory?.name.orEmpty(), Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                .testTag("report-category-detail-title"),
-                color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(selectedCategory?.name.orEmpty(), Modifier.weight(1f).testTag("report-category-detail-title"),
+                    color = CaijiPalette.SecondaryText, style = MaterialTheme.typography.bodyMedium)
+                ReportDetailSortControl(detailSort, { detailSort = it })
+            }
             deleteError?.let {
                 Text(it, Modifier.padding(horizontal = 18.dp, vertical = 2.dp).testTag("report-list-delete-error"),
                     color = CaijiPalette.Danger, style = MaterialTheme.typography.bodySmall)
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                visibleReport?.entries.orEmpty().forEach { entry ->
+                val entries = visibleReport?.entries.orEmpty().let { rows ->
+                    if (detailSort == "amount") rows.sortedWith(compareByDescending<app.caiji.android.data.LedgerEntry> { it.amountFen }.thenByDescending { it.occurredOn }.thenByDescending { it.createdAtMillis })
+                    else rows.sortedWith(compareByDescending<app.caiji.android.data.LedgerEntry> { it.occurredOn }.thenByDescending { it.createdAtMillis })
+                }
+                entries.forEach { entry ->
                     val category = selectedCategory
                     FinancialDetailRow(
                         icon = categoryEmoji(category?.iconKey ?: "other"), title = category?.name ?: "已停用分类",
@@ -304,9 +315,27 @@ internal fun BillPeriodReportScreen(
             },
             dismissButton = {
                 TextButton(onClick = { deleteCandidate = null }, enabled = !deleting,
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = CaijiPalette.PrimaryText),
                     modifier = Modifier.testTag("report-cancel-delete")) { Text("取消") }
             }
         )
+    }
+}
+
+@Composable
+private fun ReportDetailSortControl(value: String, onChange: (String) -> Unit) {
+    Row(Modifier.background(CaijiPalette.SurfaceAlt, androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).padding(2.dp)
+        .selectableGroup()
+        .testTag("report-detail-sort")) {
+        listOf("amount" to "金额 ↓", "time" to "时间 ↓").forEach { (sort, label) ->
+            TextButton(onClick = { onChange(sort) }, modifier = Modifier.heightIn(min = 48.dp)
+                .semantics { selected = value == sort }.testTag("report-detail-sort-$sort"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp)) {
+                Text(label, style = MaterialTheme.typography.labelSmall,
+                    color = if (value == sort) CaijiPalette.Ink else CaijiPalette.SecondaryText,
+                    fontWeight = if (value == sort) FontWeight.SemiBold else FontWeight.Normal)
+            }
+        }
     }
 }
 

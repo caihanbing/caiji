@@ -42,7 +42,7 @@ class SalaryMigrationTest {
         val migrationField = SalaryDatabase::class.java.fields.firstOrNull { it.name == "MIGRATION_2_3" }
         assertNotNull("SalaryDatabase must expose MIGRATION_2_3", migrationField)
         val database = Room.databaseBuilder(context, SalaryDatabase::class.java, databaseName)
-            .addMigrations(migrationField!!.get(null) as Migration)
+            .addMigrations(migrationField!!.get(null) as Migration, SalaryDatabase.MIGRATION_3_4)
             .build()
         try {
             val repository = RoomSalaryRepository(database)
@@ -56,7 +56,7 @@ class SalaryMigrationTest {
             assertEquals(5000L, salary.taxFen)
             assertEquals("custom-icon", types.first { it.id == "custom-v2" }.iconKey)
             database.openHelper.readableDatabase.query("PRAGMA user_version").use {
-                assertEquals(3, if (it.moveToFirst()) it.getInt(0) else -1)
+                assertEquals(4, if (it.moveToFirst()) it.getInt(0) else -1)
             }
         } finally {
             database.close()
@@ -91,7 +91,7 @@ class SalaryMigrationTest {
         assertNotNull("SalaryDatabase must expose MIGRATION_1_2", migrationField)
         val migration = migrationField!!.get(null) as Migration
         val database = Room.databaseBuilder(context, SalaryDatabase::class.java, databaseName)
-            .addMigrations(migration, SalaryDatabase.MIGRATION_2_3)
+            .addMigrations(migration, SalaryDatabase.MIGRATION_2_3, SalaryDatabase.MIGRATION_3_4)
             .build()
         try {
             val repository = RoomSalaryRepository(database)
@@ -131,7 +131,7 @@ class SalaryMigrationTest {
             assertEquals(11L, entry.createdAtMillis)
             assertEquals(12L, entry.updatedAtMillis)
             val rows = database.openHelper.readableDatabase.query("PRAGMA user_version")
-            rows.use { assertEquals(3, if (it.moveToFirst()) it.getInt(0) else -1) }
+            rows.use { assertEquals(4, if (it.moveToFirst()) it.getInt(0) else -1) }
         } finally {
             database.close()
             context.deleteDatabase(databaseName)
@@ -154,7 +154,7 @@ class SalaryMigrationTest {
         val migrationField = SalaryDatabase::class.java.fields.firstOrNull { it.name == "MIGRATION_1_2" }
         assertNotNull("SalaryDatabase must expose MIGRATION_1_2", migrationField)
         val migrated = Room.databaseBuilder(context, SalaryDatabase::class.java, databaseName)
-            .addMigrations(migrationField!!.get(null) as androidx.room.migration.Migration, SalaryDatabase.MIGRATION_2_3)
+            .addMigrations(migrationField!!.get(null) as androidx.room.migration.Migration, SalaryDatabase.MIGRATION_2_3, SalaryDatabase.MIGRATION_3_4)
             .build()
         val failed = runCatching { migrated.openHelper.writableDatabase }.isFailure
         migrated.close()

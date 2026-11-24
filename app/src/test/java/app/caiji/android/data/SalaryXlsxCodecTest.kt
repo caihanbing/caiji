@@ -11,6 +11,131 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
 class SalaryXlsxCodecTest {
+    @Test fun customDeductionAndDefaultDirectoriesRoundTripWithSalaryRows() {
+        val deduction = SalaryDeductionType("custom-deduct-1", "补充保险", false, 7, "insurance", true, 1250)
+        val income = SalaryIncomeTypes.defaults.first().copy(defaultFen = 875000)
+        val entry = SalaryEntry("custom-entry", LocalDate.of(2026, 11, 1), income.id, 100000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(deduction.id to 1250))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val file = ByteArrayOutputStream()
+        codec.export(file, listOf(entry), SalaryIncomeTypes.defaults.map { if (it.id == income.id) income else it } +
+            SalaryIncomeType("custom-income", "奖金", true), SalaryDeductionTypes.defaults + deduction)
+        val preview = codec.importPreview(ByteArrayInputStream(file.toByteArray()),
+            SalaryIncomeTypes.defaults + SalaryIncomeType("custom-income", "奖金", true), entry.occurredOn,
+            restoreDefaultDirectory = true,
+            knownDeductionTypes = SalaryDeductionTypes.defaults)
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(98_750L, preview.entries.single().netIncomeFen)
+        assertEquals(1250L, preview.entries.single().customDeductions[deduction.id])
+        assertEquals(875000L, preview.incomeTypesToRestore.single { it.id == income.id }.defaultFen)
+        assertEquals(deduction.id, preview.deductionTypesToCreate.single().id)
+    }
+
+    @Test fun multipleCustomDeductionColumnsKeepTheirWorkbookDirectoryMapping() {
+        val first = SalaryDeductionType("custom-deduct-a", "补充保险", false, 7, "insurance", true)
+        val second = SalaryDeductionType("custom-deduct-b", "交通扣款", false, 8, "travel", true)
+        val entry = SalaryEntry("multi-deduction-entry", LocalDate.of(2026, 11, 1), "builtin-1", 100_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1,
+            customDeductions = mapOf(first.id to 2_000L, second.id to 3_500L))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val workbook = ByteArrayOutputStream()
+        codec.export(workbook, listOf(entry), SalaryIncomeTypes.defaults, SalaryDeductionTypes.defaults + first + second)
+        val localDirectory = SalaryDeductionTypes.defaults + first.copy(sortOrder = 90) + second.copy(sortOrder = 0)
+        val preview = codec.importPreview(ByteArrayInputStream(workbook.toByteArray()), SalaryIncomeTypes.defaults,
+            entry.occurredOn, knownDeductionTypes = localDirectory)
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(94_500L, preview.entries.single().netIncomeFen)
+        assertEquals(2_000L, preview.entries.single().customDeductions[first.id])
+        assertEquals(3_500L, preview.entries.single().customDeductions[second.id])
+        assertTrue(preview.deductionTypesToCreate.isEmpty())
+    }
+
+    @Test fun renamedLocalCustomDeductionNameResolvesByWorkbookId() {
+        val workbookType = SalaryDeductionType("file-deduction-id", "文件扣款", false, 7, "insurance", true)
+        val localType = workbookType.copy(name = "本机扣款")
+        val entry = SalaryEntry("mapped-deduction", LocalDate.of(2026, 11, 1), "builtin-1", 12_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(workbookType.id to 500))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, listOf(entry), SalaryIncomeTypes.defaults, SalaryDeductionTypes.defaults + workbookType)
+
+        val preview = codec.importPreview(ByteArrayInputStream(output.toByteArray()), SalaryIncomeTypes.defaults,
+            entry.occurredOn, knownDeductionTypes = SalaryDeductionTypes.defaults + localType)
+
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(500L, preview.entries.single().customDeductions[localType.id])
+        assertTrue(preview.deductionTypesToCreate.isEmpty())
+    }
+
+    @Test fun sameNamedLocalCustomDeductionUsesTheLocalStableId() {
+        val workbookType = SalaryDeductionType("file-deduction-id", "补充保险", false, 7, "insurance", true)
+        val localType = workbookType.copy(id = "local-deduction-id")
+        val entry = SalaryEntry("same-name-deduction", LocalDate.of(2026, 11, 1), "builtin-1", 12_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(workbookType.id to 500))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, listOf(entry), SalaryIncomeTypes.defaults, SalaryDeductionTypes.defaults + workbookType)
+
+        val preview = codec.importPreview(ByteArrayInputStream(output.toByteArray()), SalaryIncomeTypes.defaults,
+            entry.occurredOn, knownDeductionTypes = SalaryDeductionTypes.defaults + localType)
+
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(500L, preview.entries.single().customDeductions[localType.id])
+        assertTrue(preview.deductionTypesToCreate.isEmpty())
+    }
+
+    @Test fun zeroCustomDeductionPresenceSurvivesWorkbookRoundTrip() {
+        val type = SalaryDeductionType("zero-deduction", "零元扣款", false, 7, "insurance", true)
+        val entry = SalaryEntry("zero-deduction-row", LocalDate.of(2026, 11, 1), "builtin-1", 12_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(type.id to 0L))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val workbook = ByteArrayOutputStream()
+        codec.export(workbook, listOf(entry), SalaryIncomeTypes.defaults, SalaryDeductionTypes.defaults + type)
+
+        val preview = codec.importPreview(ByteArrayInputStream(workbook.toByteArray()), SalaryIncomeTypes.defaults,
+            entry.occurredOn, knownDeductionTypes = SalaryDeductionTypes.defaults + type)
+
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertTrue(preview.entries.single().customDeductions.containsKey(type.id))
+        assertEquals(entry.duplicateKey(), preview.entries.single().duplicateKey())
+    }
+
+    @Test fun customDeductionCanReuseAWorkbookRenamedBuiltInNameOnPristineRestore() {
+        val builtin = SalaryDeductionTypes.defaults.last().copy(name = "其他扣税")
+        val custom = SalaryDeductionType("workbook-tax-deduction", "税", false, 7, "insurance", true)
+        val entry = SalaryEntry("workbook-renamed-deduction", LocalDate.of(2026, 11, 1), "builtin-1", 12_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(custom.id to 500))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, listOf(entry), SalaryIncomeTypes.defaults,
+            SalaryDeductionTypes.defaults.map { if (it.id == builtin.id) builtin else it } + custom)
+
+        val preview = codec.importPreview(ByteArrayInputStream(output.toByteArray()), SalaryIncomeTypes.defaults,
+            entry.occurredOn, knownDeductionTypes = SalaryDeductionTypes.defaults, restoreDefaultDeductionDirectory = true)
+
+        assertTrue(preview.errors.toString(), preview.errors.isEmpty())
+        assertEquals(11_500L, preview.entries.single().netIncomeFen)
+        assertEquals(500L, preview.entries.single().customDeductions[custom.id])
+        assertEquals(builtin.name, preview.deductionTypesToRestore.single { it.id == builtin.id }.name)
+        assertEquals(custom.id, preview.deductionTypesToCreate.single().id)
+    }
+
+    @Test fun customDeductionNameConflictWithBuiltInRequiresDirectoryResolution() {
+        val builtin = SalaryDeductionTypes.defaults.last().copy(name = "来源预置税")
+        val custom = SalaryDeductionType("workbook-tax-deduction", "税", false, 7, "insurance", true)
+        val entry = SalaryEntry("workbook-tax-conflict", LocalDate.of(2026, 11, 1), "builtin-1", 12_000,
+            isCash = true, createdAtMillis = 1, updatedAtMillis = 1, customDeductions = mapOf(custom.id to 500))
+        val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
+        val output = ByteArrayOutputStream()
+        codec.export(output, listOf(entry), SalaryIncomeTypes.defaults,
+            SalaryDeductionTypes.defaults.map { if (it.id == builtin.id) builtin else it } + custom)
+
+        val preview = codec.importPreview(ByteArrayInputStream(output.toByteArray()), SalaryIncomeTypes.defaults,
+            entry.occurredOn, knownDeductionTypes = SalaryDeductionTypes.defaults)
+
+        assertEquals("工作簿自定义扣款名称与本机预置扣款项冲突", preview.errors.single().reason)
+        assertTrue(preview.entries.isEmpty())
+    }
     @Test fun parsesSampleColumnsAndComputesNetUsingNegativeTax() {
         val codec = SalaryXlsxCodec { javaClass.classLoader!!.getResourceAsStream("salary-template.xlsx")!! }
         val result = codec.importPreview(ByteArrayInputStream(fixture()), SalaryIncomeTypes.defaults, LocalDate.of(2026, 11, 4))

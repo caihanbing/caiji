@@ -324,7 +324,8 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     val importCatalog = salaryRepository.incomeTypeImportCatalog()
                     context.contentResolver.openInputStream(uri)?.use {
                         app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }
-                            .importPreview(it, importCatalog.incomeTypes, LocalDate.now(), importCatalog.restoreDefaultDirectory)
+                            .importPreview(it, importCatalog.incomeTypes, LocalDate.now(), importCatalog.restoreDefaultDirectory,
+                                importCatalog.deductionTypes, importCatalog.restoreDefaultDeductionDirectory)
                     } ?: throw java.io.IOException("Selected document is unavailable")
                 } }
                 if (request == salaryImportGeneration && page == Page.SALARY) {
@@ -349,9 +350,10 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
             runCatching { withContext(Dispatchers.IO) {
                 val repo = (context.applicationContext as CaijiApplication).salaryRepository
                 val types = repo.incomeTypes()
+                val deductions = repo.deductionTypes()
                 val entries = app.caiji.android.data.SalaryReports.filter(repo.entries(), period)
                 context.contentResolver.openOutputStream(uri, "w")?.use {
-                    app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }.export(it, entries, types)
+                    app.caiji.android.data.SalaryXlsxCodec { context.assets.open("salary-template.xlsx") }.export(it, entries, types, deductions)
                 } ?: error("无法写入所选文件")
             } }.onSuccess {
                 pickerError = "工资 Excel 已保存"
@@ -694,6 +696,7 @@ private fun CaijiRoot(model: LedgerViewModel = viewModel()) {
                     onSalaryImport = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.IMPORT; salaryPreview = null; page = Page.SALARY },
                     onSalaryExport = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.EXPORT; pickerError = null; page = Page.SALARY },
                     onSalaryTypes = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.TYPES; page = Page.SALARY },
+                    onSalaryDeductions = { showSalaryBottomNavigation = false; salaryManagementRoute = SalaryManagementRoute.DEDUCTIONS; page = Page.SALARY },
                     requiredExpenseNoteThresholdFen = requiredExpenseNoteThresholdFen,
                     onRequiredExpenseNoteThresholdChange = { threshold ->
                         requiredExpenseNoteThresholdFen = threshold

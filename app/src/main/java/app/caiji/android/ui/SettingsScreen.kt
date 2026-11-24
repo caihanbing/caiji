@@ -59,6 +59,7 @@ internal fun SettingsScreen(
     onSalaryImport: () -> Unit = {},
     onSalaryExport: () -> Unit = {},
     onSalaryTypes: () -> Unit = {},
+    onSalaryDeductions: () -> Unit = {},
     requiredExpenseNoteThresholdFen: Long? = null,
     onRequiredExpenseNoteThresholdChange: (Long?) -> Unit = {}
 ) {
@@ -160,6 +161,7 @@ internal fun SettingsScreen(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("settings-salary")) {
             Text("工资", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             SalarySettingsRow("收入项管理", "查看收入项，新增自定义收入项", CaijiIconName.CATEGORY, onSalaryTypes, "settings-salary-types")
+            SalarySettingsRow("扣款项管理", "查看扣款项，新增自定义扣款项", CaijiIconName.CATEGORY, onSalaryDeductions, "settings-salary-deductions")
             SalarySettingsRow("导入 Excel", "选择 .xlsx 文件，核对后导入工资", CaijiIconName.IMPORT, onSalaryImport, "settings-salary-import")
             SalarySettingsRow("导出 Excel", "将全部或指定年份工资导出为 .xlsx", CaijiIconName.EXPORT, onSalaryExport, "settings-salary-export")
         }
