@@ -6,7 +6,7 @@
 <!-- feature-status: active -->
 <!-- feature-summary: 独立工资库按年浏览和跨年汇总；收入项按现金性质、扣款项共用目录管理，均支持默认金额、排序及启停；XLSX 可迁移目录和自定义扣款。 -->
 <!-- last-verified: 2026-11-24 -->
-<!-- code-basis: impl-v2 sha256:a5520aea8e3b9143d5f727e1f7e3d33c733099fe20bcdbfefea4de3b87053a84 -->
+<!-- code-basis: impl-v2 sha256:d4d62b9b8629e6c7a586895773f70d9921e3d9e0a3b2a5dd4f363741bfc3647a -->
 
 ## 快速上下文
 
